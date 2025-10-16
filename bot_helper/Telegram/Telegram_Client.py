@@ -64,6 +64,8 @@ class Telegram:
             event = process_status.event
             process_id = process_status.process_id
             thumbnail = process_status.thumbnail if process_status.thumbnail else "./thumb.jpg"
+            log_channel_id = Config.LOG_CHANNEL_ID # Ambil LOG_CHANNEL_ID dari config
+
             for i in range(total_files):
                 start_time = time()
                 duration = get_video_duration(files[i])
@@ -72,7 +74,10 @@ class Telegram:
                 status = f"{Names.STATUS_UPLOADING} [{str(i+1)}/{str(total_files)}]"
                 size_limit = await check_size_limit()
                 file_size = getsize(files[i])
-                if file_size>size_limit:
+                
+                uploaded_file_obj = None # Variabel untuk menyimpan file yang diunggah
+                
+                if file_size > size_limit:
                         r_config = f'./userdata/{str(process_status.user_id)}_rclone.conf'
                         drive_name = get_data()[process_status.user_id]['drive_name']
                         if get_data()[process_status.user_id]['auto_drive'] and exists(r_config) and verify_rclone_account(r_config, drive_name):
@@ -80,54 +85,60 @@ class Telegram:
                         else:
                             await event.reply(f"❌File Size Is Greater Than Telegram Upload Limit")
                             LOGGER.info(f"File Size: {file_size}, Limit: {size_limit}, Name: {filename}")
-                elif file_size<=2097151000:
-                        if get_data()[process_status.user_id]['tgupload']=="Telethon":
-                                try:
-                                    with open(files[i], "rb") as f:
-                                        uploaded_file = await upload_file(
-                                            client=Telegram.TELETHON_CLIENT,
-                                            file=f,
-                                            name=filename,
-                                            check_data=process_id,
-                                            progress_callback=lambda current,total: process_status.telegram_update_status(current,total, "Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload']))
-                                    await Telegram.TELETHON_CLIENT.send_file(chat_id, file=uploaded_file, thumb=thumbnail, allow_cache=False, supports_streaming=True, caption=file_caption, reply_to=event.message, attributes=(DocumentAttributeVideo(duration, 0, 0),))
-                                except Exception as e:
-                                    if str(e)!="Cancelled":
-                                        await event.reply(f"❗Telethon Error While Uploading File {filename}\n\nError: {str(e)}")
-                        else:
-                            if process_status.event.is_group and Config.AUTH_GROUP_ID:
-                                        chat_id = Config.AUTH_GROUP_ID
-                            try:
-                                    uploaded_file = await Telegram.PYROGRAM_CLIENT.send_video(
-                                                                                chat_id=chat_id,
-                                                                                file_name=filename,
-                                                                                video=files[i],
-                                                                                caption=file_caption,
-                                                                                supports_streaming=True,
-                                                                                duration=duration,
-                                                                                thumb=thumbnail,
-                                                                                reply_to_message_id=event.message.id,
-                                                                                progress=process_status.telegram_update_status,
-                                                                                progress_args=("Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload'], Telegram.PYROGRAM_CLIENT))
-                            except Exception as e:
-                                    await event.reply(f"❗Pyrogram Upload Error: {str(e)}")
                 else:
-                    if Telegram.TELETHON_USER_CLIENT:
-                            try:
+                    try:
+                        # Logika upload (Telethon, Pyrogram, UserClient)
+                        if file_size <= 2097151000:
+                            if get_data()[process_status.user_id]['tgupload'] == "Telethon":
                                 with open(files[i], "rb") as f:
                                     uploaded_file = await upload_file(
-                                        client=Telegram.TELETHON_USER_CLIENT,
+                                        client=Telegram.TELETHON_CLIENT,
                                         file=f,
                                         name=filename,
                                         check_data=process_id,
-                                        progress_callback=lambda current,total: process_status.telegram_update_status(current,total, "Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload']))
-                                await Telegram.TELETHON_USER_CLIENT.send_file(chat_id, file=uploaded_file, thumb=thumbnail, allow_cache=False, supports_streaming=True, caption=file_caption, reply_to=event.message.id, attributes=(DocumentAttributeVideo(duration, 0, 0),))
-                            except Exception as e:
-                                if str(e)!="Cancelled":
-                                    await event.reply(f"❗Telethon User Error While Uploading File {filename}\n\nError: {str(e)}")
-                    else:
+                                        progress_callback=lambda current, total: process_status.telegram_update_status(current, total, "Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload']))
+                                uploaded_file_obj = await Telegram.TELETHON_CLIENT.send_file(chat_id, file=uploaded_file, thumb=thumbnail, allow_cache=False, supports_streaming=True, caption=file_caption, reply_to=event.message, attributes=(DocumentAttributeVideo(duration, 0, 0),))
+                            else:
+                                if process_status.event.is_group and Config.AUTH_GROUP_ID:
+                                    pyro_chat_id = Config.AUTH_GROUP_ID
+                                else:
+                                    pyro_chat_id = chat_id
+                                uploaded_file_obj = await Telegram.PYROGRAM_CLIENT.send_video(
+                                    chat_id=pyro_chat_id, file_name=filename, video=files[i], caption=file_caption,
+                                    supports_streaming=True, duration=duration, thumb=thumbnail,
+                                    reply_to_message_id=event.message.id, progress=process_status.telegram_update_status,
+                                    progress_args=("Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload'], Telegram.PYROGRAM_CLIENT))
+                        elif Telegram.TELETHON_USER_CLIENT:
+                            with open(files[i], "rb") as f:
+                                uploaded_file = await upload_file(
+                                    client=Telegram.TELETHON_USER_CLIENT, file=f, name=filename, check_data=process_id,
+                                    progress_callback=lambda current, total: process_status.telegram_update_status(current, total, "Uploaded", filename, start_time, status, get_data()[process_status.user_id]['tgupload']))
+                            uploaded_file_obj = await Telegram.TELETHON_USER_CLIENT.send_file(chat_id, file=uploaded_file, thumb=thumbnail, allow_cache=False, supports_streaming=True, caption=file_caption, reply_to=event.message.id, attributes=(DocumentAttributeVideo(duration, 0, 0),))
+                        else:
                             await event.reply(f"❌File Size Is Greater Than Telegram Upload Limit")
-                            LOGGER.info(f"File Size: {file_size}, Name: {filename}")
+                    except Exception as e:
+                        if str(e) != "Cancelled":
+                            await event.reply(f"❗Error While Uploading File {filename}\n\nError: {str(e)}")
+
+                # Kirim ke Channel Log jika ID disetel dan file berhasil diunggah
+                if log_channel_id != 0 and uploaded_file_obj:
+                    try:
+                        log_caption = f"✅ **Pekerjaan Selesai**\n\n" \
+                                      f"**File**: `{filename}`\n" \
+                                      f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)"
+                        
+                        # Mengirim ulang file yang sudah diunggah ke channel log
+                        await Telegram.TELETHON_CLIENT.send_file(
+                            log_channel_id,
+                            file=uploaded_file_obj,
+                            caption=log_caption,
+                            thumb=thumbnail
+                        )
+                    except Exception as e:
+                        LOGGER.error(f"Gagal mengirim log ke channel {log_channel_id}: {e}")
+                        # Beri tahu pengguna bahwa pengiriman log gagal
+                        await event.reply(f"🔔 **Notifikasi**: Gagal mengirim hasil ke channel log.\n`Error: {str(e)}`")
+
                 if not check_running_process(process_id):
                         await event.reply("🔒Task Cancelled By User")
                         break
