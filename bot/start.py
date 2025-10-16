@@ -33,9 +33,6 @@ if not isdir('./userdata'):
     makedirs("./userdata")
 
 
-
-
-
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
 owner_id = Config.OWNER_ID
@@ -44,6 +41,8 @@ auth_chat = Config.AUTH_GROUP_ID
 TELETHON_CLIENT = Telegram.TELETHON_CLIENT
 LOGGER = Config.LOGGER
 SAVE_TO_DATABASE = Config.SAVE_TO_DATABASE
+CMD_SUFFIX = Config.CMD_SUFFIX
+BOT_USERNAME = Config.BOT_USERNAME
 
 #////////////////////////////////////Functions////////////////////////////////////#
 
@@ -223,29 +222,41 @@ def owner_checker(event):
 ###############------Get_Link------###############
 async def get_link(event):
     custom_file_name = False
-    if "|" in event.message.message:
-        ext_data = event.message.message.split('|')
+    message_text = event.message.message
+    
+    # Menghapus suffix dan username bot dari pesan untuk parsing
+    plain_command = message_text.split(' ')[0]
+    plain_command = plain_command.replace(CMD_SUFFIX, '')
+    if BOT_USERNAME:
+        plain_command = plain_command.replace(f'@{BOT_USERNAME}', '')
+    
+    # Rekonstruksi pesan tanpa suffix untuk parsing
+    reconstructed_message = message_text.replace(event.message.message.split(' ')[0], plain_command)
+
+    if "|" in reconstructed_message:
+        ext_data = reconstructed_message.split('|')
         custom_file_name = str(ext_data[-1]).strip()
         commands = ext_data[0].strip().split(' ')
     else:
-        commands = event.message.message.split(' ')
-    if len(commands)==2:
-            if str(commands[1]).startswith("http") or is_magnet(commands[1]):
-                return commands[1], custom_file_name
-            else:
-                return "invalid", custom_file_name
+        commands = reconstructed_message.split(' ')
+        
+    if len(commands) == 2:
+        if str(commands[1]).startswith("http") or is_magnet(commands[1]):
+            return commands[1], custom_file_name
+        else:
+            return "invalid", custom_file_name
     else:
-            if event.reply_to_msg_id:
-                msg_object = await TELETHON_CLIENT.get_messages(event.message.chat.id, ids=event.reply_to_msg_id)
-                if not msg_object.file:
-                    if str(msg_object.message).startswith("http") or is_magnet(str(msg_object.message)):
-                        return str(msg_object.message), custom_file_name
-                    else:
-                        return "invalid", custom_file_name
+        if event.reply_to_msg_id:
+            msg_object = await TELETHON_CLIENT.get_messages(event.message.chat.id, ids=event.reply_to_msg_id)
+            if not msg_object.file:
+                if str(msg_object.message).startswith("http") or is_magnet(str(msg_object.message)):
+                    return str(msg_object.message), custom_file_name
                 else:
-                    return msg_object, custom_file_name
+                    return "invalid", custom_file_name
             else:
-                return False, custom_file_name
+                return msg_object, custom_file_name
+        else:
+            return False, custom_file_name
 
 ###############------Ask_User_ID------###############
 async def get_sudo_user_id(event):
@@ -320,8 +331,11 @@ async def ask_text_list(chat_id, user_id, event, timeout, message, include_list)
 
 ###############------Ask Media OR URL------###############
 async def ask_media_OR_url(event, chat_id, user_id, keywords, message, timeout, mtype, s_handle, allow_magnet=True, allow_url=True, message_hint=False, allow_command=False, stop_on_url=True):
+    # Buat keywords dinamis dengan suffix
+    keywords_with_suffix = [f"/{k}{CMD_SUFFIX}" for k in keywords if not k.startswith('/')] + [k for k in keywords if k.startswith('/')]
+
     async with TELETHON_CLIENT.conversation(chat_id) as conv:
-            handle = conv.wait_event(events.NewMessage(chats=chat_id, incoming=True, from_users=[user_id], func=lambda e: e.message.file or str(e.message.message) in keywords or str(e.message.message).startswith("http")), timeout=timeout)
+            handle = conv.wait_event(events.NewMessage(chats=chat_id, incoming=True, from_users=[user_id], func=lambda e: e.message.file or str(e.message.message).split('@')[0] in keywords_with_suffix or str(e.message.message).startswith("http")), timeout=timeout)
             msg = f"*️⃣ {str(message)} [{str(timeout)} secs]"
             if message_hint:
                 msg += f"\n\n{message_hint}"
@@ -338,11 +352,12 @@ async def ask_media_OR_url(event, chat_id, user_id, keywords, message, timeout, 
                         return False
                 return new_event
             elif new_event.message.message:
-                if str(new_event.message.message)=='stop':
+                plain_message = new_event.message.message.split('@')[0].replace(CMD_SUFFIX, '')
+                if plain_message in ['/stop', 'stop']:
                     if s_handle:
                         await ask.reply('✅Task Stopped')
                     return "stopped"
-                elif str(new_event.message.message)=='cancel':
+                elif plain_message in ['/cancel', 'cancel']:
                     await ask.reply('✅Task Cancelled')
                     return "cancelled"
                 elif str(new_event.message.message).startswith("http"):
@@ -373,8 +388,10 @@ async def ask_media_OR_url(event, chat_id, user_id, keywords, message, timeout, 
 
 ###############------Ask URL------###############
 async def ask_url(event, chat_id, user_id, keywords, message, timeout, s_handle, allow_magnet=True, allow_url=True, message_hint=False, allow_command=False, stop_on_url=True):
+    keywords_with_suffix = [f"/{k}{CMD_SUFFIX}" for k in keywords if not k.startswith('/')] + [k for k in keywords if k.startswith('/')]
+    
     async with TELETHON_CLIENT.conversation(chat_id) as conv:
-            handle = conv.wait_event(events.NewMessage(chats=chat_id, incoming=True, from_users=[user_id], func=lambda e: str(e.message.message) in keywords or str(e.message.message).startswith("http") or is_magnet(str(e.message.message))), timeout=timeout)
+            handle = conv.wait_event(events.NewMessage(chats=chat_id, incoming=True, from_users=[user_id], func=lambda e: str(e.message.message).split('@')[0] in keywords_with_suffix or str(e.message.message).startswith("http") or is_magnet(str(e.message.message))), timeout=timeout)
             msg = f"*️⃣ {str(message)} [{str(timeout)} secs]"
             if message_hint:
                 msg += f"\n\n{message_hint}"
@@ -384,11 +401,13 @@ async def ask_url(event, chat_id, user_id, keywords, message, timeout, s_handle,
             except Exception as e:
                 await ask.reply('🔃Timed Out! Task Has Been Cancelled.')
                 return False
-            if str(new_event.message.message)=='stop':
+                
+            plain_message = new_event.message.message.split('@')[0].replace(CMD_SUFFIX, '')
+            if plain_message in ['/stop', 'stop']:
                     if s_handle:
                         await ask.reply('✅Task Stopped')
                     return "stopped"
-            elif str(new_event.message.message)=='cancel':
+            elif plain_message in ['/cancel', 'cancel']:
                 await ask.reply('✅Task Cancelled')
                 return "cancelled"
             elif str(new_event.message.message).startswith("http"):
@@ -420,8 +439,9 @@ async def ask_url(event, chat_id, user_id, keywords, message, timeout, s_handle,
 ###############------Get_Thumbnail------###############
 async def get_thumbnail(process_status, keywords, timeout):
     if get_data()[process_status.user_id]['custom_thumbnail']:
+        keywords_with_suffix = [f"/{k}{CMD_SUFFIX}" for k in keywords if not k.startswith('/')] + [k for k in keywords if k.startswith('/')]
         async with TELETHON_CLIENT.conversation(process_status.chat_id) as conv:
-            handle = conv.wait_event(events.NewMessage(chats=process_status.chat_id, incoming=True, from_users=[process_status.user_id], func=lambda e: e.message.media or str(e.message.message) in keywords), timeout=timeout)
+            handle = conv.wait_event(events.NewMessage(chats=process_status.chat_id, incoming=True, from_users=[process_status.user_id], func=lambda e: e.message.media or str(e.message.message).split('@')[0] in keywords_with_suffix), timeout=timeout)
             ask = await process_status.event.reply(f'*️⃣ Send Thumbnail [{str(timeout)} secs]')
             try:
                 new_event = await handle
@@ -434,7 +454,8 @@ async def get_thumbnail(process_status, keywords, timeout):
                     await new_event.reply(f'❗[{str(new_event.message.file.mime_type)}] This is not a valid thumbnail.')
                     return
             elif new_event.message.message:
-                if str(new_event.message.message)=='pass':
+                plain_message = new_event.message.message.split('@')[0].replace(CMD_SUFFIX, '')
+                if plain_message in ['/pass', 'pass']:
                     await ask.reply('✅Task Passed')
                     return
                 else:
@@ -457,7 +478,9 @@ async def ask_watermark(event, chat_id, user_id, cmd, wt_check, all_handle=False
             text = f"Watermark Already Present\n\n🔷Send Me New Watermark Image To Replace."
     else:
             text = f"Watermark Not Present\n\n🔶Send Me Watermark Image To Save."
-    new_event = await ask_media_OR_url(event, chat_id, user_id, [f"/{cmd}", "stop"], text, 120, "image/", True, False, False)
+    
+    keyword = f"/{cmd}{CMD_SUFFIX}"
+    new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "image/", True, False, False)
     if new_event and new_event not in ["cancelled", "stopped"]:
         await TELETHON_CLIENT.download_media(new_event.message, watermark_path)
         if exists(watermark_path):
@@ -476,7 +499,9 @@ async def ask_thumbnail(event, chat_id, user_id, cmd):
             text = f"Thumbnail Already Present\n\n🔷Send Me New Thumbnail To Replace."
     else:
             text = f"Thumbnail Not Present\n\n🔶Send Me Thumbnail To Save."
-    new_event = await ask_media_OR_url(event, chat_id, user_id, [f"/{cmd}", "stop"], text, 120, "image/", True, False, False)
+            
+    keyword = f"/{cmd}{CMD_SUFFIX}"
+    new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "image/", True, False, False)
     if new_event and new_event not in ["cancelled", "stopped"]:
         await TELETHON_CLIENT.download_media(new_event.message, Thumbnail_path)
         if exists(Thumbnail_path):
@@ -503,7 +528,7 @@ async def update_status_message(event):
                 except:
                     await event.reply(f"No Running Process!\n\n**CPU:** {cpu_percent()}% | **FREE:** {get_human_size(disk_usage('/').free)}\n**RAM:** {virtual_memory().percent}% | **UPTIME:** {get_readable_time(time() - botStartTime)}\n**QUEUED:** {get_queued_tasks_len()} | **TASK LIMIT:** {get_task_limit()}")
                 break
-            if status_update[chat_id]['update_id'] != status_update_id:
+            if status_update.get(chat_id, {}).get('update_id') != status_update_id:
                 await reply.delete()
                 break
             if get_data()[user_id]['show_stats']:
@@ -523,9 +548,12 @@ async def update_status_message(event):
         LOGGER.info(f"Status Updating Complete")
         return
 
+# Helper function to create dynamic command patterns
+def cmd_pattern(command):
+    return f"/{command}{CMD_SUFFIX}(?:@{BOT_USERNAME})?$"
 
 ###############------Save_Rclone_Config------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/saveconfig', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('saveconfig'), func=lambda e: user_auth_checker(e)))
 async def _saverclone(event):
         user_id = event.message.sender.id
         chat_id = event.message.chat.id
@@ -538,7 +566,9 @@ async def _saverclone(event):
                 text = f"Rclone Config Already Present\n\nSend Me New Config To Replace."
         else:
                 text = f"Rclone Config Not Present\n\nSend Me Config To Save."
-        new_event = await ask_media_OR_url(event, chat_id, user_id, ["/saveconfig", "stop"], text, 120, "text/", True, False)
+        
+        keyword = f"/saveconfig{CMD_SUFFIX}"
+        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "text/", True, False)
         if new_event and new_event not in ["cancelled", "stopped"]:
             if new_event.message.file:
                 await new_event.download_media(file=r_config)
@@ -562,7 +592,7 @@ async def _saverclone(event):
 
 
 ###############------Change_Task_Limit------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/tasklimit', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('tasklimit'), func=lambda e: owner_checker(e)))
 async def _changetasklimit(event):
         user_id = event.message.sender.id
         chat_id = event.message.chat.id
@@ -575,7 +605,7 @@ async def _changetasklimit(event):
 
 
 ###############------Restart------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/restart', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('restart'), func=lambda e: owner_checker(e)))
 async def _restart(event):
         chat_id = event.message.chat.id
         reply = await event.reply("♻Restarting...")
@@ -588,7 +618,7 @@ async def _restart(event):
         
 
 ###############------Restart_Heroku------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/herokurestart', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('herokurestart'), func=lambda e: owner_checker(e)))
 async def _heroku_restart(event):
         chat_id = event.message.chat.id
         if Config.HEROKU_APP_NAME and Config.HEROKU_API_KEY:
@@ -607,7 +637,7 @@ async def _heroku_restart(event):
 
 
 ###############------Get_Logs_Message------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/log', func=lambda e: sudo_user_checker_event(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('log'), func=lambda e: sudo_user_checker_event(e)))
 async def _log(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
@@ -621,7 +651,7 @@ async def _log(event):
 
 
 ###############------Get_Log_File------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/logs', func=lambda e: sudo_user_checker_event(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('logs'), func=lambda e: sudo_user_checker_event(e)))
 async def _logs(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -639,7 +669,7 @@ async def _logs(event):
 
 
 ###############------Reset_Database------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/resetdb', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('resetdb'), func=lambda e: owner_checker(e)))
 async def _resetdb(event):
         await event.reply("*️⃣Are you sure?\n\n🚫 This will reset your all database 🚫", buttons=[
                 [Button.inline('Yes 🚫', 'resetdb_True')],
@@ -650,7 +680,7 @@ async def _resetdb(event):
 
 
 ###############------Save_WaterMark_Image------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/savewatermark', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('savewatermark'), func=lambda e: user_auth_checker(e)))
 async def _savewatermark(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -665,7 +695,7 @@ async def _savewatermark(event):
 
 
 ###############------Save_Thumbnail------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/savethumb', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('savethumb'), func=lambda e: user_auth_checker(e)))
 async def _savethumb(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -680,7 +710,7 @@ async def _savethumb(event):
 
 
 ###############------Renew------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/renew', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('renew'), func=lambda e: owner_checker(e)))
 async def _renew(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
@@ -693,14 +723,14 @@ async def _renew(event):
         return
 
 ###############------Save_Stats------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/stats', func=lambda e: sudo_user_checker_event(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('stats'), func=lambda e: sudo_user_checker_event(e)))
 async def _stats_msg(event):
     await event.reply(str(await get_host_stats()), parse_mode='html')
     return
 
 
 ###############------Speed_Test------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/speedtest', func=lambda e: sudo_user_checker_event(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('speedtest'), func=lambda e: sudo_user_checker_event(e)))
 async def _speed_test(event):
     chat_id = event.message.chat.id
     reply = await event.reply("⏳Running Speed Test, Please Wait.....")
@@ -714,7 +744,7 @@ async def _speed_test(event):
 
 
 ###############------Start_Message------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/start'))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('start')))
 async def _startmsg(event):
     text = f"Hi {get_mention(event)}, I Am Alive."
     await event.reply(text, buttons=[
@@ -724,14 +754,14 @@ async def _startmsg(event):
     return
 
 ###############------Bot_UpTime------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/time', func=lambda e: sudo_user_checker_event(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('time'), func=lambda e: sudo_user_checker_event(e)))
 async def _timecmd(event):
     await event.reply(f'♻Bot Is Alive For {getbotuptime()}')
     return
 
 
 ###############------Cancel Process------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/cancel', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('cancel'), func=lambda e: user_auth_checker(e)))
 async def _cancel(event):
         user_id = event.message.sender.id
         commands = event.message.message.split(' ')
@@ -782,7 +812,7 @@ async def _cancel(event):
 
 
 ###############------FFMPEF Log------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/ffmpeg', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('ffmpeg'), func=lambda e: user_auth_checker(e)))
 async def _ffmpeg_log(event):
         chat_id = event.message.chat.id
         commands = event.message.message.split(' ')
@@ -804,7 +834,7 @@ async def _ffmpeg_log(event):
         return
 
 ###############------Compress------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/compress', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('compress'), func=lambda e: user_auth_checker(e)))
 async def _compress_video(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -815,7 +845,8 @@ async def _compress_video(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/compress", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/compress{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -823,7 +854,7 @@ async def _compress_video(event):
         user_name = get_username(event)
         user_first_name = event.message.sender.first_name
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.compress, custom_file_name)
-        await get_thumbnail(process_status, ["/compress", "pass"], 120)
+        await get_thumbnail(process_status, [f"/compress{CMD_SUFFIX}", "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -832,7 +863,7 @@ async def _compress_video(event):
         else:
             task['functions'].append(["TG", [link]])
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/compress')
+                m_result = await multi_tasks(process_status, f'/compress{CMD_SUFFIX}')
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -860,7 +891,7 @@ async def _compress_video(event):
 
 
 ###############------Status------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/status', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('status'), func=lambda e: user_auth_checker(e)))
 async def _status(event):
         reply  = await event.reply("⏳Please Wait")
         chat_id = event.message.chat.id
@@ -882,7 +913,7 @@ async def _status(event):
                 except:
                     await event.reply(f"No Running Process!\n\n**CPU:** {cpu_percent()}% | **FREE:** {get_human_size(disk_usage('/').free)}\n**RAM:** {virtual_memory().percent}% | **UPTIME:** {get_readable_time(time() - botStartTime)}\n**QUEUED:** {get_queued_tasks_len()} | **TASK LIMIT:** {get_task_limit()}")
                 break
-            if status_update[chat_id]['update_id'] != status_update_id:
+            if status_update.get(chat_id, {}).get('update_id') != status_update_id:
                 await reply.delete()
                 break
             if get_data()[user_id]['show_stats']:
@@ -904,7 +935,7 @@ async def _status(event):
 
 
 ###############------Settings------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/settings', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('settings'), func=lambda e: user_auth_checker(e)))
 async def _settings(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
@@ -926,7 +957,7 @@ async def _settings(event):
         return
 
 ###############------Watermark------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/watermark', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('watermark'), func=lambda e: user_auth_checker(e)))
 async def _add_watermark_to_video(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -941,7 +972,8 @@ async def _add_watermark_to_video(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/watermark", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/watermark{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -949,7 +981,7 @@ async def _add_watermark_to_video(event):
         user_name = get_username(event)
         user_first_name = event.message.sender.first_name
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.watermark, custom_file_name)
-        await get_thumbnail(process_status, ["/watermark", "pass"], 120)
+        await get_thumbnail(process_status, [f"/watermark{CMD_SUFFIX}", "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -958,7 +990,7 @@ async def _add_watermark_to_video(event):
         else:
             task['functions'].append(["TG", [link]])
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/watermark')
+                m_result = await multi_tasks(process_status, f'/watermark{CMD_SUFFIX}')
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -986,7 +1018,7 @@ async def _add_watermark_to_video(event):
 
 
 ###############------Merge_Videos------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/merge', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('merge'), func=lambda e: user_auth_checker(e)))
 async def _merge_videos(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1001,8 +1033,9 @@ async def _merge_videos(event):
         task['functions'] = []
         file_index = 1
         Cancel = False
+        keyword = f"/merge{CMD_SUFFIX}"
         while True:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/merge", "stop", "cancel"], f"Send Video or URL No {file_index}", 120, "video/", False, message_hint=f"🔷Send `stop` To Process Merge\n🔷Send `cancel` To Cancel Merge Process", allow_command=True)
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Video or URL No {file_index}", 120, "video/", False, message_hint=f"🔷Send `stop` To Process Merge\n🔷Send `cancel` To Cancel Merge Process", allow_command=True)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
                 link = await get_url_from_message(new_event)
                 if type(link)==str:
@@ -1025,9 +1058,9 @@ async def _merge_videos(event):
             del process_status
             await event.reply("❗Atleast 2 Files Required To Merge")
             return
-        await get_thumbnail(process_status, ["/merge", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/merge')
+                m_result = await multi_tasks(process_status, keyword)
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -1055,7 +1088,7 @@ async def _merge_videos(event):
     
 
 ###############------SoftMux------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/softmux', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('softmux'), func=lambda e: user_auth_checker(e)))
 async def _softmux_subtitles(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1066,7 +1099,8 @@ async def _softmux_subtitles(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/softmux", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/softmux{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1076,8 +1110,9 @@ async def _softmux_subtitles(event):
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.softmux, custom_file_name)
         file_index = 1
         Cancel = False
+        keyword = f"/softmux{CMD_SUFFIX}"
         while True:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/softmux", "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process SoftMux\n🔷Send `cancel` To Cancel SoftMux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process SoftMux\n🔷Send `cancel` To Cancel SoftMux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
                 if new_event.message.file:
                     if not str(new_event.message.file.mime_type).startswith("video/") and not str(new_event.message.file.mime_type).startswith("image/"):
@@ -1109,7 +1144,7 @@ async def _softmux_subtitles(event):
             del process_status
             await event.reply("❗Atleast 1 Files Required To SoftMux")
             return
-        await get_thumbnail(process_status, ["/softmux", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -1118,7 +1153,7 @@ async def _softmux_subtitles(event):
         else:
             task['functions'].append(["TG", [link]])
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/softmux')
+                m_result = await multi_tasks(process_status, keyword)
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -1145,7 +1180,7 @@ async def _softmux_subtitles(event):
         return
     
 ###############------softremux------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/softremux', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('softremux'), func=lambda e: user_auth_checker(e)))
 async def _softremux_subtitles(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1156,7 +1191,8 @@ async def _softremux_subtitles(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/softremux", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/softremux{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1166,8 +1202,9 @@ async def _softremux_subtitles(event):
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.softremux, custom_file_name)
         file_index = 1
         Cancel = False
+        keyword = f"/softremux{CMD_SUFFIX}"
         while True:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/softremux", "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process Softremux\n🔷Send `cancel` To Cancel Softremux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process Softremux\n🔷Send `cancel` To Cancel Softremux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
                 if new_event.message.file:
                     if not str(new_event.message.file.mime_type).startswith("video/") and not str(new_event.message.file.mime_type).startswith("image/"):
@@ -1199,7 +1236,7 @@ async def _softremux_subtitles(event):
             del process_status
             await event.reply("❗Atleast 1 Files Required To softremux")
             return
-        await get_thumbnail(process_status, ["/softremux", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -1208,7 +1245,7 @@ async def _softremux_subtitles(event):
         else:
             task['functions'].append(["TG", [link]])
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/softremux')
+                m_result = await multi_tasks(process_status, keyword)
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -1235,7 +1272,7 @@ async def _softremux_subtitles(event):
         return
 
 ###############------Convert------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/convert', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('convert'), func=lambda e: user_auth_checker(e)))
 async def _convert_video(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1246,7 +1283,8 @@ async def _convert_video(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/convert", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/convert{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1254,7 +1292,7 @@ async def _convert_video(event):
         user_name = get_username(event)
         user_first_name = event.message.sender.first_name
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.convert, custom_file_name)
-        await get_thumbnail(process_status, ["/convert", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -1268,7 +1306,7 @@ async def _convert_video(event):
 
 
 ###############------hardmux------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/hardmux', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('hardmux'), func=lambda e: user_auth_checker(e)))
 async def _hardmux_subtitle(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1279,7 +1317,8 @@ async def _hardmux_subtitle(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/hardmux", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/hardmux{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1287,7 +1326,8 @@ async def _hardmux_subtitle(event):
         user_name = get_username(event)
         user_first_name = event.message.sender.first_name
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.hardmux, custom_file_name)
-        new_event = await ask_media_OR_url(event, chat_id, user_id, ["/hardmux", "stop"], f"Send Subtitle SRT File", 120, False, True, allow_magnet=False, allow_url=False)
+        keyword = f"/hardmux{CMD_SUFFIX}"
+        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], f"Send Subtitle SRT File", 120, False, True, allow_magnet=False, allow_url=False)
         if new_event and new_event not in ["cancelled", "stopped"]:
             if new_event.message.file:
                 if not str(new_event.message.file.mime_type).startswith("video/") and not str(new_event.message.file.mime_type).startswith("image/"):
@@ -1316,7 +1356,7 @@ async def _hardmux_subtitle(event):
             del process_status
             await event.reply("❗Atleast 1 Files Required To hardmux")
             return
-        await get_thumbnail(process_status, ["/hardmux", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         task = {}
         task['process_status'] = process_status
         task['functions'] = []
@@ -1325,7 +1365,7 @@ async def _hardmux_subtitle(event):
         else:
             task['functions'].append(["TG", [link]])
         if get_data()[user_id]['multi_tasks']:
-                m_result = await multi_tasks(process_status, '/hardmux')
+                m_result = await multi_tasks(process_status, keyword)
                 if not m_result:
                     for t in process_status.multi_tasks:
                         del t
@@ -1352,7 +1392,7 @@ async def _hardmux_subtitle(event):
         return
 
 ###############------Change_Config------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/changeconfig', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changeconfig'), func=lambda e: owner_checker(e)))
 async def _changeconfig(event):
         if not exists('config.env'):
             await event.reply("❗`config.env` File Not Found")
@@ -1368,7 +1408,7 @@ async def _changeconfig(event):
         return
 
 ###############------Clear_Config------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/clearconfigs', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('clearconfigs'), func=lambda e: owner_checker(e)))
 async def _clearconfig(event):
         if exists('./userdata/botconfig.env'):
             remove("./userdata/botconfig.env")
@@ -1378,14 +1418,14 @@ async def _clearconfig(event):
         return
 
 ###############------Check_Sudo------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/checksudo', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('checksudo'), func=lambda e: owner_checker(e)))
 async def _checksudo(event):
     await event.reply(str(sudo_users))
     return
     
 
 ###############------Add_Sudo------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/addsudo', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('addsudo'), func=lambda e: owner_checker(e)))
 async def _addsudo(event):
     chat_id = event.message.chat.id
     user_id = event.message.sender.id
@@ -1415,7 +1455,7 @@ async def _addsudo(event):
 
 
 ###############------Delete_Sudo------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/delsudo', func=lambda e: owner_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('delsudo'), func=lambda e: owner_checker(e)))
 async def _delsudo(event):
     chat_id = event.message.chat.id
     user_id = event.message.sender.id
@@ -1445,7 +1485,7 @@ async def _delsudo(event):
 
 
 ###############------Generate_Sample_Video------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/gensample', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('gensample'), func=lambda e: user_auth_checker(e)))
 async def _gen_video_sample(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1456,7 +1496,8 @@ async def _gen_video_sample(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/gensample", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/gensample{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1476,7 +1517,7 @@ async def _gen_video_sample(event):
         return
 
 ###############------Generate_Screenshots------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/genss', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('genss'), func=lambda e: user_auth_checker(e)))
 async def _gen_screenshots(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1487,7 +1528,8 @@ async def _gen_screenshots(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, ["/genss", "stop"], "Send Video or URL", 120, "video/", True)
+            keyword = f"/genss{CMD_SUFFIX}"
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1508,11 +1550,11 @@ async def _gen_screenshots(event):
 
 
 ###############------Change_MetaData------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/changemetadata', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changemetadata'), func=lambda e: user_auth_checker(e)))
 async def _change_metadata(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
-        command = '/changemetadata'
+        command = f'/changemetadata{CMD_SUFFIX}'
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
         link, custom_file_name = await get_link(event)
@@ -1558,11 +1600,11 @@ async def _change_metadata(event):
 
 
 ###############------Change_index------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/changeindex', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changeindex'), func=lambda e: user_auth_checker(e)))
 async def _change_index(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
-        command = '/changeindex'
+        command = f'/changeindex{CMD_SUFFIX}'
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
         link, custom_file_name = await get_link(event)
@@ -1611,7 +1653,7 @@ async def _change_index(event):
 
 
 ###############------Leech_File------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/leech', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('leech'), func=lambda e: user_auth_checker(e)))
 async def _leech_file(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1622,7 +1664,8 @@ async def _leech_file(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_url(event, chat_id, user_id, ["/leech", "stop"], "Send Link", 120, True)
+            keyword = f"/leech{CMD_SUFFIX}"
+            new_event = await ask_url(event, chat_id, user_id, [keyword, "stop"], "Send Link", 120, True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1637,14 +1680,14 @@ async def _leech_file(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, ["/leech", "pass"], 120)
+        await get_thumbnail(process_status, [f"/leech{CMD_SUFFIX}", "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
 
 
 ###############------mirror_File------###############
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern='/mirror', func=lambda e: user_auth_checker(e)))
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('mirror'), func=lambda e: user_auth_checker(e)))
 async def _mirror_file(event):
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
@@ -1655,7 +1698,8 @@ async def _mirror_file(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_url(event, chat_id, user_id, ["/mirror", "stop"], "Send Link", 120, True)
+            keyword = f"/mirror{CMD_SUFFIX}"
+            new_event = await ask_url(event, chat_id, user_id, [keyword, "stop"], "Send Link", 120, True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1670,7 +1714,7 @@ async def _mirror_file(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, ["/mirror", "pass"], 120)
+        await get_thumbnail(process_status, [f"/mirror{CMD_SUFFIX}", "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
