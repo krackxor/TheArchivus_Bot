@@ -107,10 +107,11 @@ class Telegram:
                                            f"**File**: `{filename}`\n"
                                            f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
                             
-                            # Mengunggah ulang file dari path lokal, bukan menyalin
+                            # *** INI ADALAH PERUBAHAN KUNCI ***
+                            # Mengunggah ulang file dari path lokal, bukan menyalin pesan.
                             await Telegram.TELETHON_CLIENT.send_file(
                                 log_channel_id, 
-                                file=file_path,  # <- INI KUNCINYA
+                                file=file_path,
                                 thumb=thumbnail, 
                                 caption=log_caption, 
                                 attributes=(DocumentAttributeVideo(duration, 0, 0),)
@@ -141,7 +142,7 @@ class Telegram:
         # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM dan Channel Log."
+                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
@@ -149,7 +150,6 @@ class Telegram:
         return
 
     async def download_tg_file(process_status, variables, dw_index):
-        # ... (kode download tetap sama, tidak perlu diubah)
         start_time = time()
         status = f"{Names.STATUS_DOWNLOADING} [{dw_index}]"
         new_event = variables[0]
