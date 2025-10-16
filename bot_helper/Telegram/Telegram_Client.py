@@ -82,8 +82,11 @@ class Telegram:
 
             try:
                 if file_size > size_limit:
-                    # Logika Rclone tetap sama
-                    pass
+                    r_config = f'./userdata/{str(process_status.user_id)}_rclone.conf'
+                    drive_name = get_data()[process_status.user_id]['drive_name']
+                    if get_data()[process_status.user_id]['auto_drive'] and exists(r_config) and verify_rclone_account(r_config, drive_name):
+                        await upload_single_drive(process_status, file_path, status, r_config, drive_name, filename)
+                        upload_successful = True # Asumsikan berhasil untuk notifikasi
                 else:
                     # 1. Kirim FILE sebagai MEDIA ke PM Pengguna
                     if file_size <= 2097151000:
@@ -106,16 +109,7 @@ class Telegram:
                             log_caption = (f"✅ **Pekerjaan Selesai**\n\n"
                                            f"**File**: `{filename}`\n"
                                            f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
-                            
-                            # *** INI ADALAH PERUBAHAN KUNCI ***
-                            # Mengunggah ulang file dari path lokal, bukan menyalin pesan.
-                            await Telegram.TELETHON_CLIENT.send_file(
-                                log_channel_id, 
-                                file=file_path,
-                                thumb=thumbnail, 
-                                caption=log_caption, 
-                                attributes=(DocumentAttributeVideo(duration, 0, 0),)
-                            )
+                            await Telegram.TELETHON_CLIENT.send_file(log_channel_id, file=file_path, thumb=thumbnail, caption=log_caption, attributes=(DocumentAttributeVideo(duration, 0, 0),))
                         except Exception as e:
                             LOGGER.error(f"Gagal mengirim file ke channel log {log_channel_id}: {e}")
                             await event.reply(f"🔔 Gagal mengirim hasil ke channel log. Error: `{str(e)[:1000]}`")
@@ -142,7 +136,7 @@ class Telegram:
         # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
+                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM dan Channel Log."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
@@ -164,35 +158,43 @@ class Telegram:
         create_direc(process_status.dir)
         download_location = f"{process_status.dir}/{file_name}"
         process_status.append_dw_files(file_name)
+        
         if get_data()[process_status.user_id]['tgdownload']=="Telethon":
-                try:
-                    with open(download_location, "wb") as f:
-                            await download_file(
-                                client=Telegram.TELETHON_CLIENT, 
-                                location=file_location, 
-                                out=f,
-                                check_data=process_status.process_id,
-                                progress_callback=lambda current,total: process_status.telegram_update_status(current,total, "Diunduh", file_name, start_time, status, get_data()[process_status.user_id]['tgdownload']))
-                except Exception as e:
-                        if str(e)=="Cancelled":
-                                await new_event.reply("🔒Tugas Dibatalkan Oleh Pengguna")
-                        else:
-                            await new_event.reply(f"❗ Error Unduhan Telethon: {str(e)}")
-                            LOGGER.info(str(e))
-                        return False
-        else:
             try:
-                    download_chat_id = Config.AUTH_GROUP_ID if process_status.event.is_group and Config.AUTH_GROUP_ID else process_status.chat_id
-                    await Telegram.PYROGRAM_CLIENT.download_media(
-                                                                message=(await Telegram.PYROGRAM_CLIENT.get_messages(download_chat_id, file_id)),
-                                                                file_name=download_location,
-                                                                progress=process_status.telegram_update_status,
-                                                                progress_args=("Diunduh", file_name, start_time, status, get_data()[process_status.user_id]['tgdownload'], Telegram.PYROGRAM_CLIENT))
-                    if not check_running_process(process_status.process_id):
-                                    await new_event.reply("🔒Tugas Dibatalkan Oleh Pengguna")
+                with open(download_location, "wb") as f:
+                    await download_file(
+                        client=Telegram.TELETHON_CLIENT, 
+                        location=file_location, 
+                        out=f,
+                        check_data=process_status.process_id,
+                        progress_callback=lambda current,total: process_status.telegram_update_status(current,total, "Diunduh", file_name, start_time, status, "Telethon"))
             except Exception as e:
-                    await new_event.reply(f"❗ Error Unduhan Pyrogram: {str(e)}\n\nChat: {download_chat_id}")
-                    return False
+                if str(e)=="Cancelled":
+                    await new_event.reply("🔒Tugas Dibatalkan Oleh Pengguna")
+                else:
+                    await new_event.reply(f"❗ Error Unduhan Telethon: {str(e)}")
+                return False
+        else: # Pyrogram
+            try:
+                # *** INI ADALAH PERUBAHAN KUNCI ***
+                # Memastikan ID chat yang benar digunakan untuk Pyrogram
+                download_chat_id = Config.AUTH_GROUP_ID if process_status.event.is_group and Config.AUTH_GROUP_ID else process_status.chat_id
+                
+                # Mengambil pesan dari chat yang benar
+                message_to_download = await Telegram.PYROGRAM_CLIENT.get_messages(download_chat_id, file_id)
+                
+                await Telegram.PYROGRAM_CLIENT.download_media(
+                    message=message_to_download,
+                    file_name=download_location,
+                    progress=process_status.telegram_update_status,
+                    progress_args=("Diunduh", file_name, start_time, status, "Pyrogram", Telegram.PYROGRAM_CLIENT))
+                
+                if not check_running_process(process_status.process_id):
+                    await new_event.reply("🔒Tugas Dibatalkan Oleh Pengguna")
+            except Exception as e:
+                await new_event.reply(f"❗ Error Unduhan Pyrogram: {str(e)}\n\nPastikan bot adalah admin di chat dengan ID: {download_chat_id}")
+                return False
+                
         process_status.move_dw_file(file_name)
         return True
 
