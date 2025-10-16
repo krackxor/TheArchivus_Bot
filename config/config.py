@@ -82,6 +82,15 @@ class Config:
         exit()
     API_HASH = environ.get("API_HASH","")
     TOKEN = environ.get("TOKEN","")
+    
+    # Variabel baru ditambahkan di sini
+    BOT_USERNAME = environ.get("BOT_USERNAME", "Encoder8Bot") # Ganti dengan default jika perlu
+    CMD_SUFFIX = environ.get("CMD_SUFFIX", "")
+    try:
+        LOG_CHANNEL_ID = int(environ.get("LOG_CHANNEL_ID", "0"))
+    except ValueError:
+        LOG_CHANNEL_ID = 0 # Default ke 0 (nonaktif) jika ID tidak valid
+        
     USE_PYROGRAM = True
     USE_SESSION_STRING = environ.get("USE_SESSION_STRING", False)
     SESSION_STRING = environ.get("SESSION_STRING","")
