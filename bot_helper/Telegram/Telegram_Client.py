@@ -82,10 +82,10 @@ class Telegram:
 
             try:
                 if file_size > size_limit:
-                    # ... (logika rclone tetap sama)
+                    # Logika Rclone tetap sama
                     pass
                 else:
-                    # 1. Kirim FILE ke PM Pengguna
+                    # 1. Kirim FILE sebagai MEDIA ke PM Pengguna
                     if file_size <= 2097151000:
                         if get_data()[user_pm_id]['tgupload'] == "Telethon":
                             with open(file_path, "rb") as f:
@@ -100,13 +100,21 @@ class Telegram:
 
                 if message_in_pm:
                     upload_successful = True
-                    # 2. Kirim FILE ke Channel Log (jika diatur)
+                    # 2. Kirim FILE sebagai MEDIA ke Channel Log (jika diatur)
                     if log_channel_id != 0:
                         try:
                             log_caption = (f"✅ **Pekerjaan Selesai**\n\n"
                                            f"**File**: `{filename}`\n"
                                            f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
-                            await Telegram.TELETHON_CLIENT.send_file(log_channel_id, file=file_path, thumb=thumbnail, caption=log_caption, attributes=(DocumentAttributeVideo(duration, 0, 0),))
+                            
+                            # Mengunggah ulang file dari path lokal, bukan menyalin
+                            await Telegram.TELETHON_CLIENT.send_file(
+                                log_channel_id, 
+                                file=file_path,  # <- INI KUNCINYA
+                                thumb=thumbnail, 
+                                caption=log_caption, 
+                                attributes=(DocumentAttributeVideo(duration, 0, 0),)
+                            )
                         except Exception as e:
                             LOGGER.error(f"Gagal mengirim file ke channel log {log_channel_id}: {e}")
                             await event.reply(f"🔔 Gagal mengirim hasil ke channel log. Error: `{str(e)[:1000]}`")
@@ -133,7 +141,7 @@ class Telegram:
         # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
+                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM dan Channel Log."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
