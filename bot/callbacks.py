@@ -14,12 +14,13 @@ sudo_users = Config.SUDO_USERS
 encoders_list = ['libx265', 'libx264']
 crf_list = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51']
 wsize_list =['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
-presets_list =  ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+presets_list = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+audio_codec_list = ['copy', 'aac', 'mp3', 'opus', 'flac']
 bool_list = [True, False]
 ws_name = {'5:5': 'Top Left', 'main_w-overlay_w-5:5': 'Top Right', '5:main_h-overlay_h': 'Bottom Left', 'main_w-overlay_w-5:main_h-overlay_h-5': 'Bottom Right'}
 ws_value = {'Top Left': '5:5', 'Top Right': 'main_w-overlay_w-5:5', 'Bottom Left': '5:main_h-overlay_h', 'Bottom Right': 'main_w-overlay_w-5:main_h-overlay_h-5'}
 TELETHON_CLIENT = Telegram.TELETHON_CLIENT
-punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', "  ", "\t", "+", "b'", "'"]
+punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', " ", "\t", "+", "b'", "'"]
 SAVE_TO_DATABASE = Config.SAVE_TO_DATABASE
 LOGGER = Config.LOGGER
 
@@ -114,15 +115,30 @@ async def callback(event):
         
         
         elif txt.startswith("compression"):
-            await compress_callback(event, txt, user_id, True)
+            if "audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "compression")
+            elif "metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "compression")
+            else:
+                await compress_callback(event, txt, user_id, True)
             return
 
         elif txt.startswith("convert"):
-            await convert_callback(event, txt, user_id, True)
+            if "audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "convert")
+            elif "metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "convert")
+            else:
+                await convert_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("hardmux"):
-            await hardmux_callback(event, txt, user_id, True)
+            if "audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "hardmux")
+            elif "metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "hardmux")
+            else:
+                await hardmux_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("softmux"):
@@ -134,12 +150,22 @@ async def callback(event):
             return
         
         elif txt.startswith("merge"):
-            await merge_callback(event, txt, user_id)
+            if "audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "merge")
+            elif "metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "merge")
+            else:
+                await merge_callback(event, txt, user_id)
             return
         
         
         elif txt.startswith("watermark"):
-            await watermark_callback(event, txt, user_id, True)
+            if "audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "watermark")
+            elif "metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "watermark")
+            else:
+                await watermark_callback(event, txt, user_id, True)
             return
         
         
@@ -517,6 +543,8 @@ async def compress_callback(event, txt, user_id, edit):
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(compress_crf)}', 'nik66bots')])
             for board in gen_keyboard(crf_list, compress_crf, "compressioncrf", 6, False):
                 KeyBoard.append(board)
+            KeyBoard.append([Button.inline('🎵 Audio', 'compression_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'compression_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             if edit:
                 try:
@@ -608,6 +636,8 @@ async def watermark_callback(event, txt, user_id, edit):
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(watermark_crf)}', 'nik66bots')])
             for board in gen_keyboard(crf_list, watermark_crf, "watermarkcrf", 6, False):
                 KeyBoard.append(board)
+            KeyBoard.append([Button.inline('🎵 Audio', 'watermark_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'watermark_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             if edit:
                 try:
@@ -641,6 +671,8 @@ async def merge_callback(event, txt, user_id):
             KeyBoard.append([Button.inline(f'🚢Fix Blank Outro  - {str(merge_fix_blank)} [Use Only When Necessary]', 'nik66bots')])
             for board in gen_keyboard(bool_list, merge_fix_blank, "mergefixblank", 2, False):
                 KeyBoard.append(board)
+            KeyBoard.append([Button.inline('🎵 Audio', 'merge_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'merge_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             try:
                 await event.edit("⚙ Merge Settings", buttons=KeyBoard)
@@ -718,6 +750,8 @@ async def convert_callback(event, txt, user_id, edit):
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(convert_crf)}', 'nik66bots')])
             for board in gen_keyboard(crf_list, convert_crf, "convertcrf", 6, False):
                 KeyBoard.append(board)
+            KeyBoard.append([Button.inline('🎵 Audio', 'convert_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'convert_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             if edit:
                 try:
@@ -781,6 +815,8 @@ async def hardmux_callback(event, txt, user_id, edit):
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(hardmux_crf)}', 'nik66bots')])
             for board in gen_keyboard(crf_list, hardmux_crf, "hardmuxcrf", 6, False):
                 KeyBoard.append(board)
+            KeyBoard.append([Button.inline('🎵 Audio', 'hardmux_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'hardmux_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             if edit:
                 try:
@@ -846,3 +882,37 @@ async def softremux_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Softremux Settings", buttons=KeyBoard)
             return
+
+###############------Audio Settings------###############
+async def audio_settings_callback(event, txt, user_id, process_type):
+    new_position = txt.split("_", 2)[2]
+    await saveconfig(user_id, process_type, 'audio_codec', new_position, SAVE_TO_DATABASE)
+    await event.answer(f"✅{process_type.capitalize()} Audio Codec - {str(new_position)}")
+    
+    audio_codec = get_data()[user_id][process_type]['audio_codec']
+    KeyBoard = []
+    KeyBoard.append([Button.inline(f'🎵 Audio Codec - {str(audio_codec)}', 'nik66bots')])
+    for board in gen_keyboard(audio_codec_list, audio_codec, f"{process_type}_audio_codec", 2, False):
+        KeyBoard.append(board)
+    KeyBoard.append([Button.inline(f'↩Back', f'{process_type}_settings')])
+    try:
+        await event.edit(f"⚙ {process_type.capitalize()} Audio Settings", buttons=KeyBoard)
+    except:
+        pass
+
+###############------Metadata Settings------###############
+async def metadata_settings_callback(event, txt, user_id, process_type):
+    metadata = await get_metadata(event.chat.id, user_id, event, 120, "Send Metadata Title")
+    if metadata:
+        await saveconfig(user_id, process_type, 'metadata', metadata, SAVE_TO_DATABASE)
+        await event.answer(f"✅{process_type.capitalize()} Metadata - {str(metadata)}")
+    
+    metadata = get_data()[user_id][process_type]['metadata']
+    KeyBoard = []
+    KeyBoard.append([Button.inline(f'📝 Metadata - {str(metadata)}', 'nik66bots')])
+    KeyBoard.append([Button.inline('✏️ Edit Metadata', f'{process_type}_metadata_edit')])
+    KeyBoard.append([Button.inline(f'↩Back', f'{process_type}_settings')])
+    try:
+        await event.edit(f"⚙ {process_type.capitalize()} Metadata Settings", buttons=KeyBoard)
+    except:
+        pass
