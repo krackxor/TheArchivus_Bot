@@ -136,7 +136,7 @@ class Telegram:
         # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
+                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM dan Channel Log."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
@@ -157,7 +157,8 @@ class Telegram:
             file_id = new_event.id
         create_direc(process_status.dir)
         download_location = f"{process_status.dir}/{file_name}"
-        process_status.append_dw_files(file_name)
+        # PERBAIKAN: Langsung tambahkan path lengkap ke daftar file yang akan diproses
+        process_status.append_send_files_loc(download_location)
         
         if get_data()[process_status.user_id]['tgdownload']=="Telethon":
             try:
@@ -176,13 +177,8 @@ class Telegram:
                 return False
         else: # Pyrogram
             try:
-                # *** INI ADALAH PERUBAHAN KUNCI ***
-                # Memastikan ID chat yang benar digunakan untuk Pyrogram
                 download_chat_id = Config.AUTH_GROUP_ID if process_status.event.is_group and Config.AUTH_GROUP_ID else process_status.chat_id
-                
-                # Mengambil pesan dari chat yang benar
                 message_to_download = await Telegram.PYROGRAM_CLIENT.get_messages(download_chat_id, file_id)
-                
                 await Telegram.PYROGRAM_CLIENT.download_media(
                     message=message_to_download,
                     file_name=download_location,
@@ -195,7 +191,8 @@ class Telegram:
                 await new_event.reply(f"❗ Error Unduhan Pyrogram: {str(e)}\n\nPastikan bot adalah admin di chat dengan ID: {download_chat_id}")
                 return False
                 
-        process_status.move_dw_file(file_name)
+        # PERBAIKAN: Hapus baris ini karena file tidak lagi dipindahkan
+        # process_status.move_dw_file(file_name) 
         return True
 
     async def upload_videos(process_status):
