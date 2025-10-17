@@ -23,7 +23,7 @@ from requests import get
 from bot_helper.Others.SpeedTest import speedtest
 from subprocess import run as srun
 from heroku3 import from_key
-from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
+import json
 
 
 status_update = {}
@@ -495,7 +495,7 @@ async def ask_watermark(event, chat_id, user_id, cmd, wt_check, all_handle=False
             text = f"Watermark Not Present\n\n🔶Send Me Watermark Image To Save."
     
     keyword = f"/{cmd}{CMD_SUFFIX}"
-    new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "image/", True, False, False)
+    new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "image/", True, False)
     if new_event and new_event not in ["cancelled", "stopped"]:
         await TELETHON_CLIENT.download_media(new_event.message, watermark_path)
         if exists(watermark_path):
@@ -1069,6 +1069,7 @@ async def _settings(event):
         [Button.inline('🚍 HardMux', 'hardmux_settings')],
         [Button.inline('🎮 SoftMux', 'softmux_settings')],
         [Button.inline('🛩SoftReMux', 'softremux_settings')],
+        [Button.inline('📂 Ekstrak', 'extract_settings')],
         [Button.inline('⭕Close Settings', 'close_settings')]
     ])
         return
@@ -1915,38 +1916,129 @@ async def _my_skills(event):
 ###############------Extract------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('extract')))
 async def _extract_streams(event):
-    if not await is_authorized(event): return
+    if not await is_authorized(event):
+        return
+
     chat_id = event.message.chat.id
     user_id = event.message.sender.id
-    if user_id not in get_data():
-        await new_user(user_id, SAVE_TO_DATABASE)
-    
     command_name = "extract"
     keyword = f"/{command_name}{CMD_SUFFIX}"
-    
+
+    if user_id not in get_data():
+        await new_user(user_id, SAVE_TO_DATABASE)
+
     link, custom_file_name = await get_link(event)
     if link == "invalid":
-        await event.reply("❗Invalid link")
+        await event.reply("❗ Tautan tidak valid")
         return
     elif not link:
-        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
+        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Kirim Video atau URL", 120, "video/", True)
         if new_event and new_event not in ["cancelled", "stopped"]:
             link = await get_url_from_message(new_event)
         else:
             return
-            
+
     user_name = get_username(event)
     user_first_name = event.message.sender.first_name
-    
-    # We will pass the link to the callback, so we need a way to identify it
-    # We'll use the process_id for this
     process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.extract, custom_file_name)
-    
-    # Store the link temporarily. We'll retrieve it in the callback.
-    # A simple dictionary can be used for this.
-    if not hasattr(Telegram, 'temp_files'):
-        Telegram.temp_files = {}
-    Telegram.temp_files[process_status.process_id] = link
 
-    await FFMPEG.extract_streams_options(process_status)
-    return
+    # Unduh file terlebih dahulu untuk dianalisis
+    await event.reply("🔍 Menganalisis stream media...")
+    downloader_task = {}
+    downloader_task['process_status'] = process_status
+    downloader_task['functions'] = []
+    if isinstance(link, str):
+        downloader_task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
+    else:
+        downloader_task['functions'].append(["TG", [link]])
+
+    # Buat dan tunggu tugas pengunduhan selesai
+    download_completed = await start_and_wait_for_task(downloader_task)
+
+    if not download_completed:
+        await event.reply("❌ Gagal mengunduh file untuk analisis.")
+        return
+
+    video_path = process_status.send_files[0]
+
+    # Analisis stream
+    try:
+        process = await create_subprocess_exec(
+            "ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", video_path,
+            stdout=asyncioPIPE, stderr=asyncioPIPE
+        )
+        stdout, stderr = await process.communicate()
+        streams_info = json.loads(stdout)
+    except Exception as e:
+        await event.reply(f"❌ Gagal menganalisis stream: {e}")
+        return
+
+    audio_streams = [s for s in streams_info['streams'] if s['codec_type'] == 'audio']
+    subtitle_streams = [s for s in streams_info['streams'] if s['codec_type'] == 'subtitle']
+
+    if not audio_streams and not subtitle_streams:
+        await event.reply("❗ Tidak ditemukan stream audio atau subtitle dalam file ini.")
+        return
+
+    # Tampilkan tombol pilihan
+    buttons = []
+    selected_streams = []
+
+    if audio_streams:
+        buttons.append([Button.inline("Pilih Semua Audio", f"extract_all_audio_{process_status.process_id}")])
+    if subtitle_streams:
+        buttons.append([Button.inline("Pilih Semua Subtitle", f"extract_all_subtitle_{process_status.process_id}")])
+    if audio_streams and subtitle_streams:
+        buttons.append([Button.inline("Pilih Semua (Audio & Subtitle)", f"extract_all_{process_status.process_id}")])
+
+    for i, stream in enumerate(audio_streams):
+        lang = stream.get('tags', {}).get('language', 'unk')
+        codec = stream.get('codec_name', 'N/A')
+        buttons.append([Button.inline(f"Audio #{i+1} ({lang}, {codec})", f"extract_a_{i}_{process_status.process_id}")])
+
+    for i, stream in enumerate(subtitle_streams):
+        lang = stream.get('tags', {}).get('language', 'unk')
+        codec = stream.get('codec_name', 'N/A')
+        buttons.append([Button.inline(f"Subtitle #{i+1} ({lang}, {codec})", f"extract_s_{i}_{process_status.process_id}")])
+    
+    buttons.append([Button.inline("Selesai & Ekstrak", f"extract_done_{process_status.process_id}")])
+
+    selection_message = await event.reply("Pilih stream yang akan diekstrak:", buttons=buttons)
+
+    # Tunggu respons callback
+    @TELETHON_CLIENT.on(events.CallbackQuery(pattern=f"extract_.*_{process_status.process_id}"))
+    async def handler(event):
+        nonlocal selected_streams
+        data = event.data.decode().split('_')
+        action = data[1]
+
+        if action == "done":
+            if not selected_streams:
+                await event.answer("Pilih setidaknya satu stream untuk diekstrak.", alert=True)
+                return
+
+            # Mulai proses ekstraksi
+            process_status.custom_index = selected_streams
+            extraction_task = {
+                'process_status': process_status,
+                'functions': [] # Tidak perlu mengunduh lagi
+            }
+            create_task(add_task(extraction_task))
+            await selection_message.delete()
+            await update_status_message(event)
+
+        else:
+            if action == 'all':
+                if data[2] == 'audio':
+                    selected_streams.extend([f"-map 0:a:{i}" for i in range(len(audio_streams))])
+                elif data[2] == 'subtitle':
+                    selected_streams.extend([f"-map 0:s:{i}" for i in range(len(subtitle_streams))])
+                else: #all
+                    selected_streams.extend([f"-map 0:a:{i}" for i in range(len(audio_streams))])
+                    selected_streams.extend([f"-map 0:s:{i}" for i in range(len(subtitle_streams))])
+            else:
+                stream_type = 'a' if action == 'a' else 's'
+                stream_index = data[2]
+                selected_streams.append(f"-map 0:{stream_type}:{stream_index}")
+
+            await event.answer(f"Stream #{int(data[2])+1} ('{action}') ditambahkan.")
