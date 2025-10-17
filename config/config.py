@@ -85,6 +85,7 @@ class Config:
     
     # Variabel baru ditambahkan di sini
     BOT_USERNAME = environ.get("BOT_USERNAME", "Encoder8Bot") # Ganti dengan default jika perlu
+    OWNER_USERNAME = environ.get("OWNER_USERNAME", "nik66") # Ganti dengan username Telegram Anda tanpa @
     CMD_SUFFIX = environ.get("CMD_SUFFIX", "")
     try:
         LOG_CHANNEL_ID = int(environ.get("LOG_CHANNEL_ID", "0"))
@@ -120,6 +121,11 @@ class Config:
     else:
         LOGGER.info("🔶Not Using MongoDB Database")
         DATA = {}
+    
+    # Inisialisasi data VIP jika belum ada
+    if 'vip_users' not in DATA:
+        DATA['vip_users'] = {}
+
     LOGGER = LOGGER
     try:
         RESTART_NOTIFY_ID = int(environ.get("RESTART_NOTIFY_ID",""))
