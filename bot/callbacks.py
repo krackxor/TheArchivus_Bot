@@ -956,17 +956,17 @@ async def softremux_callback(event, txt, user_id, edit):
 
 ###############------Audio Settings------###############
 async def audio_settings_callback(event, txt, user_id, process_type):
-    # Check if the user is making a selection or just opening the menu
-    if txt.startswith(f"{process_type}_audio_codec"):
-        new_position = txt.split("_", 2)[2]
+    # Check if the user is making a selection
+    if f"_{process_type}_audio_" in f"_{txt}":
+        new_position = txt.split(f'{process_type}_audio_')[1]
         await saveconfig(user_id, process_type, 'audio_codec', new_position, SAVE_TO_DATABASE)
         await event.answer(f"✅{process_type.capitalize()} Audio Codec - {str(new_position)}")
     
-    # Always display the menu after opening or making a selection
+    # Always display the menu
     audio_codec = get_data()[user_id][process_type]['audio_codec']
     KeyBoard = []
     KeyBoard.append([Button.inline(f'🎵 Audio Codec - {str(audio_codec)}', 'nik66bots')])
-    for board in gen_keyboard(audio_codec_list, audio_codec, f"{process_type}_audio_codec", 2, False):
+    for board in gen_keyboard(audio_codec_list, audio_codec, f"{process_type}_audio", 2, False):
         KeyBoard.append(board)
     KeyBoard.append([Button.inline(f'↩Back', f'{process_type}_settings')])
     try:
@@ -982,6 +982,7 @@ async def metadata_settings_callback(event, txt, user_id, process_type):
             await saveconfig(user_id, process_type, 'metadata', metadata_input, SAVE_TO_DATABASE)
             await event.answer(f"✅{process_type.capitalize()} Metadata - {str(metadata_input)}")
     
+    # Always display the menu
     metadata = get_data()[user_id][process_type]['metadata']
     KeyBoard = []
     KeyBoard.append([Button.inline(f'📝 Metadata - {str(metadata)}', 'nik66bots')])
