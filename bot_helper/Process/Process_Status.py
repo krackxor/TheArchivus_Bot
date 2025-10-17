@@ -26,6 +26,7 @@ def create_direc(direc):
 LOGGER = Config.LOGGER
 FINISHED_PROGRESS_STR = Config.FINISHED_PROGRESS_STR
 UNFINISHED_PROGRESS_STR = Config.UNFINISHED_PROGRESS_STR
+CMD_SUFFIX = Config.CMD_SUFFIX # <-- Tambahkan ini
 download_dir = Config.DOWNLOAD_DIR
 ws_name = {'5:5': 'Top Left', 'main_w-overlay_w-5:5': 'Top Right', '5:main_h-overlay_h': 'Bottom Left', 'main_w-overlay_w-5:main_h-overlay_h-5': 'Bottom Right'}
 
@@ -65,26 +66,6 @@ async def getdrivelink(search_command, event):
         await event.reply(f'❌Error While Getting File ID: {str(e)}')
         LOGGER.info(str(e))
         return False
-
-# async def check_file_drive_link(search_command, event, fileloc, r_config, drive_name, name, caption):
-#                                 file_id = await getdrivelink(search_command, event)
-#                                 if file_id:
-#                                         try:
-#                                                 fisize =str(get_human_size(getsize(fileloc)))
-#                                         except:
-#                                                 fisize = "Unknown"
-#                                         account_type = await get_account_type(r_config, drive_name)
-#                                         if account_type=="drive":
-#                                                 link_text = f"⛓Link: `https://drive.google.com/file/d/{file_id}/view`"
-#                                         else:
-#                                                 link_text = f"⛓File ID: `{file_id}`"
-#                                         file_text = f"✅Successfully Uploaded `{name}` To `{str(drive_name)}`\n\n{link_text}\n\n💽Size: {fisize}\n\n" + str(caption).strip() if caption else f"✅Successfully Uploaded `{name}` To `{str(drive_name)}`\n\n{link_text}\n\n💽Size: {fisize}"
-#                                 else:
-#                                         file_text = f"✅Successfully Uploaded `{name}` To `{str(drive_name)}`\n\n❗Failed To File ID\n\n" + str(caption).strip() if caption else f"✅Successfully Uploaded `{name}` To `{str(drive_name)}`\n\n❗Failed To File ID"
-#                                 await event.reply(str(file_text))
-#                                 return
-
-
 
 async def check_file_drive_link(search_command, event, fileloc, r_config, drive_name, name, caption):
                                 file_link = await rclone_get_link(drive_name, name, r_config)
@@ -241,7 +222,8 @@ class ProcessStatus:
                 self.file_name = file_name
                 self.status_message_id = gen_random_string(5)
                 self.process_id = gen_random_string(10)
-                self.status_message = f"🔁Initializing\n`/cancel process {self.process_id}`"
+                # PERBAIKAN: Menambahkan CMD_SUFFIX ke perintah cancel
+                self.status_message = f"🔁Initializing\n`/cancel{CMD_SUFFIX} process {self.process_id}`"
                 self.message = "Not Found"
                 self.caption = False
                 if not thumbnail and exists(f'./userdata/{str(user_id)}_Thumbnail.jpg'):
@@ -395,7 +377,6 @@ class ProcessStatus:
                                         LOGGER.info(f"Renaming File {move_dir}/{name}")
                                         rename(f"{move_dir}/{name}", f"{move_dir}/{str(gen_random_string(5))}_{name}")
                                 LOGGER.info(f"Moving File {self.dir}/{name} To {move_dir}/{name}")
-                                shutil_move(f"{self.dir}/{name}", f"{move_dir}/{name}")
                                 self.send_files.append(f"{move_dir}/{name}")
                         else:
                                 LOGGER.info(f"{self.dir}/{name} Not Found In DW List.")
@@ -449,18 +430,13 @@ class ProcessStatus:
                                                 f'**Engine**: Aria\n'\
                                                 f'**Downloaded**: {get_human_size(int(status.processed_bytes()))} of {get_human_size(int(status.size_raw()))}\n'\
                                                 f'**Speed**: {status.speed()} | **ETA**: {status.eta()}\n'\
-                                                f"`/cancel aria {status.gid()}`" 
+                                                f"`/cancel{CMD_SUFFIX} aria {status.gid()}`" 
                                         self.status_message = text
                                         await asynciosleep(0.5)
                                 else:
                                         LOGGER.info(f"Status Update Stopped, {status.process_status} Was Returned")
                                         break
                         elif status.type()==Names.ffmpeg:
-                                # line = await get_ffmpeg_process_line(status.process)
-                                # if line:
-                                #         line = line.decode('utf-8').strip()
-                                #         status.save_log(line)
-                                #         print(line)
                                 if not check_running_process(self.process_id):
                                                 await self.event.reply("🔒Task Cancelled By User")
                                                 break
@@ -473,8 +449,6 @@ class ProcessStatus:
                                                 time_in_us = get_value(refindall("out_time_ms=(.+)", ffmpeg_text), int, 1)
                                                 progress=get_value(refindall("progress=(\w+)", ffmpeg_text), str, "error")
                                                 speed=get_value(refindall("speed=(\d+\.?\d*)", ffmpeg_text), float, 1)
-                                                # bitrate = get_value(refindall("bitrate=(.+)", ffmpeg_text), str, "0")
-                                                # fps = get_value(refindall("fps=(.+)", ffmpeg_text), str, "0")
                                 else:
                                         time_in_us = 1
                                         progress="error"
@@ -514,8 +488,8 @@ class ProcessStatus:
                                                         f'**Processed**: {get_readable_time(elapsed_time)} of {get_readable_time(status.duration)}\n'\
                                                         f'**Speed**: {speed}x | **ETA**: {get_readable_time(floor( (status.duration - elapsed_time) / speed))}'\
                                                         f'{ffmpeg_status_foot(status, self.user_id, self.start_time, time_in_us)}\n'\
-                                                        f'`/ffmpeg log {self.process_id}`\n'\
-                                                        f"`/cancel process {self.process_id}`"
+                                                        f'`/ffmpeg{CMD_SUFFIX} log {self.process_id}`\n'\
+                                                        f"`/cancel{CMD_SUFFIX} process {self.process_id}`"
                                 self.status_message = text
                                 await asynciosleep(0.5)
                 if status.type()==Names.aria and status.name():
@@ -539,7 +513,7 @@ class ProcessStatus:
                         f'**Engine**: {engine}\n'\
                         f'**{mode}**: {get_human_size(current)} of {get_human_size(total)}\n'\
                         f'**Speed**: {get_human_size(speed)}ps | **ETA**: {get_readable_time((total-current)/speed)}\n'\
-                        f"`/cancel process {self.process_id}`"
+                        f"`/cancel{CMD_SUFFIX} process {self.process_id}`"
                 self.status_message = text
                 return
                 
@@ -572,7 +546,7 @@ class ProcessStatus:
                                                                 f'**Engine**: {Names.rclone}\n'\
                                                                 f'**Uploaded**: {dwdata[0].strip()} of {dwdata[1].strip()}\n'\
                                                                 f'**Speed**: {progress[2]} | **ETA**: {eta}\n'\
-                                                                f"`/cancel process {self.process_id}`"
+                                                                f"`/cancel{CMD_SUFFIX} process {self.process_id}`"
                                                         self.status_message = text
                                                         await asynciosleep(0.5)
                                         except Exception as e:
