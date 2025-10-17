@@ -1,5 +1,7 @@
 from bot_helper.Database.DB_Handler import Database
 from config.config import Config
+from datetime import datetime, timedelta
+import time
 
 #////////////////////////////////////Variables////////////////////////////////////#
 if Config.SAVE_TO_DATABASE:
@@ -218,3 +220,68 @@ async def clear_restart():
     except Exception as e:
         LOGGER.info(e)
         return False
+
+#////////////////////////////////////VIP System////////////////////////////////////#
+
+async def add_vip(user_id, days):
+    """Menambahkan user ke daftar VIP."""
+    if 'vip_users' not in DATA:
+        DATA['vip_users'] = {}
+    
+    expiration_date = datetime.now() + timedelta(days=days)
+    DATA['vip_users'][user_id] = expiration_date.timestamp()
+    
+    if Config.SAVE_TO_DATABASE:
+        await db.save_data(str(DATA))
+    return expiration_date.strftime("%Y-%m-%d %H:%M:%S")
+
+async def remove_vip(user_id):
+    """Menghapus user dari daftar VIP."""
+    if 'vip_users' in DATA and user_id in DATA['vip_users']:
+        del DATA['vip_users'][user_id]
+        if Config.SAVE_TO_DATABASE:
+            await db.save_data(str(DATA))
+        return True
+    return False
+
+async def is_vip(user_id):
+    """Mengecek apakah user adalah VIP dan menghapus jika sudah kadaluarsa."""
+    if 'vip_users' not in DATA:
+        return False, None
+    
+    user_id = int(user_id)
+    if user_id not in DATA['vip_users']:
+        return False, None
+    
+    expiration_timestamp = DATA['vip_users'][user_id]
+    if time.time() > expiration_timestamp:
+        # LOGIKA PENGHAPUSAN OTOMATIS
+        LOGGER.info(f"VIP expired for user {user_id}. Removing automatically.")
+        await remove_vip(user_id)
+        return False, None
+        
+    expiration_date = datetime.fromtimestamp(expiration_timestamp)
+    return True, expiration_date.strftime("%Y-%m-%d %H:%M:%S")
+
+async def get_vip_users():
+    """Mendapatkan daftar semua user VIP dan membersihkan yang kadaluarsa."""
+    if 'vip_users' not in DATA or not DATA['vip_users']:
+        return "Tidak ada user VIP."
+
+    # LOGIKA PEMBERSIHAN OTOMATIS
+    expired_vips = [uid for uid, ts in DATA['vip_users'].items() if time.time() > ts]
+    if expired_vips:
+        LOGGER.info(f"Cleaning up expired VIPs: {expired_vips}")
+        for uid in expired_vips:
+            del DATA['vip_users'][uid]
+        if Config.SAVE_TO_DATABASE:
+            await db.save_data(str(DATA))
+
+    if not DATA['vip_users']:
+        return "Tidak ada user VIP yang aktif."
+
+    vip_list = "👤 **Daftar User VIP Aktif:**\n\n"
+    for user_id, timestamp in DATA['vip_users'].items():
+        status = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+        vip_list += f"- ID: `{user_id}` | Exp: `{status}`\n"
+    return vip_list
