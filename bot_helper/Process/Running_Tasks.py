@@ -16,8 +16,6 @@ from bot_helper.Others.Helper_Functions import verify_rclone_account
 from bot_helper.Rclone.Rclone_Upload import upload_drive
 from os import remove
 
-
-
 LOGGER = Config.LOGGER
 working_task=[]
 working_task_lock = Lock()
@@ -26,13 +24,10 @@ queued_task_lock = Lock()
 process_status_checker_value = [0]
 process_status_checker_lock = Lock()
 
-
-
 def create_log_file(log_file):
     with open(log_file, 'w') as _:
         LOGGER.info(f'Log File Created : {log_file}')
     return
-
 
 async def clear_trash(task, trash_objects, multi_tasks):
     new_task = False
@@ -81,7 +76,6 @@ async def upload_files(process_status):
         await upload_drive(process_status)
     return
 
-
 async def process_status_checker():
     async with process_status_checker_lock:
         if process_status_checker_value[0] == 1:
@@ -109,7 +103,6 @@ async def process_status_checker():
         process_status_checker_value[0] = 0
     return
 
-
 async def add_task(task):
     async with working_task_lock:
         if len(working_task)<get_task_limit():
@@ -123,7 +116,6 @@ async def add_task(task):
     await process_status_checker()
     return
 
-
 async def task_manager():
         async with working_task_lock:
             if len(working_task)<get_task_limit():
@@ -135,7 +127,6 @@ async def task_manager():
                         working_task.append(task)
                         queued_task.pop(0)
         return
-
 
 async def refresh_tasks():
     while True:
@@ -153,11 +144,9 @@ async def refresh_tasks():
                 break
         return
 
-
 def get_queued_tasks_len():
         return len(queued_task)
     
-
 async def remove_from_working_task(process_id):
     async with working_task_lock:
         for task in working_task:
@@ -166,8 +155,6 @@ async def remove_from_working_task(process_id):
                     LOGGER.info(f"{process_id} Removed From Working Tasks")
                     return True
     return False
-
-
 
 async def get_ffmpeg_log_file(process_id):
     async with working_task_lock:
@@ -178,7 +165,6 @@ async def get_ffmpeg_log_file(process_id):
                     else:
                         return False
     return False
-
 
 async def get_status_message(reply):
                 if not len(working_task) and not len(queued_task):
@@ -267,11 +253,7 @@ async def start_task(task):
                     command, log_file, input_file, output_file, file_duration = get_commands(process_status)
                     LOGGER.info(str(command))
                     create_log_file(log_file)
-                    ffmpeg_process = await create_subprocess_exec(
-                                                                                                                            *command,
-                                                                                                                            stdout=asyncioPIPE,
-                                                                                                                            stderr=asyncioPIPE,
-                                                                                                                            )
+                    ffmpeg_process = await create_subprocess_exec(*command, stdout=asyncioPIPE, stderr=asyncioPIPE)
                     ffmpeg_status = FfmpegStatus(ffmpeg_process, log_file, input_file, output_file, file_duration)
                     create_task(ffmpeg_status.logger(process_status.process_id, process_status.dir, command))
                     trash_objects.append(ffmpeg_status)
@@ -302,6 +284,7 @@ async def start_task(task):
                         process_completed = True
                         if exists(f"{process_status.dir}/FFMPEG_LOG.txt"):
                             remove(f"{process_status.dir}/FFMPEG_LOG.txt")
+                            
     if process_completed and process_status.process_type in Names.FFMPEG_PROCESSES:
         if get_data()[process_status.user_id]['upload_all'] or not len(multi_tasks):
                 await upload_files(process_status)
@@ -319,23 +302,28 @@ async def start_task(task):
     elif process_completed and process_status.process_type==Names.mirror:
         await upload_drive(process_status)
 
-    # --- MEMBERIKAN XP DAN NOTIFIKASI KENAIKAN LEVEL ---
+    # --- LOGIKA NOTIFIKASI XP DAN LEVEL ---
     if process_completed:
         skill_name = process_status.process_type
-        # Beri 15 XP per tugas yang berhasil
-        new_level, skill = await add_skill_xp(process_status.user_id, skill_name, 15)
+        new_level, skill, xp_added = await add_skill_xp(process_status.user_id, skill_name, 1)
 
-        if new_level:
-            # Kirim notifikasi ke pengguna bahwa level keahliannya naik
-            try:
+        try:
+            if new_level:
+                notif_msg = f"🎉 **Selamat!** Keahlian **{skill}** Anda telah naik ke **Level {new_level}**!"
+                if new_level == 1:
+                    notif_msg = f"🎉 **Selamat!** Anda telah membuka keahlian **{skill}** dan mencapai **Level 1 (Pemula)**!"
+                
+                await Telegram.TELETHON_CLIENT.send_message(process_status.user_id, notif_msg, silent=True)
+            elif xp_added:
+                # Kirim notifikasi penambahan XP (dibuat silent agar tidak mengganggu)
                 await Telegram.TELETHON_CLIENT.send_message(
                     process_status.user_id,
-                    f"🎉 **Selamat!** Keahlian **{skill}** Anda telah naik ke **Level {new_level}**!"
+                    f"✨ `+{xp_added} XP` untuk keahlian **{skill}**!",
+                    silent=True
                 )
-            except:
-                # Abaikan jika bot diblokir oleh pengguna
-                pass
-    
+        except Exception as e:
+            LOGGER.info(f"Gagal mengirim notifikasi XP: {e}")
+
     # --- PANGGIL FUNGSI PENGIRIMAN MASSAL KE LOG CHANNEL ---
     if process_completed:
         await Telegram.send_files_to_log_in_bulk(process_status)
