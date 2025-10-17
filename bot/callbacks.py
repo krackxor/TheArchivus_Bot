@@ -13,6 +13,7 @@ encoders_list = ['libx265', 'libx264']
 crf_list = ['22', '24', '26', 'Kustom']
 wsize_list =['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
 presets_list =  ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+audio_codec_list = ['copy', 'aac', 'mp3', 'opus', 'flac']
 bool_list = [True, False]
 # Posisi watermark baru dengan ikon
 ws_name = {
@@ -123,15 +124,30 @@ async def callback(event):
         
         
         elif txt.startswith("compression"):
-            await compress_callback(event, txt, user_id, True)
+            if "_audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "compress")
+            elif "_metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "compress")
+            else:
+                await compress_callback(event, txt, user_id, True)
             return
 
         elif txt.startswith("convert"):
-            await convert_callback(event, txt, user_id, True)
+            if "_audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "convert")
+            elif "_metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "convert")
+            else:
+                await convert_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("hardmux"):
-            await hardmux_callback(event, txt, user_id, True)
+            if "_audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "hardmux")
+            elif "_metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "hardmux")
+            else:
+                await hardmux_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("softmux"):
@@ -143,12 +159,22 @@ async def callback(event):
             return
         
         elif txt.startswith("merge"):
-            await merge_callback(event, txt, user_id)
+            if "_audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "merge")
+            elif "_metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "merge")
+            else:
+                await merge_callback(event, txt, user_id)
             return
         
         
         elif txt.startswith("watermark"):
-            await watermark_callback(event, txt, user_id, True)
+            if "_audio" in txt:
+                await audio_settings_callback(event, txt, user_id, "watermark")
+            elif "_metadata" in txt:
+                await metadata_settings_callback(event, txt, user_id, "watermark")
+            else:
+                await watermark_callback(event, txt, user_id, True)
             return
         
         
@@ -539,8 +565,8 @@ async def compress_callback(event, txt, user_id, edit):
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(compress_crf)}', 'nik66bots')])
             for board in gen_keyboard(crf_list, compress_crf, "compressioncrf", 4, False):
                 KeyBoard.append(board)
-            KeyBoard.append([Button.inline('🎵 Audio', 'compression_audio_settings')])
-            KeyBoard.append([Button.inline('📝 Metadata', 'compression_metadata_settings')])
+            KeyBoard.append([Button.inline('🎵 Audio', 'compress_audio_settings')])
+            KeyBoard.append([Button.inline('📝 Metadata', 'compress_metadata_settings')])
             KeyBoard.append([Button.inline(f'↩Back', 'settings')])
             if edit:
                 try:
@@ -920,10 +946,13 @@ async def softremux_callback(event, txt, user_id, edit):
 
 ###############------Audio Settings------###############
 async def audio_settings_callback(event, txt, user_id, process_type):
-    new_position = txt.split("_", 2)[2]
-    await saveconfig(user_id, process_type, 'audio_codec', new_position, SAVE_TO_DATABASE)
-    await event.answer(f"✅{process_type.capitalize()} Audio Codec - {str(new_position)}")
+    # Check if the user is making a selection or just opening the menu
+    if txt.startswith(f"{process_type}_audio_codec"):
+        new_position = txt.split("_", 2)[2]
+        await saveconfig(user_id, process_type, 'audio_codec', new_position, SAVE_TO_DATABASE)
+        await event.answer(f"✅{process_type.capitalize()} Audio Codec - {str(new_position)}")
     
+    # Always display the menu after opening or making a selection
     audio_codec = get_data()[user_id][process_type]['audio_codec']
     KeyBoard = []
     KeyBoard.append([Button.inline(f'🎵 Audio Codec - {str(audio_codec)}', 'nik66bots')])
