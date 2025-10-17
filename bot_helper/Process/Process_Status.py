@@ -26,7 +26,7 @@ def create_direc(direc):
 LOGGER = Config.LOGGER
 FINISHED_PROGRESS_STR = Config.FINISHED_PROGRESS_STR
 UNFINISHED_PROGRESS_STR = Config.UNFINISHED_PROGRESS_STR
-CMD_SUFFIX = Config.CMD_SUFFIX # <-- Tambahkan ini
+CMD_SUFFIX = Config.CMD_SUFFIX
 download_dir = Config.DOWNLOAD_DIR
 ws_name = {'5:5': 'Top Left', 'main_w-overlay_w-5:5': 'Top Right', '5:main_h-overlay_h': 'Bottom Left', 'main_w-overlay_w-5:main_h-overlay_h-5': 'Bottom Right'}
 
@@ -58,9 +58,6 @@ async def getdrivelink(search_command, event):
         print(stdout)
         data = loads(stdout)
         file_id = data[0]["ID"]
-        # name = data[0]["Name"]
-        # link = f'https://drive.google.com/file/d/{file_id}/view'
-        # print(link)
         return file_id
     except Exception as e:
         await event.reply(f'❌Error While Getting File ID: {str(e)}')
@@ -216,13 +213,11 @@ class ProcessStatus:
                 self.event = event
                 self.dir = f"{download_dir}/{user_id}/{gen_random_string(5)}"
                 self.send_files = []
-                self.dw_files = []
                 self.subtitles = []
                 self.dw_index = "-/-"
                 self.file_name = file_name
                 self.status_message_id = gen_random_string(5)
                 self.process_id = gen_random_string(10)
-                # PERBAIKAN: Menambahkan CMD_SUFFIX ke perintah cancel
                 self.status_message = f"🔁Initializing\n`/cancel{CMD_SUFFIX} process {self.process_id}`"
                 self.message = "Not Found"
                 self.caption = False
@@ -326,16 +321,6 @@ class ProcessStatus:
                         self.send_files.append(fileloc)
                 return
         
-        def append_dw_files_loc(self, fileloc):
-                if fileloc not in self.dw_files:
-                        self.dw_files.append(fileloc)
-                return
-        
-        def append_dw_files(self, name):
-                if f"{self.dir}/{name}" not in self.dw_files:
-                        self.dw_files.append(f"{self.dir}/{name}")
-                return
-        
         def set_file_name(self, file_name):
                 if not self.file_name:
                         self.file_name = file_name
@@ -365,23 +350,6 @@ class ProcessStatus:
         
         def set_dw_index(self, dw_index):
                 self.dw_index = dw_index
-                return
-        
-        def move_dw_file(self, name):
-                if exists(f"{self.dir}/{name}"):
-                        if f"{self.dir}/{name}" in self.dw_files:
-                                self.dw_files.remove(f"{self.dir}/{name}")
-                                move_dir = f"{self.dir}/work_files"
-                                create_direc(move_dir)
-                                if exists(f"{move_dir}/{name}"):
-                                        LOGGER.info(f"Renaming File {move_dir}/{name}")
-                                        rename(f"{move_dir}/{name}", f"{move_dir}/{str(gen_random_string(5))}_{name}")
-                                LOGGER.info(f"Moving File {self.dir}/{name} To {move_dir}/{name}")
-                                self.send_files.append(f"{move_dir}/{name}")
-                        else:
-                                LOGGER.info(f"{self.dir}/{name} Not Found In DW List.")
-                else:
-                        LOGGER.info(f"{self.dir}/{name} File Not Found.")
                 return
         
         def move_send_files(self, send_files):
@@ -492,9 +460,6 @@ class ProcessStatus:
                                                         f"`/cancel{CMD_SUFFIX} process {self.process_id}`"
                                 self.status_message = text
                                 await asynciosleep(0.5)
-                if status.type()==Names.aria and status.name():
-                        if f"{self.dir}/{status.name()}" not in self.dw_files:
-                                self.dw_files.append(f"{self.dir}/{status.name()}")
                 return
         
         def telegram_update_status(self,current,total, mode, name, start_time, status, engine, client=False):
