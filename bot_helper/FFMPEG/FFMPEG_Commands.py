@@ -31,6 +31,11 @@ def get_commands(process_status):
             compress_sync = get_data()[process_status.user_id]['compress']['sync']
             audio_codec = get_data()[process_status.user_id]['compress']['audio_codec']
             metadata = get_data()[process_status.user_id]['compress']['metadata']
+            
+            # PERBAIKAN: Menghapus prefix yang salah dari nama codec
+            if audio_codec.startswith('codec_'):
+                audio_codec = audio_codec.split('_', 1)[1]
+
             create_direc(f"{process_status.dir}/compress/")
             log_file = f"{process_status.dir}/compress/compress_logs_{process_status.process_id}.txt"
             input_file = f'{str(process_status.send_files[-1])}'
@@ -73,6 +78,11 @@ def get_commands(process_status):
         watermark_sync = get_data()[process_status.user_id]['watermark']['sync']
         audio_codec = get_data()[process_status.user_id]['watermark']['audio_codec']
         metadata = get_data()[process_status.user_id]['watermark']['metadata']
+
+        # PERBAIKAN: Menghapus prefix yang salah dari nama codec
+        if audio_codec.startswith('codec_'):
+            audio_codec = audio_codec.split('_', 1)[1]
+            
         create_direc(f"{process_status.dir}/watermark/")
         log_file = f"{process_status.dir}/watermark/watermark_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
@@ -112,6 +122,11 @@ def get_commands(process_status):
             merge_fix_blank = get_data()[process_status.user_id]['merge']['fix_blank']
             audio_codec = get_data()[process_status.user_id]['merge']['audio_codec']
             metadata = get_data()[process_status.user_id]['merge']['metadata']
+
+            # PERBAIKAN: Menghapus prefix yang salah dari nama codec
+            if audio_codec.startswith('codec_'):
+                audio_codec = audio_codec.split('_', 1)[1]
+
             create_direc(f"{process_status.dir}/merge/")
             log_file = f"{process_status.dir}/merge/merge_logs_{process_status.process_id}.txt"
             infile_names = ""
@@ -227,6 +242,11 @@ def get_commands(process_status):
             convert_encode = get_data()[process_status.user_id]['convert']['encode']
             audio_codec = get_data()[process_status.user_id]['convert']['audio_codec']
             metadata = get_data()[process_status.user_id]['convert']['metadata']
+
+            # PERBAIKAN: Menghapus prefix yang salah dari nama codec
+            if audio_codec.startswith('codec_'):
+                audio_codec = audio_codec.split('_', 1)[1]
+
             create_direc(f"{process_status.dir}/convert/")
             log_file = f"{process_status.dir}/convert/convert_logs_{process_status.process_id}.txt"
             if exists(log_file):
@@ -270,6 +290,11 @@ def get_commands(process_status):
         hardmux_encode_video = get_data()[process_status.user_id]['hardmux']['encode_video']
         audio_codec = get_data()[process_status.user_id]['hardmux']['audio_codec']
         metadata = get_data()[process_status.user_id]['hardmux']['metadata']
+
+        # PERBAIKAN: Menghapus prefix yang salah dari nama codec
+        if audio_codec.startswith('codec_'):
+            audio_codec = audio_codec.split('_', 1)[1]
+            
         create_direc(f"{process_status.dir}/hardmux/")
         log_file = f"{process_status.dir}/hardmux/hardmux_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
