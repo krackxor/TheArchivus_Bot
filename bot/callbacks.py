@@ -123,7 +123,7 @@ async def callback(event):
             return
         
         
-        elif txt.startswith("compression"):
+        elif txt.startswith("compress"):
             if "_audio" in txt:
                 await audio_settings_callback(event, txt, user_id, "compress")
             elif "_metadata" in txt:
@@ -285,7 +285,8 @@ async def get_text_data(chat_id, user_id, event, timeout, message):
 
 ###############------General------###############
 async def telegram_callback(event, txt, user_id, chat_id):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             if txt.startswith("telegramupload"):
                 await saveoptions(user_id, 'tgupload', new_position, SAVE_TO_DATABASE)
                 await event.answer(f"✅Telegram Upload Client - {str(new_position)}")
@@ -310,7 +311,8 @@ async def telegram_callback(event, txt, user_id, chat_id):
 
 ###############------General------###############
 async def general_callback(event, txt, user_id, chat_id):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             r_config = f'./userdata/{str(user_id)}_rclone.conf'
             check_config = exists(r_config)
             drive_name = get_data()[user_id]['drive_name']
@@ -445,7 +447,8 @@ async def general_callback(event, txt, user_id, chat_id):
 
 ###############------Progress------###############
 async def progress_callback(event, txt, user_id):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("progressdetailedprogress"):
                 await saveoptions(user_id, 'detailed_messages', eval(new_position), SAVE_TO_DATABASE)
@@ -498,7 +501,8 @@ async def progress_callback(event, txt, user_id):
 
 ###############------Compress------###############
 async def compress_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("compressionencoder"):
                 await saveconfig(user_id, 'compress', 'encoder', new_position, SAVE_TO_DATABASE)
@@ -583,7 +587,8 @@ async def compress_callback(event, txt, user_id, edit):
 
 ###############------Watermark------###############
 async def watermark_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("watermarkencoder"):
                 await saveconfig(user_id, 'watermark', 'encoder', new_position, SAVE_TO_DATABASE)
@@ -690,7 +695,8 @@ async def watermark_callback(event, txt, user_id, edit):
 
 ###############------Merge------###############
 async def merge_callback(event, txt, user_id):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("mergemap"):
                 await saveconfig(user_id, 'merge', 'map', eval(new_position), SAVE_TO_DATABASE)
@@ -717,7 +723,8 @@ async def merge_callback(event, txt, user_id):
 
 ###############------Convert------###############
 async def convert_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("convertencoder"):
                 await saveconfig(user_id, 'convert', 'encoder', new_position, SAVE_TO_DATABASE)
@@ -816,7 +823,8 @@ async def convert_callback(event, txt, user_id, edit):
 
 ###############------Hardmux------###############
 async def hardmux_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("hardmuxencoder"):
                 await saveconfig(user_id, 'hardmux', 'encoder', new_position, SAVE_TO_DATABASE)
@@ -895,7 +903,8 @@ async def hardmux_callback(event, txt, user_id, edit):
 
 ###############------Softmux------###############
 async def softmux_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("softmuxsubcodec"):
                 await saveconfig(user_id, 'softmux', 'sub_codec', new_position, SAVE_TO_DATABASE)
@@ -921,7 +930,8 @@ async def softmux_callback(event, txt, user_id, edit):
 
 ###############------Softremux------###############
 async def softremux_callback(event, txt, user_id, edit):
-            new_position = txt.split("_", 1)[1]
+            parts = txt.split("_", 1)
+            new_position = parts[1] if len(parts) > 1 else None
             KeyBoard = []
             if txt.startswith("softremuxsubcodec"):
                 await saveconfig(user_id, 'softremux', 'sub_codec', new_position, SAVE_TO_DATABASE)
