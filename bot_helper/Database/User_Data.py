@@ -149,6 +149,24 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['tgupload'] = "Pyrogram"
         DATA[user_id]['multi_tasks'] = False
         DATA[user_id]['upload_all'] = True
+
+        # --- STRUKTUR DATA KEAHLIAN BARU ---
+        DATA[user_id]['skills'] = {
+            'Compress': {'level': 1, 'xp': 0},
+            'Watermark': {'level': 1, 'xp': 0},
+            'Merge': {'level': 1, 'xp': 0},
+            'Convert': {'level': 1, 'xp': 0},
+            'Hardmux': {'level': 1, 'xp': 0},
+            'Softmux': {'level': 1, 'xp': 0},
+            'SoftReMux': {'level': 1, 'xp': 0},
+            'VideoSample': {'level': 1, 'xp': 0},
+            'GenSS': {'level': 1, 'xp': 0},
+            'ChangeMetadata': {'level': 1, 'xp': 0},
+            'ChangeIndex': {'level': 1, 'xp': 0},
+            'Leech': {'level': 1, 'xp': 0},
+            'Mirror': {'level': 1, 'xp': 0}
+        }
+
         if dbsave:
             data = await db.save_data(str(DATA))
         else:
@@ -225,6 +243,54 @@ async def clear_restart():
     except Exception as e:
         LOGGER.info(e)
         return False
+
+#////////////////////////////////////Skill System////////////////////////////////////#
+
+def get_title(skill, level):
+    """Mendapatkan gelar berdasarkan keahlian dan level."""
+    titles = {
+        'Convert':  ["Pemula", "Ahli", "Master", "Legenda Konversi"],
+        'Hardmux':  ["Novis", "Spesialis", "Pakar", "Maestro Muxing"],
+        'Compress': ["Amatir", "Teknisi", "Insinyur", "Arsitek Kompresi"],
+        'Watermark':["Pemula", "Desainer", "Artis", "Master Watermark"],
+        'Merge':    ["Pemula", "Penyambung", "Editor", "Master Penggabungan"],
+        'Leech':    ["Pemula", "Pengunduh", "Kolektor", "Legenda Leech"],
+        'Mirror':   ["Pemula", "Pencermin", "Distributor", "Legenda Mirror"],
+    }
+    # Tentukan gelar berdasarkan level
+    if level >= 20: return titles.get(skill, ["-"]*4)[3]
+    if level >= 10: return titles.get(skill, ["-"]*4)[2]
+    if level >= 5:  return titles.get(skill, ["-"]*4)[1]
+    return titles.get(skill, ["-"]*4)[0]
+
+async def add_skill_xp(user_id, skill_name, amount):
+    """Menambahkan XP ke keahlian spesifik dan menangani kenaikan level."""
+    if user_id not in DATA or 'skills' not in DATA.get(user_id, {}):
+        await new_user(user_id, Config.SAVE_TO_DATABASE)
+
+    if skill_name not in DATA[user_id]['skills']:
+        return None, None # Keahlian tidak dilacak
+
+    # Tambahkan XP
+    DATA[user_id]['skills'][skill_name]['xp'] += amount
+
+    # Cek Kenaikan Level
+    current_level = DATA[user_id]['skills'][skill_name]['level']
+    xp_needed = current_level * 100
+    new_level_achieved = None
+
+    while DATA[user_id]['skills'][skill_name]['xp'] >= xp_needed:
+        # Naik Level!
+        DATA[user_id]['skills'][skill_name]['level'] += 1
+        DATA[user_id]['skills'][skill_name]['xp'] -= xp_needed
+        current_level = DATA[user_id]['skills'][skill_name]['level']
+        xp_needed = current_level * 100
+        new_level_achieved = current_level
+
+    if Config.SAVE_TO_DATABASE:
+        await db.save_data(str(DATA))
+
+    return new_level_achieved, skill_name
 
 #////////////////////////////////////VIP System////////////////////////////////////#
 
