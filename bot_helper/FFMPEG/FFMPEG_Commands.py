@@ -365,8 +365,7 @@ def get_commands(process_status):
         create_direc(f"{process_status.dir}/extract/")
         log_file = f"{process_status.dir}/extract/extract_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
-        base_name, _ = splitext(get_output_name(process_status))
-        output_file = f"{process_status.dir}/extract/{base_name}" # Output path without extension
+        output_file = "dummy" # Placeholder, karena output file ditentukan dalam loop
         file_duration = get_video_duration(input_file)
         
         command = ['ffmpeg', '-hide_banner',
@@ -375,16 +374,20 @@ def get_commands(process_status):
         
         # Logika baru untuk ekstraksi berdasarkan pilihan
         if process_status.custom_index: # Pilihan spesifik dari tombol
-            command.extend(process_status.custom_index)
-            command.extend(['-c', 'copy'])
+            for stream_selection in process_status.custom_index:
+                command.extend(stream_selection['map'].split())
+                command.extend(['-c', 'copy', stream_selection['path']])
+            process_status.send_files = [s['path'] for s in process_status.custom_index]
         else: # Fallback ke pengaturan default
+            base_name, _ = splitext(get_output_name(process_status))
+            output_prefix = f"{process_status.dir}/extract/{base_name}"
+            
             if user_data['extract']['extract_all']:
-                command.extend(['-map', '0:a?', '-map', '0:s?', '-c', 'copy'])
+                command.extend(['-map', '0:a?', '-c:a', 'copy', f'{output_prefix}_audio_%d.m4a'])
+                command.extend(['-map', '0:s?', '-c:s', 'copy', f'{output_prefix}_subtitle_%d.srt'])
             elif user_data['extract']['extract_all_audios']:
-                command.extend(['-map', '0:a?', '-c:a', 'copy', '-vn', '-sn'])
+                command.extend(['-map', '0:a?', '-c:a', 'copy', '-vn', '-sn', f'{output_prefix}_audio_%d.m4a'])
             elif user_data['extract']['extract_all_subtitles']:
-                command.extend(['-map', '0:s?', '-c:s', 'copy', '-vn', '-an'])
-        
-        # Menggunakan output_file sebagai prefix
-        command.extend(['-y', f"{output_file}"])
+                command.extend(['-map', '0:s?', '-c:s', 'copy', '-vn', '-an', f'{output_prefix}_subtitle_%d.srt'])
+
         return command, log_file, input_file, output_file, file_duration
