@@ -23,10 +23,13 @@ from requests import get
 from bot_helper.Others.SpeedTest import speedtest
 from subprocess import run as srun
 from heroku3 import from_key
+from telethon import events, Button
+from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
 
 
 status_update = {}
 status_update_lock = Lock()
+EXTRACT_SESSIONS = {}
 
 
 if not isdir('./userdata'):
@@ -1884,6 +1887,110 @@ async def _mirror_file(event):
         await update_status_message(event)
         return
 
+# --- PERINTAH /extract DENGAN VERSI TOMBOL BARU ---
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('extract')))
+async def _extract_streams(event):
+    if not await is_authorized(event): return
+    chat_id = event.chat.id
+    user_id = event.message.sender.id
+    if user_id not in get_data():
+        await new_user(user_id, SAVE_TO_DATABASE)
+
+    command_name = "extract"
+    keyword = f"/{command_name}{CMD_SUFFIX}"
+    
+    link, custom_file_name = await get_link(event)
+    if link == "invalid":
+        await event.reply("❗Link tidak valid.")
+        return
+    elif not link:
+        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Kirim Video atau URL", 120, "video/", True)
+        if new_event and new_event not in ["cancelled", "stopped"]:
+            link = await get_url_from_message(new_event)
+        else:
+            return
+
+    user_name = get_username(event)
+    user_first_name = event.message.sender.first_name
+    
+    # Buat ProcessStatus sementara untuk mengelola unduhan
+    temp_process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.Extract)
+    
+    temp_task = {'process_status': temp_process_status, 'functions': []}
+    if isinstance(link, str):
+        temp_task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, temp_process_status, False, False, False, False]])
+    else:
+        temp_task['functions'].append(["TG", [link]])
+
+    await add_task(temp_task)
+    await event.reply("🔽 Mengunduh file untuk dianalisis...")
+
+    while len(temp_process_status.send_files) == 0:
+        await asynciosleep(1)
+        if not check_running_process(temp_process_status.process_id):
+            await event.reply("🔒 Unduhan dibatalkan.")
+            return
+            
+    downloaded_file = temp_process_status.send_files[0]
+    original_filename = downloaded_file.split("/")[-1]
+
+    audio_streams, sub_streams = await FFMPEG.get_stream_info(downloaded_file)
+
+    if not audio_streams and not sub_streams:
+        await event.reply("❌ Tidak ditemukan stream audio atau subtitle di dalam file ini.")
+        rmtree(temp_process_status.dir)
+        return
+
+    session_id = gen_random_string(10)
+    EXTRACT_SESSIONS[session_id] = {
+        'user_id': user_id,
+        'chat_id': chat_id,
+        'dir': temp_process_status.dir,
+        'downloaded_file': downloaded_file,
+        'original_filename': original_filename,
+        'audio_streams': audio_streams,
+        'sub_streams': sub_streams,
+        'selected': []
+    }
+
+    # Kirim pesan dengan tombol
+    buttons = build_extract_buttons(session_id)
+    await event.reply(f"**Pilih stream untuk diekstrak dari:**\n`{original_filename}`", buttons=buttons)
+
+
+# --- FUNGSI BARU UNTUK MEMBUAT TOMBOL ---
+def build_extract_buttons(session_id):
+    session = EXTRACT_SESSIONS[session_id]
+    buttons = []
+    
+    if session['audio_streams']:
+        buttons.append([Button.inline("--- AUDIO ---", "extract_noop")])
+        for s in session['audio_streams']:
+            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
+            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
+
+    if session['sub_streams']:
+        buttons.append([Button.inline("--- SUBTITLE ---", "extract_noop")])
+        for s in session['sub_streams']:
+            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
+            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
+            
+    buttons.append([Button.inline("--- KONTROL ---", "extract_noop")])
+    control_row1 = [
+        Button.inline("Semua Audio", f"extract_all_audio_{session_id}"),
+        Button.inline("Semua Sub", f"extract_all_sub_{session_id}"),
+        Button.inline("Semua", f"extract_all_{session_id}"),
+    ]
+    control_row2 = [
+        Button.inline("Hapus Pilihan", f"extract_clear_{session_id}"),
+        Button.inline("❌ Batal", f"extract_cancel_{session_id}"),
+    ]
+    buttons.append(control_row1)
+    buttons.append(control_row2)
+    buttons.append([Button.inline("✅ Ekstrak Pilihan", f"extract_confirm_{session_id}")])
+    
+    return buttons
+
 
 # --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('myskills')))
@@ -1909,3 +2016,4 @@ async def _my_skills(event):
         message += f"   - XP: `{xp} / {xp_needed}`\n"
 
     await event.reply(message)
+    
