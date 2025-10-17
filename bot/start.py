@@ -564,7 +564,7 @@ async def update_status_message(event):
 
 # Helper function to create dynamic command patterns
 def cmd_pattern(command):
-    return f"/{command}{CMD_SUFFIX}(?:@{BOT_USERNAME})?$"
+    return f"/{command}{CMD_SUFFIX}(?:@{BOT_USERNAME})?(?: |$)"
 
 # --- PERINTAH BARU UNTUK VIP ---
 
