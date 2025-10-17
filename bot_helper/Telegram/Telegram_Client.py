@@ -8,7 +8,7 @@ from pyrogram import Client as PyrogramClient
 from pyrogram.errors import UserIsBlocked, PeerIdInvalid
 from bot_helper.Others.Helper_Functions import get_video_duration, get_human_size, get_readable_time
 from bot_helper.Telegram.Fast_Telethon import upload_file, download_file
-from bot_helper.Database.User_Data import get_data
+from bot_helper.Database.User_Data import get_data, get_title
 from time import time
 from bot_helper.Process.Running_Process import check_running_process
 from bot_helper.Others.Names import Names
@@ -87,15 +87,14 @@ class Telegram:
                     drive_name = get_data()[process_status.user_id]['drive_name']
                     if get_data()[process_status.user_id]['auto_drive'] and exists(r_config) and verify_rclone_account(r_config, drive_name):
                         await upload_single_drive(process_status, file_path, status, r_config, drive_name, filename)
-                        upload_successful = True # Asumsikan berhasil untuk notifikasi
+                        upload_successful = True
                 else:
-                    # 1. Kirim FILE sebagai MEDIA ke PM Pengguna
                     if file_size <= 2097151000:
                         if get_data()[user_pm_id]['tgupload'] == "Telethon":
                             with open(file_path, "rb") as f:
                                 uploaded_file = await upload_file(client=Telegram.TELETHON_CLIENT, file=f, name=filename, check_data=process_id, progress_callback=lambda c, t: process_status.telegram_update_status(c, t, "Mengunggah", filename, start_time, status, "Telethon"))
                             message_in_pm = await Telegram.TELETHON_CLIENT.send_file(user_pm_id, file=uploaded_file, thumb=thumbnail, caption=file_caption, attributes=(DocumentAttributeVideo(duration, 0, 0),))
-                        else: # Pyrogram
+                        else:
                             message_in_pm = await Telegram.PYROGRAM_CLIENT.send_video(chat_id=user_pm_id, video=file_path, caption=file_caption, duration=duration, thumb=thumbnail, progress=process_status.telegram_update_status, progress_args=("Mengunggah", filename, start_time, status, "Pyrogram", Telegram.PYROGRAM_CLIENT))
                     elif Telegram.TELETHON_USER_CLIENT:
                         with open(file_path, "rb") as f:
@@ -104,7 +103,6 @@ class Telegram:
 
                 if message_in_pm:
                     upload_successful = True
-                    # BAGIAN PENGIRIMAN KE LOG CHANNEL DIHAPUS DARI SINI
 
             except (UserIsBlocked, UserIsBlockedError):
                 await event.reply(f"**Peringatan untuk {process_status.user_first_name}**: Anda telah memblokir bot. Buka blokir di PM agar saya bisa mengirimkan hasilnya.")
@@ -125,10 +123,18 @@ class Telegram:
                 await event.reply("🔒 Tugas dibatalkan oleh pengguna.")
                 break
 
-        # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
+                # --- Ambil data keahlian untuk notifikasi ---
+                user_skills = get_data().get(user_pm_id, {}).get('skills', {})
+                skill_data = user_skills.get(process_status.process_type)
+                skill_str = ""
+                if skill_data:
+                    level = skill_data.get('level', 0)
+                    title = get_title(process_status.process_type, level)
+                    skill_str = f"({title} - Lvl {level})"
+
+                notif_message = f"✅ Tugas **{process_status.process_type}** {skill_str} untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
@@ -136,33 +142,24 @@ class Telegram:
         return
 
     async def send_files_to_log_in_bulk(process_status):
-        """
-        Mengirim semua file yang telah selesai diproses ke channel log secara berurutan.
-        """
         log_channel_id = Config.LOG_CHANNEL_ID
         if log_channel_id == 0:
             return
-
         successful_files = process_status.send_files
         if not successful_files:
             return
-
         try:
-            # Mengirim pesan pembuka di log channel
             await Telegram.TELETHON_CLIENT.send_message(
                 log_channel_id,
                 f"✅ **Pekerjaan Selesai untuk {process_status.user_first_name} (`{process_status.user_id}`)**\n\nBerikut adalah file hasilnya:"
             )
             await sleep(1)
-
-            # Mengirim setiap file satu per satu
             for file_path in successful_files:
                 filename = file_path.split("/")[-1]
                 duration = get_video_duration(file_path)
                 thumbnail = process_status.thumbnail if process_status.thumbnail else "./thumb.jpg"
                 log_caption = (f"**File**: `{filename}`\n"
                                f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
-
                 await Telegram.TELETHON_CLIENT.send_file(
                     log_channel_id,
                     file=file_path,
@@ -170,11 +167,10 @@ class Telegram:
                     caption=log_caption,
                     attributes=(DocumentAttributeVideo(duration, 0, 0),)
                 )
-                await sleep(2)  # Jeda untuk menghindari 'flood waits'
+                await sleep(2)
         except Exception as e:
             LOGGER.error(f"Gagal mengirim file secara massal ke channel log {log_channel_id}: {e}")
             await process_status.event.reply(f"🔔 Gagal mengirim hasil ke channel log. Error: `{str(e)[:1000]}`")
-
 
     async def download_tg_file(process_status, variables, dw_index):
         start_time = time()
@@ -191,8 +187,6 @@ class Telegram:
         create_direc(process_status.dir)
         download_location = f"{process_status.dir}/{file_name}"
         
-        # BARIS KRUSIAL: Menambahkan file yang akan diunduh ke daftar proses.
-        # Ini mencegah error 'IndexError' untuk unduhan dari Telegram.
         process_status.append_send_files_loc(download_location)
         
         if get_data()[process_status.user_id]['tgdownload']=="Telethon":
@@ -225,7 +219,6 @@ class Telegram:
             except Exception as e:
                 await new_event.reply(f"❗ Error Unduhan Pyrogram: {str(e)}\n\nPastikan bot adalah admin di chat dengan ID: {download_chat_id}")
                 return False
-                
         return True
 
     async def upload_videos(process_status):
