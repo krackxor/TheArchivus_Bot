@@ -201,108 +201,98 @@ async def start_task(task):
     await append_running_process(process_status.process_id)
     loop_range = len(task['functions'])
     trash_objects = []
-
-    # --- PERBAIKAN LOGIKA ---
-    process_completed = False
-    if loop_range > 0:
-        for i in range(loop_range):
-            dw_index = f"{str(i+1)}/{str(loop_range)}"
-            if task['functions'][i][0] == Names.aria:
-                download, aria2_status = await task['functions'][i][1](*task['functions'][i][2])
+    if loop_range:
+        process_completed = False
+    else:
+        process_completed = True
+    for i in range(loop_range):
+        dw_index = f"{str(i+1)}/{str(loop_range)}"
+        if task['functions'][i][0]==Names.aria:
+            process_status.set_dw_index(dw_index)
+            download, aria2_status = await task['functions'][i][1](*task['functions'][i][2])
+            if not download:
+                await process_status.event.reply(process_status.status_message)
+                break
+            trash_objects.append(aria2_status)
+            await process_status.update_status(aria2_status)
+            if aria2_status.process_status!=1:
+                await process_status.event.reply(process_status.message)
+                break
+            else:
+                pass
+        else:
+            try:
+                download = await Telegram.download_tg_file(process_status, task['functions'][i][1], dw_index)
                 if not download:
-                    await process_status.event.reply(process_status.status_message)
                     break
-                trash_objects.append(aria2_status)
-                await process_status.update_status(aria2_status)
-                if aria2_status.process_status != 1:
-                    await process_status.event.reply(process_status.message)
-                    break
-            else: # Telegram Download
-                try:
-                    download = await Telegram.download_tg_file(process_status, task['functions'][i][1], dw_index)
-                    if not download:
-                        break
-                except Exception as e:
+            except Exception as e:
                     LOGGER.info(str(e))
                     break
+        if not check_running_process(process_status.process_id):
+            break
+        if i==loop_range-1:
+            process_completed = True
+            process_status.set_file_name_from_send_list()
             
-            if not check_running_process(process_status.process_id):
-                break
-            
-            if i == loop_range - 1:
-                process_completed = True
-                process_status.set_file_name_from_send_list()
-    else:
-        # Ini untuk tugas yang tidak memiliki fungsi unduh (seperti /extract tahap 2)
-        process_completed = True
-
-    # --- BAGIAN PEMROSESAN SETELAH UNDUH ---
     if process_completed and process_status.process_type in Names.FFMPEG_PROCESSES:
-        
-        # Logika khusus untuk Ekstrak
-        if process_status.process_type == Names.Extract:
-            await FFMPEG.run_extraction(
-                process_status, 
-                process_status.extract_selections, 
-                process_status.original_filename
-            )
-            # Setelah ekstraksi, langsung upload
-            await upload_files(process_status)
-        
-        # Logika untuk proses FFMPEG lainnya
-        else:
-            process_completed = False # Reset flag untuk loop ffmpeg
+            process_completed = False
             if process_status.process_type not in [Names.merge, Names.changeMetadata, Names.changeindex]:
                 if not len(multi_tasks):
-                    await FFMPEG.select_audio(process_status)
-                    await FFMPEG.change_metadata(process_status)
-            
+                        await FFMPEG.select_audio(process_status)
+                        await FFMPEG.change_metadata(process_status)
             output_list = []
-            convert_list = get_data()[process_status.user_id]['convert']['convert_list'] if process_status.process_type == Names.convert else [1]
-            
-            for c, item in enumerate(convert_list):
-                if process_status.process_type == Names.convert:
-                    process_status.update_convert_quality(item)
-                    process_status.update_convert_index(f"{c+1}/{len(convert_list)}")
-                
-                command, log_file, input_file, output_file, file_duration = get_commands(process_status)
-                LOGGER.info(str(command))
-                create_log_file(log_file)
-                ffmpeg_process = await create_subprocess_exec(*command, stdout=asyncioPIPE, stderr=asyncioPIPE)
-                ffmpeg_status = FfmpegStatus(ffmpeg_process, log_file, input_file, output_file, file_duration)
-                create_task(ffmpeg_status.logger(process_status.process_id, process_status.dir, command))
-                trash_objects.append(ffmpeg_status)
-                await process_status.update_status(ffmpeg_status)
-
-                if not check_running_process(process_status.process_id):
-                    try: ffmpeg_process.kill()
-                    except: pass
-                    break
-
-                await ffmpeg_process.wait()
-                return_code = ffmpeg_process.returncode
-
-                if return_code == 0:
-                    output_list.append(output_file)
-                    process_status.replace_send_list(output_list)
-                    process_completed = True
-                else:
-                    process_completed = False
-                    if exists(f"{process_status.dir}/FFMPEG_LOG.txt"):
-                        await process_status.event.client.send_file(process_status.chat_id, file=f"{process_status.dir}/FFMPEG_LOG.txt", allow_cache=False, reply_to=process_status.event.message, caption=f"❌Error Proses {process_status.process_type}")
+            if process_status.process_type==Names.convert:
+                    convert_list = get_data()[process_status.user_id]['convert']['convert_list']
+            else:
+                    convert_list = [1]
+            ffmpeg_range = len(convert_list)
+            for c in range(ffmpeg_range):
+                    if process_status.process_type==Names.convert:
+                            process_status.update_convert_quality(convert_list[c])
+                            process_status.update_convert_index(f"{str(c+1)}/{str(ffmpeg_range)}")
+                    command, log_file, input_file, output_file, file_duration = get_commands(process_status)
+                    LOGGER.info(str(command))
+                    create_log_file(log_file)
+                    ffmpeg_process = await create_subprocess_exec(*command, stdout=asyncioPIPE, stderr=asyncioPIPE)
+                    ffmpeg_status = FfmpegStatus(ffmpeg_process, log_file, input_file, output_file, file_duration)
+                    create_task(ffmpeg_status.logger(process_status.process_id, process_status.dir, command))
+                    trash_objects.append(ffmpeg_status)
+                    LOGGER.info('Starting Status Update')
+                    await process_status.update_status(ffmpeg_status)
+                    if not check_running_process(process_status.process_id):
+                        try:
+                            ffmpeg_process.kill()
+                        except Exception as e:
+                            LOGGER.info(str(e))
+                        break
                     else:
-                        await process_status.event.reply(f"❗File log FFMPEG tidak ditemukan.")
-                    break
-            
-            if process_completed:
-                if get_data()[process_status.user_id]['upload_all'] or not len(multi_tasks):
-                    await upload_files(process_status)
-                if not len(multi_tasks):
-                    if check_running_process(process_status.process_id):
-                        await FFMPEG.gen_sample_video(process_status)
-                    if check_running_process(process_status.process_id):
-                        await FFMPEG.generate_ss(process_status)
-
+                        if ffmpeg_status.returncode:
+                                return_code = ffmpeg_status.returncode
+                        else:
+                                await ffmpeg_process.wait()
+                                return_code = ffmpeg_process.returncode
+                        if return_code==0:
+                                output_list.append(output_file)
+                                process_status.replace_send_list(output_list)
+                        else:
+                            if exists(f"{process_status.dir}/FFMPEG_LOG.txt"):
+                                    await process_status.event.client.send_file(process_status.chat_id, file=f"{process_status.dir}/FFMPEG_LOG.txt", allow_cache=False, reply_to=process_status.event.message, caption=f"❌{process_status.process_type} Process Error\n\nReturn Code: {return_code}\n\nFileName: {input_file.split('/')[-1]}")
+                                    remove(f"{process_status.dir}/FFMPEG_LOG.txt")
+                            else:
+                                await process_status.event.reply(f"❗FFMPEG Log File Not Found")
+                            break
+                        process_completed = True
+                        if exists(f"{process_status.dir}/FFMPEG_LOG.txt"):
+                            remove(f"{process_status.dir}/FFMPEG_LOG.txt")
+                            
+    if process_completed and process_status.process_type in Names.FFMPEG_PROCESSES:
+        if get_data()[process_status.user_id]['upload_all'] or not len(multi_tasks):
+                await upload_files(process_status)
+        if not len(multi_tasks):
+            if check_running_process(process_status.process_id):
+                    await FFMPEG.gen_sample_video(process_status)
+            if check_running_process(process_status.process_id):
+                    await FFMPEG.generate_ss(process_status)
     elif process_completed and process_status.process_type==Names.gensample:
         await FFMPEG.gen_sample_video(process_status, force_gen=True)
     elif process_completed and process_status.process_type==Names.genss:
@@ -315,12 +305,14 @@ async def start_task(task):
     if process_completed:
         skill_name = process_status.process_type
         new_level, skill, xp_added, progress = await add_skill_xp(process_status.user_id, skill_name, 1)
+
         try:
             target_chat = process_status.chat_id
             if new_level:
                 notif_msg = f"🎉 **Selamat!** Keahlian **{skill}** Anda telah naik ke **Level {new_level}**!"
                 if new_level == 1:
                     notif_msg = f"🎉 **Selamat!** Anda telah membuka keahlian **{skill}** dan mencapai **Level 1 (Pemula)**!"
+                
                 await Telegram.TELETHON_CLIENT.send_message(target_chat, notif_msg)
             elif xp_added:
                 current_xp, xp_needed = progress
