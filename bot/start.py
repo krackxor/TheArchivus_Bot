@@ -76,17 +76,19 @@ async def is_authorized(event):
 # --- FUNGSI BARU UNTUK MENUNGGU TUGAS SELESAI ---
 async def start_and_wait_for_task(task):
     """Memulai tugas dan menunggu hingga selesai."""
-    process_id = task['process_status'].process_id
+    process_status = task['process_status']
+    process_id = process_status.process_id
     create_task(add_task(task))
     
     while True:
         await asynciosleep(1)
         # Cek apakah tugas masih berjalan
-        if not any(t['process_status'].process_id == process_id for t in working_task):
+        is_running = any(t['process_status'].process_id == process_id for t in working_task)
+        if not is_running:
             # Cek apakah file hasil unduhan ada
             if not process_status.send_files or not exists(process_status.send_files[0]):
-                return False
-            return True
+                return False # Gagal
+            return True # Berhasil
 
 
 async def hardmux_multi_task(multi_process_status, event, chat_id, user_id, process_command):
@@ -1905,7 +1907,7 @@ async def _mirror_file(event):
         return
 
 
-###############------Myskills------###############
+# --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('myskills')))
 async def _my_skills(event):
     if not await is_authorized(event): return
@@ -1963,10 +1965,10 @@ async def _extract_streams(event):
         "streams": [],
         "message_id": None,
         "audio_streams": [],
-        "subtitle_streams": []
+        "subtitle_streams": [],
+        "process_status": process_status # Simpan process_status untuk diakses di callback
     }
 
-    # Buat tugas pengunduhan
     downloader_task = {
         'process_status': process_status,
         'functions': []
@@ -1978,7 +1980,6 @@ async def _extract_streams(event):
 
     temp_message = await event.reply("📥 Mengunduh file untuk dianalisis...")
 
-    # Memulai dan menunggu tugas unduh selesai
     download_completed = await start_and_wait_for_task(downloader_task)
 
     if not download_completed:
@@ -1988,7 +1989,6 @@ async def _extract_streams(event):
     await temp_message.edit("🔍 Menganalisis stream media...")
     video_path = process_status.send_files[0]
 
-    # Analisis stream
     try:
         process = await create_subprocess_exec(
             "ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", video_path,
@@ -2006,13 +2006,14 @@ async def _extract_streams(event):
     audio_streams = [s for s in streams_info.get('streams', []) if s.get('codec_type') == 'audio']
     subtitle_streams = [s for s in streams_info.get('streams', []) if s.get('codec_type') == 'subtitle']
     
-    extraction_selections[process_status.process_id]['audio_streams'] = audio_streams
-    extraction_selections[process_status.process_id]['subtitle_streams'] = subtitle_streams
+    selections = extraction_selections[process_status.process_id]
+    selections['audio_streams'] = audio_streams
+    selections['subtitle_streams'] = subtitle_streams
 
     if not audio_streams and not subtitle_streams:
         await temp_message.edit("❗ Tidak ditemukan stream audio atau subtitle dalam file ini.")
         return
-
+        
     buttons = []
     if audio_streams:
         buttons.append([Button.inline("Pilih Semua Audio", f"extract_all_audio_{process_status.process_id}")])
@@ -2024,19 +2025,17 @@ async def _extract_streams(event):
     for i, stream in enumerate(audio_streams):
         lang = stream.get('tags', {}).get('language', 'unk')
         codec = stream.get('codec_name', 'N/A')
-        title = stream.get('tags', {}).get('title', f"Track {i}")
         buttons.append([Button.inline(f"🎵 Audio #{i} ({lang}, {codec})", f"extract_a_{i}_{process_status.process_id}")])
 
     for i, stream in enumerate(subtitle_streams):
         lang = stream.get('tags', {}).get('language', 'unk')
         codec = stream.get('codec_name', 'N/A')
-        title = stream.get('tags', {}).get('title', f"Track {i}")
         buttons.append([Button.inline(f"📖 Subtitle #{i} ({lang}, {codec})", f"extract_s_{i}_{process_status.process_id}")])
     
     buttons.append([Button.inline("✅ Selesai & Ekstrak", f"extract_done_{process_status.process_id}")])
 
     selection_message = await temp_message.edit("Pilih stream yang akan diekstrak:", buttons=buttons)
-    extraction_selections[process_status.process_id]["message_id"] = selection_message.id
+    selections["message_id"] = selection_message.id
 
 
 @TELETHON_CLIENT.on(events.CallbackQuery(pattern=b"extract_"))
@@ -2051,37 +2050,33 @@ async def handle_extract_callback(event):
         
     user_id = event.sender_id
     selections = extraction_selections[process_id]
+    process_status = selections["process_status"]
     
     if action == "done":
         if not selections["streams"]:
-            # Jika tidak ada yang dipilih, gunakan pengaturan default
             use_default = True
-            if get_data()[user_id]['extract']['extract_all']:
-                selections["streams"].extend([f"-map 0:a:{i}" for i in range(len(selections["audio_streams"]))])
-                selections["streams"].extend([f"-map 0:s:{i}" for i in range(len(selections["subtitle_streams"]))])
+            user_data = get_data().get(user_id, {})
+            extract_settings = user_data.get('extract', {})
+            
+            if extract_settings.get('extract_all'):
+                selections["streams"].extend([{'map': f'-map 0:a:{i}', 'path': f"{process_status.dir}/extract/audio_{i}.{s.get('codec_name', 'unk')}"} for i, s in enumerate(selections["audio_streams"])])
+                selections["streams"].extend([{'map': f'-map 0:s:{i}', 'path': f"{process_status.dir}/extract/subtitle_{i}.{s.get('codec_name', 'unk')}"} for i, s in enumerate(selections["subtitle_streams"])])
                 use_default = False
-            if get_data()[user_id]['extract']['extract_all_audios']:
-                selections["streams"].extend([f"-map 0:a:{i}" for i in range(len(selections["audio_streams"]))])
+            elif extract_settings.get('extract_all_audios'):
+                selections["streams"].extend([{'map': f'-map 0:a:{i}', 'path': f"{process_status.dir}/extract/audio_{i}.{s.get('codec_name', 'unk')}"} for i, s in enumerate(selections["audio_streams"])])
                 use_default = False
-            if get_data()[user_id]['extract']['extract_all_subtitles']:
-                selections["streams"].extend([f"-map 0:s:{i}" for i in range(len(selections["subtitle_streams"]))])
+            elif extract_settings.get('extract_all_subtitles'):
+                selections["streams"].extend([{'map': f'-map 0:s:{i}', 'path': f"{process_status.dir}/extract/subtitle_{i}.{s.get('codec_name', 'unk')}"} for i, s in enumerate(selections["subtitle_streams"])])
                 use_default = False
             
             if use_default:
                  await event.answer("Pilih setidaknya satu stream atau atur default di /settings.", alert=True)
                  return
-
-        # Dapatkan process_status dari tugas yang berjalan
-        task = next((t for t in working_task if t['process_status'].process_id == process_id), None)
-        if not task:
-            await event.answer("Tugas tidak ditemukan.", alert=True)
-            return
-            
-        process_status = task['process_status']
+        
         process_status.custom_index = selections["streams"]
         
         # Hapus tugas unduhan, buat tugas ekstraksi
-        for t in working_task:
+        for t in list(working_task): # Iterate over a copy
             if t['process_status'].process_id == process_id:
                 working_task.remove(t)
                 break
@@ -2091,27 +2086,27 @@ async def handle_extract_callback(event):
         
         await event.client.delete_messages(event.chat_id, selections["message_id"])
         await update_status_message(event)
+        # Hapus data sesi setelah selesai
+        del extraction_selections[process_id]
 
     else:
-        if action == 'all':
-            stream_type_to_add = data[2]
-            if stream_type_to_add == 'audio':
-                selections["streams"].extend([f"-map 0:a?"])
-                await event.answer("Semua stream audio ditambahkan.", alert=True)
-            elif stream_type_to_add == 'subtitle':
-                selections["streams"].extend([f"-map 0:s?"])
-                await event.answer("Semua stream subtitle ditambahkan.", alert=True)
-            else: # all
-                selections["streams"].extend([f"-map 0:a?"])
-                selections["streams"].extend([f"-map 0:s?"])
-                await event.answer("Semua stream audio & subtitle ditambahkan.", alert=True)
+        stream_type = 'a' if action == 'a' else 's'
+        stream_index = int(data[2])
+        stream_info = selections["audio_streams"][stream_index] if stream_type == 'a' else selections["subtitle_streams"][stream_index]
+        codec = stream_info.get('codec_name', 'bin')
+        if codec == 'aac': ext = 'm4a'
+        elif codec == 'ass': ext = 'ass'
+        elif codec == 'subrip': ext = 'srt'
+        else: ext = codec
+
+        file_path = f"{process_status.dir}/extract/{'audio' if stream_type == 'a' else 'subtitle'}_{stream_index}.{ext}"
+        
+        selection_obj = {'map': f"-map 0:{stream_type}:{stream_index}", 'path': file_path}
+
+        # Toggle selection
+        if selection_obj in selections["streams"]:
+            selections["streams"].remove(selection_obj)
+            await event.answer(f"Stream #{stream_index + 1} ('{action}') dihapus.", alert=True)
         else:
-            stream_type = 'a' if action == 'a' else 's'
-            stream_index = data[2]
-            map_str = f"-map 0:{stream_type}:{stream_index}"
-            if map_str in selections["streams"]:
-                selections["streams"].remove(map_str)
-                await event.answer(f"Stream #{int(stream_index)} dihapus.", alert=True)
-            else:
-                selections["streams"].append(map_str)
-                await event.answer(f"Stream #{int(stream_index)} ('{action}') ditambahkan.", alert=True)
+            selections["streams"].append(selection_obj)
+            await event.answer(f"Stream #{stream_index + 1} ('{action}') ditambahkan.", alert=True)
