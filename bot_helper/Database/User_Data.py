@@ -151,7 +151,7 @@ async def new_user(user_id, dbsave):
             'SoftReMux': {'level': 0, 'xp': 0}, 'VideoSample': {'level': 0, 'xp': 0},
             'GenSS': {'level': 0, 'xp': 0}, 'ChangeMetadata': {'level': 0, 'xp': 0},
             'ChangeIndex': {'level': 0, 'xp': 0}, 'Leech': {'level': 0, 'xp': 0},
-            'Mirror': {'level': 0, 'xp': 0}, 'Extract': {'level': 0, 'xp': 0} # <-- Tambahkan Extract
+            'Mirror': {'level': 0, 'xp': 0}
         }
         if dbsave:
             data = await db.save_data(str(DATA))
@@ -234,7 +234,6 @@ def get_title(skill, level):
         'Merge':    ["Pemula", "Penyambung", "Editor", "Master Penggabungan"],
         'Leech':    ["Pemula", "Pengunduh", "Kolektor", "Legenda Leech"],
         'Mirror':   ["Pemula", "Pencermin", "Distributor", "Legenda Mirror"],
-        'Extract':  ["Pemula", "Pengekstrak", "Analis", "Master Ekstraksi"] # <-- Tambahkan Gelar Extract
     }
     if level >= 20: return titles.get(skill, ["-"]*4)[3]
     if level >= 10: return titles.get(skill, ["-"]*4)[2]
@@ -247,15 +246,17 @@ async def add_skill_xp(user_id, skill_name, amount):
     if skill_name not in DATA[user_id]['skills']:
         return None, None, None, None
 
+    # Penggunaan pertama kali langsung naik ke Level 1
     if DATA[user_id]['skills'][skill_name]['level'] == 0:
         DATA[user_id]['skills'][skill_name]['level'] = 1
         new_level_achieved = 1
-        xp_needed = 100
+        xp_needed = 100 # XP dibutuhkan untuk ke level 2
         current_xp = 0
         if Config.SAVE_TO_DATABASE:
             await db.save_data(str(DATA))
         return new_level_achieved, skill_name, amount, (current_xp, xp_needed)
 
+    # Tambahkan XP
     DATA[user_id]['skills'][skill_name]['xp'] += amount
     current_level = DATA[user_id]['skills'][skill_name]['level']
     xp_needed = current_level * 100
