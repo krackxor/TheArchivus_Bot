@@ -6,21 +6,29 @@ from bot_helper.Database.User_Data import get_data, new_user, saveconfig, saveop
 from os.path import exists
 from bot_helper.Telegram.Telegram_Client import Telegram
 
-
-
-
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
 encoders_list = ['libx265', 'libx264']
-crf_list = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51']
+# CRF kustom
+crf_list = ['22', '24', '26', 'Kustom']
 wsize_list =['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
-presets_list = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
-audio_codec_list = ['copy', 'aac', 'mp3', 'opus', 'flac']
+presets_list =  ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 bool_list = [True, False]
-ws_name = {'5:5': 'Top Left', 'main_w-overlay_w-5:5': 'Top Right', '5:main_h-overlay_h': 'Bottom Left', 'main_w-overlay_w-5:main_h-overlay_h-5': 'Bottom Right'}
-ws_value = {'Top Left': '5:5', 'Top Right': 'main_w-overlay_w-5:5', 'Bottom Left': '5:main_h-overlay_h', 'Bottom Right': 'main_w-overlay_w-5:main_h-overlay_h-5'}
+# Posisi watermark baru dengan ikon
+ws_name = {
+    '5:5': '↖', 
+    '(main_w-overlay_w)/2:5': '⬆', 
+    'main_w-overlay_w-5:5': '↗',
+    '5:(main_h-overlay_h)/2': '⬅',
+    '(main_w-overlay_w)/2:(main_h-overlay_h)/2': '⏺',
+    'main_w-overlay_w-5:(main_h-overlay_h)/2': '➡',
+    '5:main_h-overlay_h-5': '↙',
+    '(main_w-overlay_w)/2:main_h-overlay_h-5': '⬇',
+    'main_w-overlay_w-5:main_h-overlay_h-5': '↘'
+}
+ws_value = {v: k for k, v in ws_name.items()}
 TELETHON_CLIENT = Telegram.TELETHON_CLIENT
-punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', " ", "\t", "+", "b'", "'"]
+punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', "  ", "\t", "+", "b'", "'"]
 SAVE_TO_DATABASE = Config.SAVE_TO_DATABASE
 LOGGER = Config.LOGGER
 
@@ -115,30 +123,15 @@ async def callback(event):
         
         
         elif txt.startswith("compression"):
-            if "audio" in txt:
-                await audio_settings_callback(event, txt, user_id, "compression")
-            elif "metadata" in txt:
-                await metadata_settings_callback(event, txt, user_id, "compression")
-            else:
-                await compress_callback(event, txt, user_id, True)
+            await compress_callback(event, txt, user_id, True)
             return
 
         elif txt.startswith("convert"):
-            if "audio" in txt:
-                await audio_settings_callback(event, txt, user_id, "convert")
-            elif "metadata" in txt:
-                await metadata_settings_callback(event, txt, user_id, "convert")
-            else:
-                await convert_callback(event, txt, user_id, True)
+            await convert_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("hardmux"):
-            if "audio" in txt:
-                await audio_settings_callback(event, txt, user_id, "hardmux")
-            elif "metadata" in txt:
-                await metadata_settings_callback(event, txt, user_id, "hardmux")
-            else:
-                await hardmux_callback(event, txt, user_id, True)
+            await hardmux_callback(event, txt, user_id, True)
             return
         
         elif txt.startswith("softmux"):
@@ -150,22 +143,12 @@ async def callback(event):
             return
         
         elif txt.startswith("merge"):
-            if "audio" in txt:
-                await audio_settings_callback(event, txt, user_id, "merge")
-            elif "metadata" in txt:
-                await metadata_settings_callback(event, txt, user_id, "merge")
-            else:
-                await merge_callback(event, txt, user_id)
+            await merge_callback(event, txt, user_id)
             return
         
         
         elif txt.startswith("watermark"):
-            if "audio" in txt:
-                await audio_settings_callback(event, txt, user_id, "watermark")
-            elif "metadata" in txt:
-                await metadata_settings_callback(event, txt, user_id, "watermark")
-            else:
-                await watermark_callback(event, txt, user_id, True)
+            await watermark_callback(event, txt, user_id, True)
             return
         
         
@@ -222,11 +205,11 @@ def gen_keyboard(values_list, current_value, callvalue, items, hide):
             boards.append(current_list)
             current_list = []
         value = f"{str(callvalue)}_{str(x)}"
-        if current_value!=x:
+        if str(current_value) != str(x):
             if callvalue!="watermarkposition":
                 text = f"{str(x)}"
             else:
-                    text = f"{str(ws_name[x])}"
+                text = f"{str(ws_name[x])}"
         else:
             if not hide:
                 if callvalue!="watermarkposition":
@@ -504,8 +487,21 @@ async def compress_callback(event, txt, user_id, edit):
                 await saveconfig(user_id, 'compress', 'map', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Compress Map - {str(new_position)}")
             elif txt.startswith("compressioncrf"):
-                await saveconfig(user_id, 'compress', 'crf', new_position, SAVE_TO_DATABASE)
-                await event.answer(f"✅Compress CRF - {str(new_position)}")
+                if new_position == "Kustom":
+                    crf_input = await get_text_data(event.chat.id, user_id, event, 120, "Masukkan nilai CRF kustom (0-51)")
+                    if crf_input:
+                        try:
+                            crf_value = int(crf_input.message.message)
+                            if 0 <= crf_value <= 51:
+                                await saveconfig(user_id, 'compress', 'crf', str(crf_value), SAVE_TO_DATABASE)
+                                await event.answer(f"✅Compress CRF Kustom - {crf_value}")
+                            else:
+                                await crf_input.reply("❗Nilai CRF harus antara 0 dan 51.")
+                        except ValueError:
+                            await crf_input.reply("❗Input tidak valid, masukkan angka.")
+                else:
+                    await saveconfig(user_id, 'compress', 'crf', new_position, SAVE_TO_DATABASE)
+                    await event.answer(f"✅Compress CRF - {str(new_position)}")
             elif txt.startswith("compressionusequeuesize"):
                 await saveconfig(user_id, 'compress', 'use_queue_size', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Compress Use Queue Size - {str(new_position)}")
@@ -541,7 +537,7 @@ async def compress_callback(event, txt, user_id, edit):
             for board in gen_keyboard(presets_list, compress_preset, "compressionpreset", 3, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(compress_crf)}', 'nik66bots')])
-            for board in gen_keyboard(crf_list, compress_crf, "compressioncrf", 6, False):
+            for board in gen_keyboard(crf_list, compress_crf, "compressioncrf", 4, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline('🎵 Audio', 'compression_audio_settings')])
             KeyBoard.append([Button.inline('📝 Metadata', 'compression_metadata_settings')])
@@ -585,8 +581,21 @@ async def watermark_callback(event, txt, user_id, edit):
                 await saveconfig(user_id, 'watermark', 'map', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Watermark Map - {str(new_position)}")
             elif txt.startswith("watermarkcrf"):
-                await saveconfig(user_id, 'watermark', 'crf', new_position, SAVE_TO_DATABASE)
-                await event.answer(f"✅Watermark CRF - {str(new_position)}")
+                if new_position == "Kustom":
+                    crf_input = await get_text_data(event.chat.id, user_id, event, 120, "Masukkan nilai CRF kustom (0-51)")
+                    if crf_input:
+                        try:
+                            crf_value = int(crf_input.message.message)
+                            if 0 <= crf_value <= 51:
+                                await saveconfig(user_id, 'watermark', 'crf', str(crf_value), SAVE_TO_DATABASE)
+                                await event.answer(f"✅Watermark CRF Kustom - {crf_value}")
+                            else:
+                                await crf_input.reply("❗Nilai CRF harus antara 0 dan 51.")
+                        except ValueError:
+                            await crf_input.reply("❗Input tidak valid, masukkan angka.")
+                else:
+                    await saveconfig(user_id, 'watermark', 'crf', new_position, SAVE_TO_DATABASE)
+                    await event.answer(f"✅Watermark CRF - {str(new_position)}")
             elif txt.startswith("watermarkusequeuesize"):
                 await saveconfig(user_id, 'watermark', 'use_queue_size', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Watermark Use Queue Size - {str(new_position)}")
@@ -605,7 +614,7 @@ async def watermark_callback(event, txt, user_id, edit):
             watermark_queue_size = get_data()[user_id]['watermark']['queue_size']
             watermark_sync = get_data()[user_id]['watermark']['sync']
             KeyBoard.append([Button.inline(f'🥽Position - {str(ws_name[watermark_position])}', 'nik66bots')])
-            for board in gen_keyboard(list(ws_name.keys()), watermark_position, "watermarkposition", 2, False):
+            for board in gen_keyboard(list(ws_name.keys()), watermark_position, "watermarkposition", 3, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline(f'🛸Size - {str(watermark_size)}', 'nik66bots')])
             for board in gen_keyboard(wsize_list, watermark_size, "watermarksize", 6, False):
@@ -634,7 +643,7 @@ async def watermark_callback(event, txt, user_id, edit):
             for board in gen_keyboard(presets_list, watermark_preset, "watermarkpreset", 3, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(watermark_crf)}', 'nik66bots')])
-            for board in gen_keyboard(crf_list, watermark_crf, "watermarkcrf", 6, False):
+            for board in gen_keyboard(crf_list, watermark_crf, "watermarkcrf", 4, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline('🎵 Audio', 'watermark_audio_settings')])
             KeyBoard.append([Button.inline('📝 Metadata', 'watermark_metadata_settings')])
@@ -700,8 +709,21 @@ async def convert_callback(event, txt, user_id, edit):
                 await saveconfig(user_id, 'convert', 'map', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Convert Map - {str(new_position)}")
             elif txt.startswith("convertcrf"):
-                await saveconfig(user_id, 'convert', 'crf', new_position, SAVE_TO_DATABASE)
-                await event.answer(f"✅Convert CRF - {str(new_position)}")
+                if new_position == "Kustom":
+                    crf_input = await get_text_data(event.chat.id, user_id, event, 120, "Masukkan nilai CRF kustom (0-51)")
+                    if crf_input:
+                        try:
+                            crf_value = int(crf_input.message.message)
+                            if 0 <= crf_value <= 51:
+                                await saveconfig(user_id, 'convert', 'crf', str(crf_value), SAVE_TO_DATABASE)
+                                await event.answer(f"✅Convert CRF Kustom - {crf_value}")
+                            else:
+                                await crf_input.reply("❗Nilai CRF harus antara 0 dan 51.")
+                        except ValueError:
+                            await crf_input.reply("❗Input tidak valid, masukkan angka.")
+                else:
+                    await saveconfig(user_id, 'convert', 'crf', new_position, SAVE_TO_DATABASE)
+                    await event.answer(f"✅Convert CRF - {str(new_position)}")
             elif txt.startswith("convertusequeuesize"):
                 await saveconfig(user_id, 'convert', 'use_queue_size', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Convert Use Queue Size - {str(new_position)}")
@@ -748,7 +770,7 @@ async def convert_callback(event, txt, user_id, edit):
             for board in gen_keyboard(presets_list, convert_preset, "convertpreset", 3, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(convert_crf)}', 'nik66bots')])
-            for board in gen_keyboard(crf_list, convert_crf, "convertcrf", 6, False):
+            for board in gen_keyboard(crf_list, convert_crf, "convertcrf", 4, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline('🎵 Audio', 'convert_audio_settings')])
             KeyBoard.append([Button.inline('📝 Metadata', 'convert_metadata_settings')])
@@ -780,8 +802,21 @@ async def hardmux_callback(event, txt, user_id, edit):
                 await saveconfig(user_id, 'hardmux', 'preset', new_position, SAVE_TO_DATABASE)
                 await event.answer(f"✅Hardmux Preset - {str(new_position)}")
             elif txt.startswith("hardmuxcrf"):
-                await saveconfig(user_id, 'hardmux', 'crf', new_position, SAVE_TO_DATABASE)
-                await event.answer(f"✅Hardmux CRF - {str(new_position)}")
+                if new_position == "Kustom":
+                    crf_input = await get_text_data(event.chat.id, user_id, event, 120, "Masukkan nilai CRF kustom (0-51)")
+                    if crf_input:
+                        try:
+                            crf_value = int(crf_input.message.message)
+                            if 0 <= crf_value <= 51:
+                                await saveconfig(user_id, 'hardmux', 'crf', str(crf_value), SAVE_TO_DATABASE)
+                                await event.answer(f"✅Hardmux CRF Kustom - {crf_value}")
+                            else:
+                                await crf_input.reply("❗Nilai CRF harus antara 0 dan 51.")
+                        except ValueError:
+                            await crf_input.reply("❗Input tidak valid, masukkan angka.")
+                else:
+                    await saveconfig(user_id, 'hardmux', 'crf', new_position, SAVE_TO_DATABASE)
+                    await event.answer(f"✅Hardmux CRF - {str(new_position)}")
             elif txt.startswith("hardmuxusequeuesize"):
                 await saveconfig(user_id, 'hardmux', 'use_queue_size', eval(new_position), SAVE_TO_DATABASE)
                 await event.answer(f"✅Hardmux Use Queue Size - {str(new_position)}")
@@ -813,7 +848,7 @@ async def hardmux_callback(event, txt, user_id, edit):
             for board in gen_keyboard(presets_list, hardmux_preset, "hardmuxpreset", 3, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline(f'⚡CRF  - {str(hardmux_crf)}', 'nik66bots')])
-            for board in gen_keyboard(crf_list, hardmux_crf, "hardmuxcrf", 6, False):
+            for board in gen_keyboard(crf_list, hardmux_crf, "hardmuxcrf", 4, False):
                 KeyBoard.append(board)
             KeyBoard.append([Button.inline('🎵 Audio', 'hardmux_audio_settings')])
             KeyBoard.append([Button.inline('📝 Metadata', 'hardmux_metadata_settings')])
@@ -902,10 +937,11 @@ async def audio_settings_callback(event, txt, user_id, process_type):
 
 ###############------Metadata Settings------###############
 async def metadata_settings_callback(event, txt, user_id, process_type):
-    metadata = await get_metadata(event.chat.id, user_id, event, 120, "Send Metadata Title")
-    if metadata:
-        await saveconfig(user_id, process_type, 'metadata', metadata, SAVE_TO_DATABASE)
-        await event.answer(f"✅{process_type.capitalize()} Metadata - {str(metadata)}")
+    if txt.endswith("_edit"):
+        metadata_input = await get_metadata(event.chat.id, user_id, event, 120, "Send Metadata Title")
+        if metadata_input:
+            await saveconfig(user_id, process_type, 'metadata', metadata_input, SAVE_TO_DATABASE)
+            await event.answer(f"✅{process_type.capitalize()} Metadata - {str(metadata_input)}")
     
     metadata = get_data()[user_id][process_type]['metadata']
     KeyBoard = []
