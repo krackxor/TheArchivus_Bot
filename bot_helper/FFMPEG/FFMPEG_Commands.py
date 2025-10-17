@@ -29,6 +29,8 @@ def get_commands(process_status):
             compress_map = get_data()[process_status.user_id]['compress']['map']
             compress_copysub = get_data()[process_status.user_id]['compress']['copy_sub']
             compress_sync = get_data()[process_status.user_id]['compress']['sync']
+            audio_codec = get_data()[process_status.user_id]['compress']['audio_codec']
+            metadata = get_data()[process_status.user_id]['compress']['metadata']
             create_direc(f"{process_status.dir}/compress/")
             log_file = f"{process_status.dir}/compress/compress_logs_{process_status.process_id}.txt"
             input_file = f'{str(process_status.send_files[-1])}'
@@ -47,6 +49,9 @@ def get_commands(process_status):
                     command+= ['-vcodec','libx265','-vtag', 'hvc1']
             else:
                     command+= ['-vcodec','libx264']
+            command+= ['-c:a', audio_codec]
+            if metadata:
+                command += ['-metadata', f'title={metadata}']
             compress_use_queue_size = get_data()[process_status.user_id]['compress']['use_queue_size']
             if compress_use_queue_size:
                 compress_queue_size = get_data()[process_status.user_id]['compress']['queue_size']
@@ -66,6 +71,8 @@ def get_commands(process_status):
         watermark_copysub = get_data()[process_status.user_id]['watermark']['copy_sub']
         watermark_path = f'./userdata/{str(process_status.user_id)}_watermark.jpg'
         watermark_sync = get_data()[process_status.user_id]['watermark']['sync']
+        audio_codec = get_data()[process_status.user_id]['watermark']['audio_codec']
+        metadata = get_data()[process_status.user_id]['watermark']['metadata']
         create_direc(f"{process_status.dir}/watermark/")
         log_file = f"{process_status.dir}/watermark/watermark_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
@@ -88,6 +95,9 @@ def get_commands(process_status):
                         command+= ['-vcodec','libx264']
         else:
             command+= ['-codec:a','copy']
+        command+= ['-c:a', audio_codec]
+        if metadata:
+            command += ['-metadata', f'title={metadata}']
         watermark_use_queue_size = get_data()[process_status.user_id]['watermark']['use_queue_size']
         if watermark_use_queue_size:
             watermark_queue_size = get_data()[process_status.user_id]['watermark']['queue_size']
@@ -100,6 +110,8 @@ def get_commands(process_status):
     elif process_status.process_type==Names.merge:
             merge_map = get_data()[process_status.user_id]['merge']['map']
             merge_fix_blank = get_data()[process_status.user_id]['merge']['fix_blank']
+            audio_codec = get_data()[process_status.user_id]['merge']['audio_codec']
+            metadata = get_data()[process_status.user_id]['merge']['metadata']
             create_direc(f"{process_status.dir}/merge/")
             log_file = f"{process_status.dir}/merge/merge_logs_{process_status.process_id}.txt"
             infile_names = ""
@@ -124,6 +136,9 @@ def get_commands(process_status):
                 command+=['-map','0']
             if not merge_fix_blank:
                 command+= ["-c", "copy"]
+            command+= ['-c:a', audio_codec]
+            if metadata:
+                command += ['-metadata', f'title={metadata}']
             command+= ['-y', f'{str(output_file)}']
             return command, log_file, input_file, output_file, file_duration
 
@@ -210,6 +225,8 @@ def get_commands(process_status):
             convert_copysub = get_data()[process_status.user_id]['convert']['copy_sub']
             convert_sync = get_data()[process_status.user_id]['convert']['sync']
             convert_encode = get_data()[process_status.user_id]['convert']['encode']
+            audio_codec = get_data()[process_status.user_id]['convert']['audio_codec']
+            metadata = get_data()[process_status.user_id]['convert']['metadata']
             create_direc(f"{process_status.dir}/convert/")
             log_file = f"{process_status.dir}/convert/convert_logs_{process_status.process_id}.txt"
             if exists(log_file):
@@ -234,6 +251,9 @@ def get_commands(process_status):
                         command+= ['-vcodec','libx264']
             else:
                 command+= ["-c:a", "copy"]
+            command+= ['-c:a', audio_codec]
+            if metadata:
+                command += ['-metadata', f'title={metadata}']
             convert_use_queue_size = get_data()[process_status.user_id]['convert']['use_queue_size']
             if convert_use_queue_size:
                 convert_queue_size = get_data()[process_status.user_id]['convert']['queue_size']
@@ -248,6 +268,8 @@ def get_commands(process_status):
         hardmux_preset =  get_data()[process_status.user_id]['hardmux']['preset']
         hardmux_crf = get_data()[process_status.user_id]['hardmux']['crf']
         hardmux_encode_video = get_data()[process_status.user_id]['hardmux']['encode_video']
+        audio_codec = get_data()[process_status.user_id]['hardmux']['audio_codec']
+        metadata = get_data()[process_status.user_id]['hardmux']['metadata']
         create_direc(f"{process_status.dir}/hardmux/")
         log_file = f"{process_status.dir}/hardmux/hardmux_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
@@ -266,6 +288,9 @@ def get_commands(process_status):
                         command += ['-vcodec','libx264', '-crf', f'{str(hardmux_crf)}', '-preset', hardmux_preset]
         else:
                 command += ['-c:a','copy']
+        command+= ['-c:a', audio_codec]
+        if metadata:
+            command += ['-metadata', f'title={metadata}']
         hardmux_sync = get_data()[process_status.user_id]['hardmux']['sync']
         hardmux_use_queue_size = get_data()[process_status.user_id]['hardmux']['use_queue_size']
         if hardmux_use_queue_size:
