@@ -233,8 +233,6 @@ async def start_task(task):
                 await process_status.event.reply(process_status.message)
                 break
             else:
-                # PERBAIKAN: Hapus baris ini
-                # process_status.move_dw_file(aria2_status.name())
                 pass
         else:
             try:
@@ -320,6 +318,11 @@ async def start_task(task):
         await Telegram.upload_videos(process_status)
     elif process_completed and process_status.process_type==Names.mirror:
         await upload_drive(process_status)
+        
+    # --- PANGGIL FUNGSI PENGIRIMAN MASSAL DI SINI ---
+    if process_completed:
+        await Telegram.send_files_to_log_in_bulk(process_status)
+
     await clear_trash(task, trash_objects, multi_tasks)
     await task_manager()
     return
