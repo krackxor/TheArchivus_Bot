@@ -7,12 +7,70 @@ from os.path import exists
 from bot_helper.Telegram.Telegram_Client import Telegram
 from shutil import rmtree
 
-# --- Tambahkan impor dan variabel global dari start.py ---
-from bot.start import EXTRACT_SESSIONS, build_extract_buttons, ProcessStatus, Names, add_task, update_status_message
+# --- Impor dari start.py dipindahkan ke sini dan diperbaiki ---
+from bot.start import EXTRACT_SESSIONS, ProcessStatus, Names, add_task, update_status_message
 
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
 # ... (sisa variabel global yang sudah ada)
+encoders_list = ['libx265', 'libx264']
+# CRF kustom
+crf_list = ['22', '24', '26', 'Kustom']
+wsize_list =['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
+presets_list =  ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+audio_codec_list = ['copy', 'aac', 'mp3', 'opus', 'flac']
+bool_list = [True, False]
+# Posisi watermark baru dengan ikon
+ws_name = {
+    '5:5': '↖', 
+    '(main_w-overlay_w)/2:5': '⬆', 
+    'main_w-overlay_w-5:5': '↗',
+    '5:(main_h-overlay_h)/2': '⬅',
+    '(main_w-overlay_w)/2:(main_h-overlay_h)/2': '⏺',
+    'main_w-overlay_w-5:(main_h-overlay_h)/2': '➡',
+    '5:main_h-overlay_h-5': '↙',
+    '(main_w-overlay_w)/2:main_h-overlay_h-5': '⬇',
+    'main_w-overlay_w-5:main_h-overlay_h-5': '↘'
+}
+ws_value = {v: k for k, v in ws_name.items()}
+TELETHON_CLIENT = Telegram.TELETHON_CLIENT
+punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', "  ", "\t", "+", "b'", "'"]
+SAVE_TO_DATABASE = Config.SAVE_TO_DATABASE
+LOGGER = Config.LOGGER
+
+
+# --- FUNGSI PEMBUAT TOMBOL DIPINDAHKAN KE SINI ---
+def build_extract_buttons(session_id):
+    session = EXTRACT_SESSIONS[session_id]
+    buttons = []
+    
+    if session['audio_streams']:
+        buttons.append([Button.inline("--- AUDIO ---", "extract_noop")])
+        for s in session['audio_streams']:
+            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
+            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
+
+    if session['sub_streams']:
+        buttons.append([Button.inline("--- SUBTITLE ---", "extract_noop")])
+        for s in session['sub_streams']:
+            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
+            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
+            
+    buttons.append([Button.inline("--- KONTROL ---", "extract_noop")])
+    control_row1 = [
+        Button.inline("Semua Audio", f"extract_allaudio_{session_id}"),
+        Button.inline("Semua Sub", f"extract_allsub_{session_id}"),
+        Button.inline("Semua", f"extract_all_{session_id}"),
+    ]
+    control_row2 = [
+        Button.inline("Hapus Pilihan", f"extract_clear_{session_id}"),
+        Button.inline("❌ Batal", f"extract_cancel_{session_id}"),
+    ]
+    buttons.append(control_row1)
+    buttons.append(control_row2)
+    buttons.append([Button.inline("✅ Ekstrak Pilihan", f"extract_confirm_{session_id}")])
+    
+    return buttons
 
 
 #////////////////////////////////////Callbacks////////////////////////////////////#
@@ -24,7 +82,6 @@ async def callback(event):
         if user_id not in get_data():
             await new_user(user_id, SAVE_TO_DATABASE)
         
-        # --- BLOK BARU UNTUK MENANGANI EKSTRAKSI ---
         if txt.startswith("extract_"):
             parts = txt.split("_")
             action = parts[1]
@@ -78,7 +135,8 @@ async def callback(event):
 
             elif action == "cancel":
                 await event.delete()
-                await delete_all(session['dir'])
+                if exists(session['dir']):
+                    await delete_all(session['dir'])
                 del EXTRACT_SESSIONS[session_id]
                 await event.answer("Proses dibatalkan.")
 
@@ -89,7 +147,6 @@ async def callback(event):
                 
                 await event.edit(f"✅ Pilihan dikonfirmasi. Memulai proses ekstraksi untuk `{len(session['selected'])}` stream...")
                 
-                # Buat proses nyata
                 process_status = ProcessStatus(user_id, chat_id, "N/A", "N/A", event, Names.Extract)
                 process_status.replace_send_list([session['downloaded_file']])
                 process_status.extract_selections = session['selected']
@@ -103,9 +160,7 @@ async def callback(event):
 
             return
             
-        # --- BLOK LAMA UNTUK PENGATURAN DAN LAINNYA ---
         elif txt.startswith("settings"):
-            # ... (kode lama)
             text = f"⚙ Hi {get_mention(event)} Choose Your Settings"
             await event.edit(text, buttons=[
             [Button.inline('#️⃣ General', 'general_settings')],
@@ -122,7 +177,6 @@ async def callback(event):
         ])
             return
 
-        # ... (sisa kode dari file callbacks.py yang sudah ada) ...
         elif txt=="close_settings":
             await event.delete()
             return
@@ -277,7 +331,8 @@ async def callback(event):
         
         
         return
-# ... (sisa fungsi di file callbacks.py) ...
+        
+# ... (sisa kode callbacks.py) ...
 def get_mention(event):
     return "["+event.sender.first_name+"](tg://user?id="+str(event.sender.id)+")"
 
