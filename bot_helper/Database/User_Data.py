@@ -11,13 +11,11 @@ if Config.SAVE_TO_DATABASE:
 DATA = Config.DATA
 LOGGER = Config.LOGGER
 TASK_LIMIT = Config.RUNNING_TASK_LIMIT
-# Menambahkan variabel timezone dari config
 TIMEZONE = timezone(Config.TIMEZONE)
 
 
 #////////////////////////////////////Task_Limit////////////////////////////////////#
 
-###############------Return_Task_Limit------###############
 def get_task_limit():
     return TASK_LIMIT
 
@@ -26,18 +24,14 @@ def change_task_limit(new_limit):
     TASK_LIMIT = new_limit
     return
 
-
 #////////////////////////////////////Database////////////////////////////////////#
 
-###############------Return_Database------###############
 def get_data():
     return DATA
 
-###############------New_User------###############
 async def new_user(user_id, dbsave):
         DATA[user_id] = {}
-        # ... (Sisa kode fungsi new_user tetap sama)
-        # ... (Salin semua pengaturan default dari file asli Anda ke sini)
+        # Pengaturan default lainnya tetap sama...
         DATA[user_id]['watermark'] = {}
         DATA[user_id]['watermark']['position'] = '5:5'
         DATA[user_id]['watermark']['size'] = '15'
@@ -150,30 +144,23 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['multi_tasks'] = False
         DATA[user_id]['upload_all'] = True
 
-        # --- STRUKTUR DATA KEAHLIAN BARU ---
+        # --- PENGGUNA BARU MEMULAI DARI LEVEL 0 ---
         DATA[user_id]['skills'] = {
-            'Compress': {'level': 1, 'xp': 0},
-            'Watermark': {'level': 1, 'xp': 0},
-            'Merge': {'level': 1, 'xp': 0},
-            'Convert': {'level': 1, 'xp': 0},
-            'Hardmux': {'level': 1, 'xp': 0},
-            'Softmux': {'level': 1, 'xp': 0},
-            'SoftReMux': {'level': 1, 'xp': 0},
-            'VideoSample': {'level': 1, 'xp': 0},
-            'GenSS': {'level': 1, 'xp': 0},
-            'ChangeMetadata': {'level': 1, 'xp': 0},
-            'ChangeIndex': {'level': 1, 'xp': 0},
-            'Leech': {'level': 1, 'xp': 0},
-            'Mirror': {'level': 1, 'xp': 0}
+            'Compress': {'level': 0, 'xp': 0}, 'Watermark': {'level': 0, 'xp': 0},
+            'Merge': {'level': 0, 'xp': 0}, 'Convert': {'level': 0, 'xp': 0},
+            'Hardmux': {'level': 0, 'xp': 0}, 'Softmux': {'level': 0, 'xp': 0},
+            'SoftReMux': {'level': 0, 'xp': 0}, 'VideoSample': {'level': 0, 'xp': 0},
+            'GenSS': {'level': 0, 'xp': 0}, 'ChangeMetadata': {'level': 0, 'xp': 0},
+            'ChangeIndex': {'level': 0, 'xp': 0}, 'Leech': {'level': 0, 'xp': 0},
+            'Mirror': {'level': 0, 'xp': 0}
         }
-
         if dbsave:
             data = await db.save_data(str(DATA))
         else:
             data = True
         return data
 
-###############------Save_Config------###############
+# ... (Fungsi saveoptions, resetdatabase, saveconfig, dll. tetap sama) ...
 async def saveoptions(user_id, dname, value, dbsave):
     try:
         if user_id not in DATA:
@@ -190,8 +177,6 @@ async def saveoptions(user_id, dname, value, dbsave):
     except Exception as e:
         LOGGER.info(e)
         return False
-
-###############------Reset_Database------###############
 async def resetdatabase(dbsave):
     try:
         DATA.clear()
@@ -201,8 +186,6 @@ async def resetdatabase(dbsave):
     except Exception as e:
         LOGGER.info(e)
         return False
-
-###############------Save_Sub_Config------###############
 async def saveconfig(user_id, dname, pos, value, dbsave):
     try:
         if user_id not in DATA:
@@ -219,8 +202,6 @@ async def saveconfig(user_id, dname, pos, value, dbsave):
     except Exception as e:
         LOGGER.info(e)
         return False
-
-###############------Save_Restart_IDs------###############
 async def save_restart(chat_id, msg_id):
     try:
         if 'restart' not in DATA:
@@ -233,8 +214,6 @@ async def save_restart(chat_id, msg_id):
     except Exception as e:
         LOGGER.info(e)
         return False
-    
-###############------Clear_Restart_IDs------###############
 async def clear_restart():
     try:
         DATA['restart'] = []
@@ -248,6 +227,9 @@ async def clear_restart():
 
 def get_title(skill, level):
     """Mendapatkan gelar berdasarkan keahlian dan level."""
+    if level == 0:
+        return "Pendatang Baru"
+    
     titles = {
         'Convert':  ["Pemula", "Ahli", "Master", "Legenda Konversi"],
         'Hardmux':  ["Novis", "Spesialis", "Pakar", "Maestro Muxing"],
@@ -257,43 +239,46 @@ def get_title(skill, level):
         'Leech':    ["Pemula", "Pengunduh", "Kolektor", "Legenda Leech"],
         'Mirror':   ["Pemula", "Pencermin", "Distributor", "Legenda Mirror"],
     }
-    # Tentukan gelar berdasarkan level
     if level >= 20: return titles.get(skill, ["-"]*4)[3]
     if level >= 10: return titles.get(skill, ["-"]*4)[2]
     if level >= 5:  return titles.get(skill, ["-"]*4)[1]
     return titles.get(skill, ["-"]*4)[0]
 
 async def add_skill_xp(user_id, skill_name, amount):
-    """Menambahkan XP ke keahlian spesifik dan menangani kenaikan level."""
+    """Menambahkan XP, menangani kenaikan level, dan mengembalikan status."""
     if user_id not in DATA or 'skills' not in DATA.get(user_id, {}):
         await new_user(user_id, Config.SAVE_TO_DATABASE)
 
     if skill_name not in DATA[user_id]['skills']:
-        return None, None # Keahlian tidak dilacak
+        return None, None, None
+
+    # Penggunaan pertama kali langsung naik ke Level 1 ("Pemula")
+    if DATA[user_id]['skills'][skill_name]['level'] == 0:
+        DATA[user_id]['skills'][skill_name]['level'] = 1
+        new_level_achieved = 1
+        if Config.SAVE_TO_DATABASE:
+            await db.save_data(str(DATA))
+        return new_level_achieved, skill_name, amount
 
     # Tambahkan XP
     DATA[user_id]['skills'][skill_name]['xp'] += amount
-
-    # Cek Kenaikan Level
     current_level = DATA[user_id]['skills'][skill_name]['level']
-    xp_needed = current_level * 100
+    # Formula XP baru: level berikutnya butuh (level saat ini * 100) + 100
+    xp_needed = (current_level * 100) + 100
     new_level_achieved = None
 
-    while DATA[user_id]['skills'][skill_name]['xp'] >= xp_needed:
+    if DATA[user_id]['skills'][skill_name]['xp'] >= xp_needed:
         # Naik Level!
         DATA[user_id]['skills'][skill_name]['level'] += 1
         DATA[user_id]['skills'][skill_name]['xp'] -= xp_needed
-        current_level = DATA[user_id]['skills'][skill_name]['level']
-        xp_needed = current_level * 100
-        new_level_achieved = current_level
-
+        new_level_achieved = DATA[user_id]['skills'][skill_name]['level']
+        
     if Config.SAVE_TO_DATABASE:
         await db.save_data(str(DATA))
 
-    return new_level_achieved, skill_name
+    return new_level_achieved, skill_name, amount
 
-#////////////////////////////////////VIP System////////////////////////////////////#
-
+# ... (Sisa kode untuk VIP System tetap sama) ...
 async def add_vip(user_id, days):
     """Menambahkan user ke daftar VIP."""
     if 'vip_users' not in DATA:
