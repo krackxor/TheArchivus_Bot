@@ -302,29 +302,27 @@ async def start_task(task):
     elif process_completed and process_status.process_type==Names.mirror:
         await upload_drive(process_status)
 
-    # --- LOGIKA NOTIFIKASI XP DAN LEVEL ---
     if process_completed:
         skill_name = process_status.process_type
-        new_level, skill, xp_added = await add_skill_xp(process_status.user_id, skill_name, 1)
+        new_level, skill, xp_added, progress = await add_skill_xp(process_status.user_id, skill_name, 1)
 
         try:
+            target_chat = process_status.chat_id
             if new_level:
                 notif_msg = f"🎉 **Selamat!** Keahlian **{skill}** Anda telah naik ke **Level {new_level}**!"
                 if new_level == 1:
                     notif_msg = f"🎉 **Selamat!** Anda telah membuka keahlian **{skill}** dan mencapai **Level 1 (Pemula)**!"
                 
-                await Telegram.TELETHON_CLIENT.send_message(process_status.user_id, notif_msg, silent=True)
+                await Telegram.TELETHON_CLIENT.send_message(target_chat, notif_msg)
             elif xp_added:
-                # Kirim notifikasi penambahan XP (dibuat silent agar tidak mengganggu)
+                current_xp, xp_needed = progress
                 await Telegram.TELETHON_CLIENT.send_message(
-                    process_status.user_id,
-                    f"✨ `+{xp_added} XP` untuk keahlian **{skill}**!",
-                    silent=True
+                    target_chat,
+                    f"✨ `+{xp_added} XP` untuk keahlian **{skill}**!\n   - Progres: `{current_xp} / {xp_needed} XP`"
                 )
         except Exception as e:
             LOGGER.info(f"Gagal mengirim notifikasi XP: {e}")
 
-    # --- PANGGIL FUNGSI PENGIRIMAN MASSAL KE LOG CHANNEL ---
     if process_completed:
         await Telegram.send_files_to_log_in_bulk(process_status)
 
