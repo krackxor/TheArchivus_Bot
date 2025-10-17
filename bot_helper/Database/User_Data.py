@@ -91,6 +91,10 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['compress']['encoder'] = 'libx265'
         DATA[user_id]['compress']['audio_codec'] = 'copy'
         DATA[user_id]['compress']['metadata'] = ''
+        DATA[user_id]['extract'] = {}
+        DATA[user_id]['extract']['extract_all_audios'] = False
+        DATA[user_id]['extract']['extract_all_subtitles'] = False
+        DATA[user_id]['extract']['extract_all'] = False
         DATA[user_id]['compression'] = False
         DATA[user_id]['select_stream'] = False
         DATA[user_id]['stream'] = 'ENG'
@@ -149,6 +153,7 @@ async def new_user(user_id, dbsave):
             'Merge': {'level': 0, 'xp': 0}, 'Convert': {'level': 0, 'xp': 0},
             'Hardmux': {'level': 0, 'xp': 0}, 'Softmux': {'level': 0, 'xp': 0},
             'SoftReMux': {'level': 0, 'xp': 0}, 'VideoSample': {'level': 0, 'xp': 0},
+            'Extract': {'level': 0, 'xp': 0},
             'GenSS': {'level': 0, 'xp': 0}, 'ChangeMetadata': {'level': 0, 'xp': 0},
             'ChangeIndex': {'level': 0, 'xp': 0}, 'Leech': {'level': 0, 'xp': 0},
             'Mirror': {'level': 0, 'xp': 0}
