@@ -1,37 +1,18 @@
 from telethon import events
 from telethon.tl.custom import Button
 from config.config import Config
-from bot_helper.Others.Helper_Functions import delete_all, get_config, get_env_dict, export_env_file
+from bot_helper.Others.Helper_Functions import delete_all, get_config, get_env_dict, export_env_file, delete_trash
 from bot_helper.Database.User_Data import get_data, new_user, saveconfig, saveoptions, resetdatabase
 from os.path import exists
 from bot_helper.Telegram.Telegram_Client import Telegram
+from shutil import rmtree
+
+# --- Tambahkan impor dan variabel global dari start.py ---
+from bot.start import EXTRACT_SESSIONS, build_extract_buttons, ProcessStatus, Names, add_task, update_status_message
 
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
-encoders_list = ['libx265', 'libx264']
-# CRF kustom
-crf_list = ['22', '24', '26', 'Kustom']
-wsize_list =['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
-presets_list =  ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
-audio_codec_list = ['copy', 'aac', 'mp3', 'opus', 'flac']
-bool_list = [True, False]
-# Posisi watermark baru dengan ikon
-ws_name = {
-    '5:5': '↖', 
-    '(main_w-overlay_w)/2:5': '⬆', 
-    'main_w-overlay_w-5:5': '↗',
-    '5:(main_h-overlay_h)/2': '⬅',
-    '(main_w-overlay_w)/2:(main_h-overlay_h)/2': '⏺',
-    'main_w-overlay_w-5:(main_h-overlay_h)/2': '➡',
-    '5:main_h-overlay_h-5': '↙',
-    '(main_w-overlay_w)/2:main_h-overlay_h-5': '⬇',
-    'main_w-overlay_w-5:main_h-overlay_h-5': '↘'
-}
-ws_value = {v: k for k, v in ws_name.items()}
-TELETHON_CLIENT = Telegram.TELETHON_CLIENT
-punc = ['!', '|', '{', '}', ';', ':', "'", '=', '"', '\\', ',', '<', '>', '/', '?', '@', '#', '$', '%', '^', '&', '*', '~', "  ", "\t", "+", "b'", "'"]
-SAVE_TO_DATABASE = Config.SAVE_TO_DATABASE
-LOGGER = Config.LOGGER
+# ... (sisa variabel global yang sudah ada)
 
 
 #////////////////////////////////////Callbacks////////////////////////////////////#
@@ -43,7 +24,88 @@ async def callback(event):
         if user_id not in get_data():
             await new_user(user_id, SAVE_TO_DATABASE)
         
-        if txt.startswith("settings"):
+        # --- BLOK BARU UNTUK MENANGANI EKSTRAKSI ---
+        if txt.startswith("extract_"):
+            parts = txt.split("_")
+            action = parts[1]
+            
+            if action == "noop":
+                await event.answer()
+                return
+
+            session_id = parts[2]
+            if session_id not in EXTRACT_SESSIONS or EXTRACT_SESSIONS[session_id]['user_id'] != user_id:
+                await event.answer("Sesi ini tidak valid atau bukan milik Anda!", alert=True)
+                return
+
+            session = EXTRACT_SESSIONS[session_id]
+
+            if action == "select":
+                stream_index = int(parts[3])
+                if stream_index in session['selected']:
+                    session['selected'].remove(stream_index)
+                else:
+                    session['selected'].append(stream_index)
+                
+                buttons = build_extract_buttons(session_id)
+                await event.edit(buttons=buttons)
+
+            elif action == "all":
+                session['selected'].clear()
+                session['selected'].extend([s['index'] for s in session['audio_streams']])
+                session['selected'].extend([s['index'] for s in session['sub_streams']])
+                buttons = build_extract_buttons(session_id)
+                await event.edit(buttons=buttons)
+
+            elif action == "allaudio":
+                for s in session['audio_streams']:
+                    if s['index'] not in session['selected']:
+                        session['selected'].append(s['index'])
+                buttons = build_extract_buttons(session_id)
+                await event.edit(buttons=buttons)
+
+            elif action == "allsub":
+                for s in session['sub_streams']:
+                    if s['index'] not in session['selected']:
+                        session['selected'].append(s['index'])
+                buttons = build_extract_buttons(session_id)
+                await event.edit(buttons=buttons)
+
+            elif action == "clear":
+                session['selected'].clear()
+                buttons = build_extract_buttons(session_id)
+                await event.edit(buttons=buttons)
+
+            elif action == "cancel":
+                await event.delete()
+                await delete_all(session['dir'])
+                del EXTRACT_SESSIONS[session_id]
+                await event.answer("Proses dibatalkan.")
+
+            elif action == "confirm":
+                if not session['selected']:
+                    await event.answer("❗ Anda belum memilih stream apapun untuk diekstrak.", alert=True)
+                    return
+                
+                await event.edit(f"✅ Pilihan dikonfirmasi. Memulai proses ekstraksi untuk `{len(session['selected'])}` stream...")
+                
+                # Buat proses nyata
+                process_status = ProcessStatus(user_id, chat_id, "N/A", "N/A", event, Names.Extract)
+                process_status.replace_send_list([session['downloaded_file']])
+                process_status.extract_selections = session['selected']
+                process_status.original_filename = session['original_filename']
+                
+                task = {'process_status': process_status, 'functions': []}
+                await add_task(task)
+                await update_status_message(event)
+
+                del EXTRACT_SESSIONS[session_id]
+
+            return
+            
+        # --- BLOK LAMA UNTUK PENGATURAN DAN LAINNYA ---
+        elif txt.startswith("settings"):
+            # ... (kode lama)
             text = f"⚙ Hi {get_mention(event)} Choose Your Settings"
             await event.edit(text, buttons=[
             [Button.inline('#️⃣ General', 'general_settings')],
@@ -59,7 +121,8 @@ async def callback(event):
             [Button.inline('⭕Close Settings', 'close_settings')]
         ])
             return
-        
+
+        # ... (sisa kode dari file callbacks.py yang sudah ada) ...
         elif txt=="close_settings":
             await event.delete()
             return
@@ -214,9 +277,7 @@ async def callback(event):
         
         
         return
-
-
-#////////////////////////////////////Functions////////////////////////////////////#
+# ... (sisa fungsi di file callbacks.py) ...
 def get_mention(event):
     return "["+event.sender.first_name+"](tg://user?id="+str(event.sender.id)+")"
 
@@ -278,12 +339,6 @@ async def get_text_data(chat_id, user_id, event, timeout, message):
                 LOGGER.info(e)
                 return False
             return new_event
-
-
-#////////////////////////////////////Callbacks_Functions////////////////////////////////////#
-
-
-###############------General------###############
 async def telegram_callback(event, txt, user_id, chat_id):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -308,8 +363,6 @@ async def telegram_callback(event, txt, user_id, chat_id):
             except:
                 pass
             return
-
-###############------General------###############
 async def general_callback(event, txt, user_id, chat_id):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -444,8 +497,6 @@ async def general_callback(event, txt, user_id, chat_id):
             else:
                 await TELETHON_CLIENT.send_message(chat_id, "⚙ General Settings", buttons=KeyBoard)
             return
-
-###############------Progress------###############
 async def progress_callback(event, txt, user_id):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -498,8 +549,6 @@ async def progress_callback(event, txt, user_id):
             except:
                 pass
             return
-
-###############------Compress------###############
 async def compress_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -584,8 +633,6 @@ async def compress_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Compression Settings", buttons=KeyBoard)
             return
-
-###############------Watermark------###############
 async def watermark_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -691,9 +738,6 @@ async def watermark_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Watermark Settings", buttons=KeyBoard)
             return
-
-
-###############------Merge------###############
 async def merge_callback(event, txt, user_id):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -720,8 +764,6 @@ async def merge_callback(event, txt, user_id):
             except:
                 pass
             return
-
-###############------Convert------###############
 async def convert_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -820,8 +862,6 @@ async def convert_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Convert Settings", buttons=KeyBoard)
             return
-
-###############------Hardmux------###############
 async def hardmux_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -899,9 +939,6 @@ async def hardmux_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Hardmux Settings", buttons=KeyBoard)
             return
-
-
-###############------Softmux------###############
 async def softmux_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -926,9 +963,6 @@ async def softmux_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Softmux Settings", buttons=KeyBoard)
             return
-
-
-###############------Softremux------###############
 async def softremux_callback(event, txt, user_id, edit):
             parts = txt.split("_", 1)
             new_position = parts[1] if len(parts) > 1 else None
@@ -953,8 +987,6 @@ async def softremux_callback(event, txt, user_id, edit):
                     pass
                 await Telegram.TELETHON_CLIENT.send_message(event.chat.id, "⚙ Softremux Settings", buttons=KeyBoard)
             return
-
-###############------Audio Settings------###############
 async def audio_settings_callback(event, txt, user_id, process_type):
     # Check if the user is making a selection
     if f"_{process_type}_audio_" in f"_{txt}":
@@ -973,8 +1005,6 @@ async def audio_settings_callback(event, txt, user_id, process_type):
         await event.edit(f"⚙ {process_type.capitalize()} Audio Settings", buttons=KeyBoard)
     except:
         pass
-
-###############------Metadata Settings------###############
 async def metadata_settings_callback(event, txt, user_id, process_type):
     if txt.endswith("_edit"):
         metadata_input = await get_metadata(event.chat.id, user_id, event, 120, "Send Metadata Title")
