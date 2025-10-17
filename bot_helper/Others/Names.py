@@ -17,7 +17,6 @@ class Names:
     mirror="Mirror"
     changeMetadata = 'ChangeMetadata'
     changeindex = "ChangeIndex"
-    Extract = "Extract"  # <-- TAMBAHKAN BARIS INI
     STATUS = {compress: "🏮Compressing", 
                         watermark: "🛺Adding Watermark",
                         merge: "🍧Merging", 
@@ -26,9 +25,7 @@ class Names:
                         convert: "🚜Converting Video", 
                         hardmux: "🚍HardMuxing Subtitle",
                         changeMetadata: "🪀Changing MetaData",
-                        changeindex: "🎨Changing Index",
-                        Extract: "📦Extracting Streams" # <-- TAMBAHKAN BARIS INI
-                        }
+                        changeindex: "🎨Changing Index"}
     FFMPEG_PROCESSES = [compress, 
                                                         watermark, 
                                                         merge, 
@@ -37,13 +34,11 @@ class Names:
                                                         convert, 
                                                         hardmux,
                                                         changeMetadata,
-                                                        changeindex,
-                                                        Extract # <-- TAMBAHKAN BARIS INI
-                                                        ]
+                                                        changeindex]
     STATUS_UPLOADING = "🔼Uploading"
-    STATUS_CLONING = "🧬Cloning"
+    STATUS_CLONING= "🧬Cloning"
     STATUS_DOWNLOADING = "🔽Downloading"
-    STATUS_COPYING = "🔁Copying"
+    STATUS_COPYING= "🔁Copying"
     STATUS_ARCHIVING = "🔐Archiving"
     STATUS_EXTRACTING = "📂Extracting"
     STATUS_SPLITTING = "✂️Splitting"
