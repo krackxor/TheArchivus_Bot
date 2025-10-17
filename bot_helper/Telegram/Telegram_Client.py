@@ -17,6 +17,7 @@ from os import makedirs
 from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
 from bot_helper.Rclone.Rclone_Upload import upload_single_drive
 from bot_helper.Others.Helper_Functions import verify_rclone_account
+from asyncio import sleep
 
 def create_direc(direc):
     if not isdir(direc):
@@ -103,16 +104,7 @@ class Telegram:
 
                 if message_in_pm:
                     upload_successful = True
-                    # 2. Kirim FILE sebagai MEDIA ke Channel Log (jika diatur)
-                    if log_channel_id != 0:
-                        try:
-                            log_caption = (f"✅ **Pekerjaan Selesai**\n\n"
-                                           f"**File**: `{filename}`\n"
-                                           f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
-                            await Telegram.TELETHON_CLIENT.send_file(log_channel_id, file=file_path, thumb=thumbnail, caption=log_caption, attributes=(DocumentAttributeVideo(duration, 0, 0),))
-                        except Exception as e:
-                            LOGGER.error(f"Gagal mengirim file ke channel log {log_channel_id}: {e}")
-                            await event.reply(f"🔔 Gagal mengirim hasil ke channel log. Error: `{str(e)[:1000]}`")
+                    # BAGIAN PENGIRIMAN KE LOG CHANNEL DIHAPUS DARI SINI
 
             except (UserIsBlocked, UserIsBlockedError):
                 await event.reply(f"**Peringatan untuk {process_status.user_first_name}**: Anda telah memblokir bot. Buka blokir di PM agar saya bisa mengirimkan hasilnya.")
@@ -136,12 +128,53 @@ class Telegram:
         # 3. Kirim NOTIFIKASI TEKS ke Grup (jika berhasil dan berasal dari grup)
         if upload_successful and event.is_group:
             try:
-                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM dan Channel Log."
+                notif_message = f"✅ Tugas untuk **{process_status.user_first_name}** telah selesai. Hasil dikirim melalui PM."
                 await event.reply(notif_message)
             except Exception as e:
                 LOGGER.warning(f"Gagal mengirim notifikasi selesai ke grup {original_chat_id}: {e}")
         
         return
+
+    async def send_files_to_log_in_bulk(process_status):
+        """
+        Mengirim semua file yang telah selesai diproses ke channel log secara berurutan.
+        """
+        log_channel_id = Config.LOG_CHANNEL_ID
+        if log_channel_id == 0:
+            return
+
+        successful_files = process_status.send_files
+        if not successful_files:
+            return
+
+        try:
+            # Mengirim pesan pembuka di log channel
+            await Telegram.TELETHON_CLIENT.send_message(
+                log_channel_id,
+                f"✅ **Pekerjaan Selesai untuk {process_status.user_first_name} (`{process_status.user_id}`)**\n\nBerikut adalah file hasilnya:"
+            )
+            await sleep(1)
+
+            # Mengirim setiap file satu per satu
+            for file_path in successful_files:
+                filename = file_path.split("/")[-1]
+                duration = get_video_duration(file_path)
+                thumbnail = process_status.thumbnail if process_status.thumbnail else "./thumb.jpg"
+                log_caption = (f"**File**: `{filename}`\n"
+                               f"**Oleh**: {process_status.user_first_name} (`{process_status.user_id}`)")
+
+                await Telegram.TELETHON_CLIENT.send_file(
+                    log_channel_id,
+                    file=file_path,
+                    thumb=thumbnail,
+                    caption=log_caption,
+                    attributes=(DocumentAttributeVideo(duration, 0, 0),)
+                )
+                await sleep(2)  # Jeda untuk menghindari 'flood waits'
+        except Exception as e:
+            LOGGER.error(f"Gagal mengirim file secara massal ke channel log {log_channel_id}: {e}")
+            await process_status.event.reply(f"🔔 Gagal mengirim hasil ke channel log. Error: `{str(e)[:1000]}`")
+
 
     async def download_tg_file(process_status, variables, dw_index):
         start_time = time()
