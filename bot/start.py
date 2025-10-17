@@ -10,7 +10,7 @@ from bot_helper.Aria2.Aria2_Engine import Aria2, getDownloadByGid
 from bot_helper.Process.Process_Status import ProcessStatus
 from time import time
 from asyncio import create_task
-from bot_helper.Database.User_Data import get_data, new_user, change_task_limit, get_task_limit, saveoptions, add_vip, remove_vip, is_vip, get_vip_users
+from bot_helper.Database.User_Data import get_data, new_user, change_task_limit, get_task_limit, saveoptions, add_vip, remove_vip, is_vip, get_vip_users, get_title
 from bot_helper.Telegram.Telegram_Client import Telegram
 from bot_helper.Process.Running_Tasks import add_task, get_status_message, get_user_id, get_queued_tasks_len, refresh_tasks, remove_from_working_task, get_ffmpeg_log_file
 from bot_helper.Process.Running_Process import remove_running_process
@@ -1883,3 +1883,29 @@ async def _mirror_file(event):
         create_task(add_task(task))
         await update_status_message(event)
         return
+
+
+# --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('myskills')))
+async def _my_skills(event):
+    if not await is_authorized(event): return
+    user_id = event.sender_id
+
+    if user_id not in get_data() or 'skills' not in get_data().get(user_id, {}):
+        await event.reply("Anda belum memiliki statistik keahlian. Coba gunakan beberapa perintah terlebih dahulu!")
+        return
+
+    user_skills = get_data()[user_id]['skills']
+    
+    message = f"**Keahlian Anda, {get_mention(event)}:**\n\n"
+    for skill, data in user_skills.items():
+        level = data['level']
+        xp = data['xp']
+        xp_needed = level * 100
+        # Memanggil fungsi get_title untuk mendapatkan gelar
+        title = get_title(skill, level)
+        
+        message += f"🔹 **{skill}** - **{title}** (Level {level})\n"
+        message += f"   - XP: `{xp} / {xp_needed}`\n"
+
+    await event.reply(message)
