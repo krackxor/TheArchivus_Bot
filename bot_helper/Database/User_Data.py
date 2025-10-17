@@ -2,6 +2,7 @@ from bot_helper.Database.DB_Handler import Database
 from config.config import Config
 from datetime import datetime, timedelta
 import time
+from pytz import timezone
 
 #////////////////////////////////////Variables////////////////////////////////////#
 if Config.SAVE_TO_DATABASE:
@@ -10,6 +11,8 @@ if Config.SAVE_TO_DATABASE:
 DATA = Config.DATA
 LOGGER = Config.LOGGER
 TASK_LIMIT = Config.RUNNING_TASK_LIMIT
+# Menambahkan variabel timezone dari config
+TIMEZONE = timezone(Config.TIMEZONE)
 
 
 #////////////////////////////////////Task_Limit////////////////////////////////////#
@@ -33,6 +36,8 @@ def get_data():
 ###############------New_User------###############
 async def new_user(user_id, dbsave):
         DATA[user_id] = {}
+        # ... (Sisa kode fungsi new_user tetap sama)
+        # ... (Salin semua pengaturan default dari file asli Anda ke sini)
         DATA[user_id]['watermark'] = {}
         DATA[user_id]['watermark']['position'] = '5:5'
         DATA[user_id]['watermark']['size'] = '15'
@@ -228,7 +233,8 @@ async def add_vip(user_id, days):
     if 'vip_users' not in DATA:
         DATA['vip_users'] = {}
     
-    expiration_date = datetime.now() + timedelta(days=days)
+    # PERBAIKAN: Menggunakan timezone dari config
+    expiration_date = datetime.now(TIMEZONE) + timedelta(days=days)
     DATA['vip_users'][user_id] = expiration_date.timestamp()
     
     if Config.SAVE_TO_DATABASE:
@@ -237,6 +243,7 @@ async def add_vip(user_id, days):
 
 async def remove_vip(user_id):
     """Menghapus user dari daftar VIP."""
+    user_id = int(user_id) # Pastikan user_id adalah integer
     if 'vip_users' in DATA and user_id in DATA['vip_users']:
         del DATA['vip_users'][user_id]
         if Config.SAVE_TO_DATABASE:
@@ -260,7 +267,7 @@ async def is_vip(user_id):
         await remove_vip(user_id)
         return False, None
         
-    expiration_date = datetime.fromtimestamp(expiration_timestamp)
+    expiration_date = datetime.fromtimestamp(expiration_timestamp, tz=TIMEZONE)
     return True, expiration_date.strftime("%Y-%m-%d %H:%M:%S")
 
 async def get_vip_users():
@@ -269,19 +276,24 @@ async def get_vip_users():
         return "Tidak ada user VIP."
 
     # LOGIKA PEMBERSIHAN OTOMATIS
-    expired_vips = [uid for uid, ts in DATA['vip_users'].items() if time.time() > ts]
-    if expired_vips:
-        LOGGER.info(f"Cleaning up expired VIPs: {expired_vips}")
-        for uid in expired_vips:
-            del DATA['vip_users'][uid]
-        if Config.SAVE_TO_DATABASE:
-            await db.save_data(str(DATA))
+    # Membuat salinan keys untuk iterasi karena dictionary akan diubah
+    all_vips = list(DATA['vip_users'].keys())
+    cleaned = False
+    for user_id in all_vips:
+        expiration_timestamp = DATA['vip_users'].get(user_id)
+        if expiration_timestamp and time.time() > expiration_timestamp:
+            LOGGER.info(f"Cleaning up expired VIP: {user_id}")
+            del DATA['vip_users'][user_id]
+            cleaned = True
+            
+    if cleaned and Config.SAVE_TO_DATABASE:
+        await db.save_data(str(DATA))
 
     if not DATA['vip_users']:
         return "Tidak ada user VIP yang aktif."
 
     vip_list = "👤 **Daftar User VIP Aktif:**\n\n"
     for user_id, timestamp in DATA['vip_users'].items():
-        status = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+        status = datetime.fromtimestamp(timestamp, tz=TIMEZONE).strftime("%Y-%m-%d %H:%M")
         vip_list += f"- ID: `{user_id}` | Exp: `{status}`\n"
     return vip_list
