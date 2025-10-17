@@ -157,7 +157,9 @@ class Telegram:
             file_id = new_event.id
         create_direc(process_status.dir)
         download_location = f"{process_status.dir}/{file_name}"
-        # PERBAIKAN: Langsung tambahkan path lengkap ke daftar file yang akan diproses
+        
+        # BARIS KRUSIAL: Menambahkan file yang akan diunduh ke daftar proses.
+        # Ini mencegah error 'IndexError' untuk unduhan dari Telegram.
         process_status.append_send_files_loc(download_location)
         
         if get_data()[process_status.user_id]['tgdownload']=="Telethon":
@@ -191,8 +193,6 @@ class Telegram:
                 await new_event.reply(f"❗ Error Unduhan Pyrogram: {str(e)}\n\nPastikan bot adalah admin di chat dengan ID: {download_chat_id}")
                 return False
                 
-        # PERBAIKAN: Hapus baris ini karena file tidak lagi dipindahkan
-        # process_status.move_dw_file(file_name) 
         return True
 
     async def upload_videos(process_status):
