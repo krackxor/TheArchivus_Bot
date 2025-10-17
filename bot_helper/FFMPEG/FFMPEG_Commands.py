@@ -350,3 +350,27 @@ def get_commands(process_status):
         command = ['ffmpeg','-hide_banner', '-progress', f"{log_file}", '-i', f'{str(input_file)}', '-map', '0:v?'] + process_status.custom_index
         command += ["-c", "copy", '-y', f"{output_file}"]
         return command, log_file, input_file, output_file, file_duration
+
+    elif process_status.process_type == Names.extract:
+        create_direc(f"{process_status.dir}/extract/")
+        log_file = f"{process_status.dir}/extract/extract_logs_{process_status.process_id}.txt"
+        input_file = f'{str(process_status.send_files[-1])}'
+        output_file = f"{process_status.dir}/extract/{get_output_name(process_status)}"
+        file_duration = get_video_duration(input_file)
+        command = ['ffmpeg', '-hide_banner',
+                   '-progress', f"{log_file}",
+                   '-i', f'{input_file}']
+        
+        # Logika untuk mengekstrak audio/subtitle berdasarkan pilihan pengguna
+        if get_data()[process_status.user_id]['extract']['extract_all']:
+            command.extend(['-map', '0:a', '-map', '0:s', '-c', 'copy'])
+        elif get_data()[process_status.user_id]['extract']['extract_all_audios']:
+            command.extend(['-map', '0:a', '-c:a', 'copy', '-vn', '-sn'])
+        elif get_data()[process_status.user_id]['extract']['extract_all_subtitles']:
+            command.extend(['-map', '0:s', '-c:s', 'copy', '-vn', '-an'])
+        else:
+            # Logika untuk stream individual (jika diperlukan di masa mendatang)
+            pass
+
+        command.extend(['-y', f"{output_file}"])
+        return command, log_file, input_file, output_file, file_duration
