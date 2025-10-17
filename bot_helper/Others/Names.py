@@ -6,6 +6,7 @@ class Names:
     softremux = "SoftReMux"
     convert = "Convert"
     hardmux = "Hardmux"
+    extract = "Extract"
     aria = "Aria"
     ffmpeg = "FFMPEG"
     telethon = "Telethon"
@@ -24,6 +25,7 @@ class Names:
                         softremux: "🛩SoftReMuxing Subtitles",
                         convert: "🚜Converting Video", 
                         hardmux: "🚍HardMuxing Subtitle",
+                        extract: "📂Extracting",
                         changeMetadata: "🪀Changing MetaData",
                         changeindex: "🎨Changing Index"}
     FFMPEG_PROCESSES = [compress, 
@@ -33,6 +35,7 @@ class Names:
                                                         softremux, 
                                                         convert, 
                                                         hardmux,
+                                                        extract,
                                                         changeMetadata,
                                                         changeindex]
     STATUS_UPLOADING = "🔼Uploading"
