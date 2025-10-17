@@ -9,7 +9,7 @@ from re import findall as refindall
 from math import floor
 from asyncio import wait_for, create_subprocess_exec
 from asyncio.subprocess import PIPE as asyncioPIPE
-from bot_helper.Database.User_Data import get_data
+from bot_helper.Database.User_Data import get_data, get_title
 from json import loads
 from os.path import getsize, isdir, exists
 from shutil import move as shutil_move
@@ -133,8 +133,21 @@ def ffmpeg_status_foot(status, user_id, start_time, time_in_us):
                         status_foot+= f"**ETA Size**: Unknown"
         return status_foot
 
+def get_skill_title_string(user_id, pmode):
+    """Mendapatkan string gelar dan level untuk ditampilkan di status."""
+    user_skills = get_data().get(user_id, {}).get('skills', {})
+    skill_data = user_skills.get(pmode)
+    
+    if skill_data:
+        level = skill_data.get('level', 1)
+        title = get_title(pmode, level)
+        return f"({title} - Lvl {level})"
+    return ""
+
 
 def generate_ffmpeg_status_head(user_id, pmode, input_size):
+        skill_str = get_skill_title_string(user_id, pmode)
+
         if pmode==Names.compress:
                 if get_data()[user_id]['compress']['use_queue_size']:
                         qsize_text = f"**Queue Size**: {str(get_data()[user_id]['compress']['queue_size'])}"
@@ -144,7 +157,7 @@ def generate_ffmpeg_status_head(user_id, pmode, input_size):
                         f"**CRF**: {get_data()[user_id]['compress']['crf']} | **Copy Subtitles**: {get_data()[user_id]['compress']['copy_sub']}\n"\
                         f"{qsize_text} | **MAP**: {get_data()[user_id]['compress']['map']}\n"\
                         f"**Encoder**: {get_data()[user_id]['compress']['encoder']} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         elif pmode==Names.watermark:
                 if get_data()[user_id]['watermark']['use_queue_size']:
                         qsize_text = f"**Queue Size**: {str(get_data()[user_id]['watermark']['queue_size'])}"
@@ -160,10 +173,10 @@ def generate_ffmpeg_status_head(user_id, pmode, input_size):
                         f"{qsize_text} | **MAP**: {get_data()[user_id]['watermark']['map']}\n"\
                         f"**W.Size**: {get_data()[user_id]['watermark']['size']} | **W.Position**: {ws_name[get_data()[user_id]['watermark']['position']]}\n"\
                         f"**Encoder**: {encoder} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         elif pmode==Names.merge:
                 text = f"\n**MAP**: {get_data()[user_id]['merge']['map']} | **Fix Blank**: {get_data()[user_id]['merge']['fix_blank']}"
-                return text
+                return text, skill_str
         elif pmode==Names.convert:
                 if get_data()[user_id]['convert']['use_queue_size']:
                         qsize_text = f"**Queue Size**: {str(get_data()[user_id]['convert']['queue_size'])}"
@@ -177,7 +190,7 @@ def generate_ffmpeg_status_head(user_id, pmode, input_size):
                         f"**CRF**: {get_data()[user_id]['convert']['crf']} | **Copy Subtitles**: {get_data()[user_id]['convert']['copy_sub']}\n"\
                         f"{qsize_text} | **MAP**: {get_data()[user_id]['convert']['map']}\n"\
                         f"**Encoder**: {encoder} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         elif pmode==Names.hardmux:
                 if get_data()[user_id]['hardmux']['use_queue_size']:
                         qsize_text = f"**Queue Size**: {str(get_data()[user_id]['hardmux']['queue_size'])}"
@@ -190,15 +203,15 @@ def generate_ffmpeg_status_head(user_id, pmode, input_size):
                 text = f"\n**SYNC**: {get_data()[user_id]['hardmux']['sync']} | **Preset**: {get_data()[user_id]['hardmux']['preset']}\n"\
                         f"**CRF**: {get_data()[user_id]['hardmux']['crf']} | {qsize_text}\n"\
                         f"**Encoder**: {encoder} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         elif pmode==Names.softmux:
                 text = f"\n**Subtitles Codec**: {get_data()[user_id]['softmux']['sub_codec']} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         elif pmode==Names.softremux:
                 text = f"\n**Subtitles Codec**: {get_data()[user_id]['softremux']['sub_codec']} | **In.Size**: {get_human_size(input_size)}"
-                return text
+                return text, skill_str
         else:
-                return ""
+                return "", ""
 
 
 
@@ -383,7 +396,7 @@ class ProcessStatus:
         async def update_status(self, status):
                 if status.type()==Names.ffmpeg:
                         input_size = status.input_size()
-                        ffmpeg_head = generate_ffmpeg_status_head(self.user_id, self.process_type, input_size)
+                        ffmpeg_head, skill_str = generate_ffmpeg_status_head(self.user_id, self.process_type, input_size)
                 total_files = len(self.send_files)
                 error_no = 0
                 multi_task_no = self.get_multi_task_no()
@@ -447,7 +460,7 @@ class ProcessStatus:
                                 else:
                                                 process_state = f"{Names.STATUS[self.process_type]} [{total_files} Files]"
                                                 name = str(self.file_name)
-                                text =f'{process_state} {multi_task_no}\n'\
+                                text =f'{process_state} {skill_str} {multi_task_no}\n'\
                                                         f'`{name}`\n'\
                                                         f'{get_progress_bar_string(elapsed_time, status.duration)} {elapsed_time * 100 / status.duration:.1f}%\n'\
                                                         f'**Added By**: {self.added_by} | **ID**: `{self.user_id}`\n'\
