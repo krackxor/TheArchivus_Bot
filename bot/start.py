@@ -1887,11 +1887,14 @@ async def _mirror_file(event):
         await update_status_message(event)
         return
 
-# --- PERINTAH /extract DENGAN VERSI TOMBOL BARU ---
+
+# --- PERINTAH /extract DENGAN PENGECEKAN VIP ---
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('extract')))
 async def _extract_streams(event):
+    # --- PENGECEKAN VIP DITAMBAHKAN DI SINI ---
     if not await is_authorized(event): return
-    chat_id = event.chat.id
+    
+    chat_id = event.message.chat.id
     user_id = event.message.sender.id
     if user_id not in get_data():
         await new_user(user_id, SAVE_TO_DATABASE)
@@ -1913,7 +1916,6 @@ async def _extract_streams(event):
     user_name = get_username(event)
     user_first_name = event.message.sender.first_name
     
-    # Buat ProcessStatus sementara untuk mengelola unduhan
     temp_process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.Extract)
     
     temp_task = {'process_status': temp_process_status, 'functions': []}
@@ -1953,43 +1955,8 @@ async def _extract_streams(event):
         'selected': []
     }
 
-    # Kirim pesan dengan tombol
     buttons = build_extract_buttons(session_id)
     await event.reply(f"**Pilih stream untuk diekstrak dari:**\n`{original_filename}`", buttons=buttons)
-
-
-# --- FUNGSI BARU UNTUK MEMBUAT TOMBOL ---
-def build_extract_buttons(session_id):
-    session = EXTRACT_SESSIONS[session_id]
-    buttons = []
-    
-    if session['audio_streams']:
-        buttons.append([Button.inline("--- AUDIO ---", "extract_noop")])
-        for s in session['audio_streams']:
-            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
-            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
-
-    if session['sub_streams']:
-        buttons.append([Button.inline("--- SUBTITLE ---", "extract_noop")])
-        for s in session['sub_streams']:
-            text = f"✅ #{s['index']}: {s['lang']} ({s['codec']})" if s['index'] in session['selected'] else f"☑️ #{s['index']}: {s['lang']} ({s['codec']})"
-            buttons.append([Button.inline(text, f"extract_select_{session_id}_{s['index']}")])
-            
-    buttons.append([Button.inline("--- KONTROL ---", "extract_noop")])
-    control_row1 = [
-        Button.inline("Semua Audio", f"extract_all_audio_{session_id}"),
-        Button.inline("Semua Sub", f"extract_all_sub_{session_id}"),
-        Button.inline("Semua", f"extract_all_{session_id}"),
-    ]
-    control_row2 = [
-        Button.inline("Hapus Pilihan", f"extract_clear_{session_id}"),
-        Button.inline("❌ Batal", f"extract_cancel_{session_id}"),
-    ]
-    buttons.append(control_row1)
-    buttons.append(control_row2)
-    buttons.append([Button.inline("✅ Ekstrak Pilihan", f"extract_confirm_{session_id}")])
-    
-    return buttons
 
 
 # --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
