@@ -5,6 +5,13 @@ from bot_helper.Others.Helper_Functions import delete_all, get_config, get_env_d
 from bot_helper.Database.User_Data import get_data, new_user, saveconfig, saveoptions, resetdatabase
 from os.path import exists
 from bot_helper.Telegram.Telegram_Client import Telegram
+from bot_helper.Process.Process_Status import ProcessStatus
+from bot_helper.Others.Names import Names
+from bot_helper.Aria2.Aria2_Engine import Aria2
+from asyncio import create_task
+from bot_helper.Process.Running_Tasks import add_task
+from .start import update_status_message
+
 
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
@@ -212,7 +219,47 @@ async def callback(event):
             await event.answer(f"✅Current Metadata: {str(cmetadata)}", alert=True)
             return
         
-        
+        elif txt.startswith("extract_"):
+            parts = txt.split("_")
+            process_id = parts[1]
+            stream_type = parts[2]
+            stream_index = parts[3]
+            
+            # Retrieve the original ProcessStatus and the link
+            if not hasattr(Telegram, 'temp_files') or process_id not in Telegram.temp_files:
+                await event.answer("❗Sesi proses tidak ditemukan atau telah kedaluwarsa.", alert=True)
+                return
+                
+            link = Telegram.temp_files.pop(process_id)
+            
+            # Create a new ProcessStatus for the actual task
+            original_event = await event.get_message()
+            
+            process_status = ProcessStatus(
+                user_id, 
+                chat_id, 
+                event.sender.username, 
+                event.sender.first_name, 
+                original_event, 
+                Names.extract, 
+                custom_metadata=f"{stream_type}-{stream_index}" # We'll use this to pass the selection
+            )
+
+            task = {}
+            task['process_status'] = process_status
+            task['functions'] = []
+            
+            if isinstance(link, str):
+                task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
+            else:
+                task['functions'].append(["TG", [link]])
+            
+            await event.edit("✅ Pilihan Anda telah diterima. Memulai proses ekstraksi...")
+            create_task(add_task(task))
+            # The original event object from the /extract command might not be directly accessible here
+            # We will rely on the user to call /status separately.
+            return
+
         return
 
 
