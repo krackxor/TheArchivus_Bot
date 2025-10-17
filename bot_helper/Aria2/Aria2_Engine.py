@@ -275,6 +275,13 @@ class AriaDownloadStatus:
         return
     
     def onDownloadComplete(self):
+        # --- AWAL PERBAIKAN ---
+        # Menambahkan file yang telah selesai diunduh ke daftar proses.
+        # Ini adalah perbaikan bug kritis untuk mencegah error 'IndexError'.
+        file_name = self.name()
+        if file_name:
+            self.listener().append_send_files_loc(f"{self.listener().dir}/{file_name}")
+        # --- AKHIR PERBAIKAN ---
         self.listener().update_status_message("✅Download Has Completed")
         self.process_status = 1
         return
@@ -315,4 +322,3 @@ class AriaDownloadStatus:
             self.process_status = -2
             self.listener().update_status_message('🔒Task Cancelled By User') 
             Aria2.client.remove([self.__download], force=True, files=True)
-
