@@ -8,7 +8,7 @@ from shutil import rmtree
 from bot_helper.Others.Names import Names
 from bot_helper.FFMPEG.FFMPEG_Commands import get_commands
 from bot_helper.FFMPEG.FFMPEG_Status import FfmpegStatus
-from bot_helper.Database.User_Data import get_task_limit, get_data
+from bot_helper.Database.User_Data import get_task_limit, get_data, add_skill_xp
 from time import time
 from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
 from os.path import exists
@@ -318,8 +318,25 @@ async def start_task(task):
         await Telegram.upload_videos(process_status)
     elif process_completed and process_status.process_type==Names.mirror:
         await upload_drive(process_status)
-        
-    # --- PANGGIL FUNGSI PENGIRIMAN MASSAL DI SINI ---
+
+    # --- MEMBERIKAN XP DAN NOTIFIKASI KENAIKAN LEVEL ---
+    if process_completed:
+        skill_name = process_status.process_type
+        # Beri 15 XP per tugas yang berhasil
+        new_level, skill = await add_skill_xp(process_status.user_id, skill_name, 15)
+
+        if new_level:
+            # Kirim notifikasi ke pengguna bahwa level keahliannya naik
+            try:
+                await Telegram.TELETHON_CLIENT.send_message(
+                    process_status.user_id,
+                    f"🎉 **Selamat!** Keahlian **{skill}** Anda telah naik ke **Level {new_level}**!"
+                )
+            except:
+                # Abaikan jika bot diblokir oleh pengguna
+                pass
+    
+    # --- PANGGIL FUNGSI PENGIRIMAN MASSAL KE LOG CHANNEL ---
     if process_completed:
         await Telegram.send_files_to_log_in_bulk(process_status)
 
