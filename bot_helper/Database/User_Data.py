@@ -45,6 +45,8 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['watermark']['copy_sub'] = True
         DATA[user_id]['watermark']['map'] = True
         DATA[user_id]['watermark']['sync'] = False
+        DATA[user_id]['watermark']['audio_codec'] = 'copy'
+        DATA[user_id]['watermark']['metadata'] = ''
         DATA[user_id]['softmux'] = {}
         DATA[user_id]['softmux']['preset'] = 'ultrafast'
         DATA[user_id]['softmux']['use_crf'] = False
@@ -73,6 +75,8 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['hardmux']['use_queue_size'] = False
         DATA[user_id]['hardmux']['queue_size'] = '9999'
         DATA[user_id]['hardmux']['sync'] = False
+        DATA[user_id]['hardmux']['audio_codec'] = 'copy'
+        DATA[user_id]['hardmux']['metadata'] = ''
         DATA[user_id]['compress'] = {}
         DATA[user_id]['compress']['preset'] = 'ultrafast'
         DATA[user_id]['compress']['crf'] = '23'
@@ -84,6 +88,8 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['compress']['map'] = True
         DATA[user_id]['compress']['copy_sub'] = False
         DATA[user_id]['compress']['encoder'] = 'libx265'
+        DATA[user_id]['compress']['audio_codec'] = 'copy'
+        DATA[user_id]['compress']['metadata'] = ''
         DATA[user_id]['compression'] = False
         DATA[user_id]['select_stream'] = False
         DATA[user_id]['stream'] = 'ENG'
@@ -98,6 +104,8 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['merge']['map_sub'] = True
         DATA[user_id]['merge']['map'] = True
         DATA[user_id]['merge']['fix_blank'] = False
+        DATA[user_id]['merge']['audio_codec'] = 'copy'
+        DATA[user_id]['merge']['metadata'] = ''
         DATA[user_id]['custom_thumbnail'] = False
         DATA[user_id]['convert_video'] = False
         DATA[user_id]['convert_quality'] = [720, 480]
@@ -113,6 +121,8 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['convert']['sync'] = False
         DATA[user_id]['convert']['queue_size'] = '9999'
         DATA[user_id]['convert']['convert_list'] = [720, 480]
+        DATA[user_id]['convert']['audio_codec'] = 'copy'
+        DATA[user_id]['convert']['metadata'] = ''
         DATA[user_id]['custom_name'] = False
         DATA[user_id]['custom_metadata'] = False
         DATA[user_id]['metadata'] = "Nik66Bots"
