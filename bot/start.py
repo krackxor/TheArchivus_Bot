@@ -562,9 +562,13 @@ async def update_status_message(event):
         LOGGER.info(f"Status Updating Complete")
         return
 
-# Helper function to create dynamic command patterns
+# --- AWAL PERBAIKAN ---
+# Helper function to create dynamic command patterns that accept arguments
 def cmd_pattern(command):
+    # This pattern allows the command to be followed by a space (for arguments) or the end of the line.
     return f"/{command}{CMD_SUFFIX}(?:@{BOT_USERNAME})?(?: |$)"
+# --- AKHIR PERBAIKAN ---
+
 
 # --- PERINTAH BARU UNTUK VIP ---
 
@@ -665,7 +669,8 @@ async def _saverclone(event):
         else:
                 text = f"Rclone Config Not Present\n\nSend Me Config To Save."
         
-        keyword = f"/saveconfig{CMD_SUFFIX}"
+        command_name = "saveconfig"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
         new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], text, 120, "text/", True, False)
         if new_event and new_event not in ["cancelled", "stopped"]:
             if new_event.message.file:
@@ -943,21 +948,27 @@ async def _compress_video(event):
     user_id = event.message.sender.id
     if user_id not in get_data():
             await new_user(user_id, SAVE_TO_DATABASE)
+            
+    # --- AWAL PERBAIKAN ---
+    command_name = "compress"
+    keyword = f"/{command_name}{CMD_SUFFIX}"
+    # --- AKHIR PERBAIKAN ---
+    
     link, custom_file_name = await get_link(event)
     if link=="invalid":
         await event.reply("❗Invalid link")
         return
     elif not link:
-        keyword = f"/compress{CMD_SUFFIX}"
         new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
         if new_event and new_event not in ["cancelled", "stopped"]:
             link = await get_url_from_message(new_event)
         else:
             return
+            
     user_name = get_username(event)
     user_first_name = event.message.sender.first_name
     process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.compress, custom_file_name)
-    await get_thumbnail(process_status, [f"/compress{CMD_SUFFIX}", "pass"], 120)
+    await get_thumbnail(process_status, [keyword, "pass"], 120)
     task = {}
     task['process_status'] = process_status
     task['functions'] = []
@@ -966,7 +977,7 @@ async def _compress_video(event):
     else:
         task['functions'].append(["TG", [link]])
     if get_data()[user_id]['multi_tasks']:
-            m_result = await multi_tasks(process_status, f'/compress{CMD_SUFFIX}')
+            m_result = await multi_tasks(process_status, keyword)
             if not m_result:
                 for t in process_status.multi_tasks:
                     del t
@@ -1069,7 +1080,11 @@ async def _add_watermark_to_video(event):
     user_id = event.message.sender.id
     if user_id not in get_data():
             await new_user(user_id, SAVE_TO_DATABASE)
-    check_watermark = await ask_watermark(event, chat_id, user_id, "watermark", True)
+            
+    command_name = "watermark"
+    keyword = f"/{command_name}{CMD_SUFFIX}"
+            
+    check_watermark = await ask_watermark(event, chat_id, user_id, command_name, True)
     if not check_watermark:
         await event.reply("❗Failed To Get Watermark.")
         return
@@ -1078,16 +1093,16 @@ async def _add_watermark_to_video(event):
         await event.reply("❗Invalid link")
         return
     elif not link:
-        keyword = f"/watermark{CMD_SUFFIX}"
         new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
         if new_event and new_event not in ["cancelled", "stopped"]:
             link = await get_url_from_message(new_event)
         else:
             return
+            
     user_name = get_username(event)
     user_first_name = event.message.sender.first_name
     process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.watermark, custom_file_name)
-    await get_thumbnail(process_status, [f"/watermark{CMD_SUFFIX}", "pass"], 120)
+    await get_thumbnail(process_status, [keyword, "pass"], 120)
     task = {}
     task['process_status'] = process_status
     task['functions'] = []
@@ -1096,7 +1111,7 @@ async def _add_watermark_to_video(event):
     else:
         task['functions'].append(["TG", [link]])
     if get_data()[user_id]['multi_tasks']:
-            m_result = await multi_tasks(process_status, f'/watermark{CMD_SUFFIX}')
+            m_result = await multi_tasks(process_status, keyword)
             if not m_result:
                 for t in process_status.multi_tasks:
                     del t
@@ -1140,7 +1155,10 @@ async def _merge_videos(event):
         task['functions'] = []
         file_index = 1
         Cancel = False
-        keyword = f"/merge{CMD_SUFFIX}"
+        
+        command_name = "merge"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+        
         while True:
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Video or URL No {file_index}", 120, "video/", False, message_hint=f"🔷Send `stop` To Process Merge\n🔷Send `cancel` To Cancel Merge Process", allow_command=True)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
@@ -1202,12 +1220,15 @@ async def _softmux_subtitles(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "softmux"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/softmux{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1218,7 +1239,7 @@ async def _softmux_subtitles(event):
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.softmux, custom_file_name)
         file_index = 1
         Cancel = False
-        keyword = f"/softmux{CMD_SUFFIX}"
+        
         while True:
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process SoftMux\n🔷Send `cancel` To Cancel SoftMux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
@@ -1295,12 +1316,15 @@ async def _softremux_subtitles(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "softremux"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/softremux{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1311,7 +1335,7 @@ async def _softremux_subtitles(event):
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.softremux, custom_file_name)
         file_index = 1
         Cancel = False
-        keyword = f"/softremux{CMD_SUFFIX}"
+        
         while True:
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop", "cancel"], f"Send Subtitle SRT File No {file_index}", 120, False, False, message_hint=f"🔷Send `stop` To Process Softremux\n🔷Send `cancel` To Cancel Softremux Process", allow_command=True, allow_magnet=False, allow_url=False, stop_on_url=False)
             if new_event and new_event not in ["cancelled", "stopped", "pass"]:
@@ -1388,12 +1412,15 @@ async def _convert_video(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "convert"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/convert{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1423,12 +1450,15 @@ async def _hardmux_subtitle(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "hardmux"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/hardmux{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1437,7 +1467,7 @@ async def _hardmux_subtitle(event):
         user_name = get_username(event)
         user_first_name = event.message.sender.first_name
         process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.hardmux, custom_file_name)
-        keyword = f"/hardmux{CMD_SUFFIX}"
+        
         new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], f"Send Subtitle SRT File", 120, False, True, allow_magnet=False, allow_url=False)
         if new_event and new_event not in ["cancelled", "stopped"]:
             if new_event.message.file:
@@ -1603,12 +1633,15 @@ async def _gen_video_sample(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "gensample"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/gensample{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1636,12 +1669,15 @@ async def _gen_screenshots(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "genss"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/genss{CMD_SUFFIX}"
             new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1668,7 +1704,10 @@ async def _change_metadata(event):
         if not await is_authorized(event): return
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
-        command = f'/changemetadata{CMD_SUFFIX}'
+        
+        command_name = "changemetadata"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+        
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
         link, custom_file_name = await get_link(event)
@@ -1676,7 +1715,7 @@ async def _change_metadata(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, [command, "stop"], "Send Video or URL", 120, "video/", True)
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1707,7 +1746,7 @@ async def _change_metadata(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, [command, "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
@@ -1719,7 +1758,10 @@ async def _change_index(event):
         if not await is_authorized(event): return
         chat_id = event.message.chat.id
         user_id = event.message.sender.id
-        command = f'/changeindex{CMD_SUFFIX}'
+        
+        command_name = "changeindex"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+        
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
         link, custom_file_name = await get_link(event)
@@ -1727,7 +1769,7 @@ async def _change_index(event):
             await event.reply("❗Invalid link")
             return
         elif not link:
-            new_event = await ask_media_OR_url(event, chat_id, user_id, [command, "stop"], "Send Video or URL", 120, "video/", True)
+            new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
             else:
@@ -1761,7 +1803,7 @@ async def _change_index(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, [command, "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
@@ -1775,12 +1817,15 @@ async def _leech_file(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+                
+        command_name = "leech"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/leech{CMD_SUFFIX}"
             new_event = await ask_url(event, chat_id, user_id, [keyword, "stop"], "Send Link", 120, True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1796,7 +1841,7 @@ async def _leech_file(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, [f"/leech{CMD_SUFFIX}", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
@@ -1810,12 +1855,15 @@ async def _mirror_file(event):
         user_id = event.message.sender.id
         if user_id not in get_data():
                 await new_user(user_id, SAVE_TO_DATABASE)
+
+        command_name = "mirror"
+        keyword = f"/{command_name}{CMD_SUFFIX}"
+                
         link, custom_file_name = await get_link(event)
         if link=="invalid":
             await event.reply("❗Invalid link")
             return
         elif not link:
-            keyword = f"/mirror{CMD_SUFFIX}"
             new_event = await ask_url(event, chat_id, user_id, [keyword, "stop"], "Send Link", 120, True)
             if new_event and new_event not in ["cancelled", "stopped"]:
                 link = await get_url_from_message(new_event)
@@ -1831,7 +1879,7 @@ async def _mirror_file(event):
                 task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
         else:
             task['functions'].append(["TG", [link]])
-        await get_thumbnail(process_status, [f"/mirror{CMD_SUFFIX}", "pass"], 120)
+        await get_thumbnail(process_status, [keyword, "pass"], 120)
         create_task(add_task(task))
         await update_status_message(event)
         return
