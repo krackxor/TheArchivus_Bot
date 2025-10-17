@@ -31,7 +31,7 @@ def get_data():
 
 async def new_user(user_id, dbsave):
         DATA[user_id] = {}
-        # Pengaturan default lainnya tetap sama...
+        # Pengaturan default lainnya...
         DATA[user_id]['watermark'] = {}
         DATA[user_id]['watermark']['position'] = '5:5'
         DATA[user_id]['watermark']['size'] = '15'
@@ -144,7 +144,6 @@ async def new_user(user_id, dbsave):
         DATA[user_id]['multi_tasks'] = False
         DATA[user_id]['upload_all'] = True
 
-        # --- PENGGUNA BARU MEMULAI DARI LEVEL 0 ---
         DATA[user_id]['skills'] = {
             'Compress': {'level': 0, 'xp': 0}, 'Watermark': {'level': 0, 'xp': 0},
             'Merge': {'level': 0, 'xp': 0}, 'Convert': {'level': 0, 'xp': 0},
@@ -160,7 +159,6 @@ async def new_user(user_id, dbsave):
             data = True
         return data
 
-# ... (Fungsi saveoptions, resetdatabase, saveconfig, dll. tetap sama) ...
 async def saveoptions(user_id, dname, value, dbsave):
     try:
         if user_id not in DATA:
@@ -226,10 +224,8 @@ async def clear_restart():
 #////////////////////////////////////Skill System////////////////////////////////////#
 
 def get_title(skill, level):
-    """Mendapatkan gelar berdasarkan keahlian dan level."""
     if level == 0:
         return "Pendatang Baru"
-    
     titles = {
         'Convert':  ["Pemula", "Ahli", "Master", "Legenda Konversi"],
         'Hardmux':  ["Novis", "Spesialis", "Pakar", "Maestro Muxing"],
@@ -245,56 +241,53 @@ def get_title(skill, level):
     return titles.get(skill, ["-"]*4)[0]
 
 async def add_skill_xp(user_id, skill_name, amount):
-    """Menambahkan XP, menangani kenaikan level, dan mengembalikan status."""
     if user_id not in DATA or 'skills' not in DATA.get(user_id, {}):
         await new_user(user_id, Config.SAVE_TO_DATABASE)
-
     if skill_name not in DATA[user_id]['skills']:
-        return None, None, None
+        return None, None, None, None
 
-    # Penggunaan pertama kali langsung naik ke Level 1 ("Pemula")
+    # Penggunaan pertama kali langsung naik ke Level 1
     if DATA[user_id]['skills'][skill_name]['level'] == 0:
         DATA[user_id]['skills'][skill_name]['level'] = 1
         new_level_achieved = 1
+        xp_needed = 100 # XP dibutuhkan untuk ke level 2
+        current_xp = 0
         if Config.SAVE_TO_DATABASE:
             await db.save_data(str(DATA))
-        return new_level_achieved, skill_name, amount
+        return new_level_achieved, skill_name, amount, (current_xp, xp_needed)
 
     # Tambahkan XP
     DATA[user_id]['skills'][skill_name]['xp'] += amount
     current_level = DATA[user_id]['skills'][skill_name]['level']
-    # Formula XP baru: level berikutnya butuh (level saat ini * 100) + 100
-    xp_needed = (current_level * 100) + 100
+    xp_needed = current_level * 100
     new_level_achieved = None
 
     if DATA[user_id]['skills'][skill_name]['xp'] >= xp_needed:
-        # Naik Level!
         DATA[user_id]['skills'][skill_name]['level'] += 1
         DATA[user_id]['skills'][skill_name]['xp'] -= xp_needed
         new_level_achieved = DATA[user_id]['skills'][skill_name]['level']
+    
+    current_xp = DATA[user_id]['skills'][skill_name]['xp']
+    xp_needed_for_next = DATA[user_id]['skills'][skill_name]['level'] * 100
         
     if Config.SAVE_TO_DATABASE:
         await db.save_data(str(DATA))
 
-    return new_level_achieved, skill_name, amount
+    return new_level_achieved, skill_name, amount, (current_xp, xp_needed_for_next)
 
-# ... (Sisa kode untuk VIP System tetap sama) ...
+#////////////////////////////////////VIP System////////////////////////////////////#
+
 async def add_vip(user_id, days):
-    """Menambahkan user ke daftar VIP."""
     if 'vip_users' not in DATA:
         DATA['vip_users'] = {}
-    
-    # PERBAIKAN: Menggunakan timezone dari config
     expiration_date = datetime.now(TIMEZONE) + timedelta(days=days)
     DATA['vip_users'][user_id] = expiration_date.timestamp()
-    
     if Config.SAVE_TO_DATABASE:
         await db.save_data(str(DATA))
     return expiration_date.strftime("%Y-%m-%d %H:%M:%S")
 
 async def remove_vip(user_id):
-    """Menghapus user dari daftar VIP."""
-    user_id = int(user_id) # Pastikan user_id adalah integer
+    user_id = int(user_id)
     if 'vip_users' in DATA and user_id in DATA['vip_users']:
         del DATA['vip_users'][user_id]
         if Config.SAVE_TO_DATABASE:
@@ -303,17 +296,14 @@ async def remove_vip(user_id):
     return False
 
 async def is_vip(user_id):
-    """Mengecek apakah user adalah VIP dan menghapus jika sudah kadaluarsa."""
     if 'vip_users' not in DATA:
         return False, None
-    
     user_id = int(user_id)
     if user_id not in DATA['vip_users']:
         return False, None
     
     expiration_timestamp = DATA['vip_users'][user_id]
     if time.time() > expiration_timestamp:
-        # LOGIKA PENGHAPUSAN OTOMATIS
         LOGGER.info(f"VIP expired for user {user_id}. Removing automatically.")
         await remove_vip(user_id)
         return False, None
@@ -322,12 +312,9 @@ async def is_vip(user_id):
     return True, expiration_date.strftime("%Y-%m-%d %H:%M:%S")
 
 async def get_vip_users():
-    """Mendapatkan daftar semua user VIP dan membersihkan yang kadaluarsa."""
     if 'vip_users' not in DATA or not DATA['vip_users']:
         return "Tidak ada user VIP."
 
-    # LOGIKA PEMBERSIHAN OTOMATIS
-    # Membuat salinan keys untuk iterasi karena dictionary akan diubah
     all_vips = list(DATA['vip_users'].keys())
     cleaned = False
     for user_id in all_vips:
