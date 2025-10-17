@@ -23,6 +23,7 @@ from requests import get
 from bot_helper.Others.SpeedTest import speedtest
 from subprocess import run as srun
 from heroku3 import from_key
+from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
 
 
 status_update = {}
@@ -1909,3 +1910,43 @@ async def _my_skills(event):
         message += f"   - XP: `{xp} / {xp_needed}`\n"
 
     await event.reply(message)
+
+
+###############------Extract------###############
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('extract')))
+async def _extract_streams(event):
+    if not await is_authorized(event): return
+    chat_id = event.message.chat.id
+    user_id = event.message.sender.id
+    if user_id not in get_data():
+        await new_user(user_id, SAVE_TO_DATABASE)
+    
+    command_name = "extract"
+    keyword = f"/{command_name}{CMD_SUFFIX}"
+    
+    link, custom_file_name = await get_link(event)
+    if link == "invalid":
+        await event.reply("❗Invalid link")
+        return
+    elif not link:
+        new_event = await ask_media_OR_url(event, chat_id, user_id, [keyword, "stop"], "Send Video or URL", 120, "video/", True)
+        if new_event and new_event not in ["cancelled", "stopped"]:
+            link = await get_url_from_message(new_event)
+        else:
+            return
+            
+    user_name = get_username(event)
+    user_first_name = event.message.sender.first_name
+    
+    # We will pass the link to the callback, so we need a way to identify it
+    # We'll use the process_id for this
+    process_status = ProcessStatus(user_id, chat_id, user_name, user_first_name, event, Names.extract, custom_file_name)
+    
+    # Store the link temporarily. We'll retrieve it in the callback.
+    # A simple dictionary can be used for this.
+    if not hasattr(Telegram, 'temp_files'):
+        Telegram.temp_files = {}
+    Telegram.temp_files[process_status.process_id] = link
+
+    await FFMPEG.extract_streams_options(process_status)
+    return
