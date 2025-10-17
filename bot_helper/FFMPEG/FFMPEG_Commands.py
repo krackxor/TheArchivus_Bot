@@ -352,25 +352,39 @@ def get_commands(process_status):
         return command, log_file, input_file, output_file, file_duration
 
     elif process_status.process_type == Names.extract:
+        # --- AWAL PERBAIKAN ---
+        user_data = get_data().get(process_status.user_id, {})
+        if 'extract' not in user_data:
+            user_data['extract'] = {
+                'extract_all_audios': False,
+                'extract_all_subtitles': False,
+                'extract_all': False
+            }
+        # --- AKHIR PERBAIKAN ---
+            
         create_direc(f"{process_status.dir}/extract/")
         log_file = f"{process_status.dir}/extract/extract_logs_{process_status.process_id}.txt"
         input_file = f'{str(process_status.send_files[-1])}'
-        output_file = f"{process_status.dir}/extract/{get_output_name(process_status)}"
+        base_name, _ = splitext(get_output_name(process_status))
+        output_file = f"{process_status.dir}/extract/{base_name}" # Output path without extension
         file_duration = get_video_duration(input_file)
+        
         command = ['ffmpeg', '-hide_banner',
                    '-progress', f"{log_file}",
                    '-i', f'{input_file}']
         
-        # Logika untuk mengekstrak audio/subtitle berdasarkan pilihan pengguna
-        if get_data()[process_status.user_id]['extract']['extract_all']:
-            command.extend(['-map', '0:a', '-map', '0:s', '-c', 'copy'])
-        elif get_data()[process_status.user_id]['extract']['extract_all_audios']:
-            command.extend(['-map', '0:a', '-c:a', 'copy', '-vn', '-sn'])
-        elif get_data()[process_status.user_id]['extract']['extract_all_subtitles']:
-            command.extend(['-map', '0:s', '-c:s', 'copy', '-vn', '-an'])
-        else:
-            # Logika untuk stream individual (jika diperlukan di masa mendatang)
-            pass
-
+        # Logika baru untuk ekstraksi berdasarkan pilihan
+        if process_status.custom_index: # Pilihan spesifik dari tombol
+            command.extend(process_status.custom_index)
+            command.extend(['-c', 'copy'])
+        else: # Fallback ke pengaturan default
+            if user_data['extract']['extract_all']:
+                command.extend(['-map', '0:a?', '-map', '0:s?', '-c', 'copy'])
+            elif user_data['extract']['extract_all_audios']:
+                command.extend(['-map', '0:a?', '-c:a', 'copy', '-vn', '-sn'])
+            elif user_data['extract']['extract_all_subtitles']:
+                command.extend(['-map', '0:s?', '-c:s', 'copy', '-vn', '-an'])
+        
+        # Menggunakan output_file sebagai prefix
         command.extend(['-y', f"{output_file}"])
         return command, log_file, input_file, output_file, file_duration
