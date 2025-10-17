@@ -23,17 +23,10 @@ from requests import get
 from bot_helper.Others.SpeedTest import speedtest
 from subprocess import run as srun
 from heroku3 import from_key
-from shutil import rmtree
 
-# --- Impor baru ---
-from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
-# --- Impor build_extract_buttons dihapus dari sini ---
 
 status_update = {}
 status_update_lock = Lock()
-
-# Variabel Global untuk Sesi Ekstraksi
-EXTRACT_SESSIONS = {}
 
 
 if not isdir('./userdata'):
@@ -55,16 +48,20 @@ OWNER_USERNAME = Config.OWNER_USERNAME
 
 #////////////////////////////////////Functions////////////////////////////////////#
 
+# --- FUNGSI BARU UNTUK OTORISASI ---
 async def is_authorized(event):
     """Fungsi otorisasi terpusat."""
     user_id = event.sender_id
+    # Owner dan Sudo selalu diizinkan
     if user_id == owner_id or user_id in sudo_users:
         return True
     
+    # Cek status VIP
     is_vip_user, _ = await is_vip(user_id)
     if is_vip_user:
         return True
     
+    # Jika bukan siapa-siapa, kirim pesan error
     await event.reply(
         f"❗ **Akses Ditolak** ❗\n\n"
         f"Anda bukan anggota VIP. Fitur ini hanya untuk pengguna VIP.\n\n"
@@ -174,7 +171,7 @@ def dw_file_from_url(url, filename):
     
 ###############------Download_Rclone_Config------###############
 for user_id in get_data():
-    if not isinstance(get_data().get(user_id), dict): continue
+    if not isinstance(get_data().get(user_id), dict): continue # Lewati jika bukan data user
     link = get_data()[user_id].get('rclone_config_link')
     if link:
         LOGGER.info(f"🔽Downloading Rclone Config For User_ID {user_id} From Link {link}")
@@ -241,11 +238,13 @@ async def get_link(event):
     custom_file_name = False
     message_text = event.message.message
     
+    # Menghapus suffix dan username bot dari pesan untuk parsing
     plain_command = message_text.split(' ')[0]
     plain_command = plain_command.replace(CMD_SUFFIX, '')
     if BOT_USERNAME:
         plain_command = plain_command.replace(f'@{BOT_USERNAME}', '')
     
+    # Rekonstruksi pesan tanpa suffix untuk parsing
     reconstructed_message = message_text.replace(event.message.message.split(' ')[0], plain_command)
 
     if "|" in reconstructed_message:
@@ -346,6 +345,7 @@ async def ask_text_list(chat_id, user_id, event, timeout, message, include_list)
 
 ###############------Ask Media OR URL------###############
 async def ask_media_OR_url(event, chat_id, user_id, keywords, message, timeout, mtype, s_handle, allow_magnet=True, allow_url=True, message_hint=False, allow_command=False, stop_on_url=True):
+    # Buat keywords dinamis dengan suffix
     keywords_with_suffix = [f"/{k}{CMD_SUFFIX}" for k in keywords if not k.startswith('/')] + [k for k in keywords if k.startswith('/')]
 
     async with TELETHON_CLIENT.conversation(chat_id) as conv:
@@ -562,8 +562,12 @@ async def update_status_message(event):
         LOGGER.info(f"Status Updating Complete")
         return
 
+# --- AWAL PERBAIKAN ---
+# Helper function to create dynamic command patterns that accept arguments
 def cmd_pattern(command):
+    # This pattern allows the command to be followed by a space (for arguments) or the end of the line.
     return f"/{command}{CMD_SUFFIX}(?:@{BOT_USERNAME})?(?: |$)"
+# --- AKHIR PERBAIKAN ---
 
 
 # --- PERINTAH BARU UNTUK VIP ---
@@ -647,32 +651,9 @@ async def _view_vips(event):
     await event.reply(vip_list_message)
 
 
-# --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
-@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('myskills')))
-async def _my_skills(event):
-    if not await is_authorized(event): return
-    user_id = event.sender_id
-
-    if user_id not in get_data() or 'skills' not in get_data().get(user_id, {}):
-        await event.reply("Anda belum memiliki statistik keahlian. Coba gunakan beberapa perintah terlebih dahulu!")
-        return
-
-    user_skills = get_data()[user_id]['skills']
-    
-    message = f"**Keahlian Anda, {get_mention(event)}:**\n\n"
-    for skill, data in user_skills.items():
-        level = data['level']
-        xp = data['xp']
-        xp_needed = level * 100
-        title = get_title(skill, level)
-        
-        message += f"🔹 **{skill}** - **{title}** (Level {level})\n"
-        message += f"   - XP: `{xp} / {xp_needed}`\n"
-
-    await event.reply(message)
-
-
 # --- MODIFIKASI PERINTAH LAMA ---
+
+###############------Save_Rclone_Config------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('saveconfig')))
 async def _saverclone(event):
         if not await is_authorized(event): return
@@ -713,6 +694,7 @@ async def _saverclone(event):
         return
 
 
+###############------Change_Task_Limit------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('tasklimit'), func=lambda e: owner_checker(e)))
 async def _changetasklimit(event):
         user_id = event.message.sender.id
@@ -725,6 +707,7 @@ async def _changetasklimit(event):
             return
 
 
+###############------Restart------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('restart'), func=lambda e: owner_checker(e)))
 async def _restart(event):
         chat_id = event.message.chat.id
@@ -737,6 +720,7 @@ async def _restart(event):
         execl(executable, executable, *argv)
         
 
+###############------Restart_Heroku------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('herokurestart'), func=lambda e: owner_checker(e)))
 async def _heroku_restart(event):
         chat_id = event.message.chat.id
@@ -755,6 +739,7 @@ async def _heroku_restart(event):
         return
 
 
+###############------Get_Logs_Message------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('log'), func=lambda e: sudo_user_checker_event(e)))
 async def _log(event):
         user_id = event.message.sender.id
@@ -768,6 +753,7 @@ async def _log(event):
         return
 
 
+###############------Get_Log_File------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('logs'), func=lambda e: sudo_user_checker_event(e)))
 async def _logs(event):
         chat_id = event.message.chat.id
@@ -785,6 +771,7 @@ async def _logs(event):
         return
 
 
+###############------Reset_Database------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('resetdb'), func=lambda e: owner_checker(e)))
 async def _resetdb(event):
         await event.reply("*️⃣Are you sure?\n\n🚫 This will reset your all database 🚫", buttons=[
@@ -795,6 +782,7 @@ async def _resetdb(event):
         return
 
 
+###############------Save_WaterMark_Image------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('savewatermark')))
 async def _savewatermark(event):
         if not await is_authorized(event): return
@@ -810,6 +798,7 @@ async def _savewatermark(event):
         return
 
 
+###############------Save_Thumbnail------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('savethumb')))
 async def _savethumb(event):
         if not await is_authorized(event): return
@@ -825,6 +814,7 @@ async def _savethumb(event):
         return
 
 
+###############------Renew------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('renew'), func=lambda e: owner_checker(e)))
 async def _renew(event):
         user_id = event.message.sender.id
@@ -837,12 +827,14 @@ async def _renew(event):
             ])
         return
 
+###############------Save_Stats------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('stats'), func=lambda e: sudo_user_checker_event(e)))
 async def _stats_msg(event):
     await event.reply(str(await get_host_stats()), parse_mode='html')
     return
 
 
+###############------Speed_Test------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('speedtest'), func=lambda e: sudo_user_checker_event(e)))
 async def _speed_test(event):
     chat_id = event.message.chat.id
@@ -856,6 +848,7 @@ async def _speed_test(event):
     return
 
 
+###############------Start_Message------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('start')))
 async def _startmsg(event):
     text = f"Hi {get_mention(event)}, I Am Alive."
@@ -865,12 +858,14 @@ async def _startmsg(event):
 ])
     return
 
+###############------Bot_UpTime------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('time'), func=lambda e: sudo_user_checker_event(e)))
 async def _timecmd(event):
     await event.reply(f'♻Bot Is Alive For {getbotuptime()}')
     return
 
 
+###############------Cancel Process------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('cancel')))
 async def _cancel(event):
         if not await is_authorized(event): return
@@ -922,6 +917,7 @@ async def _cancel(event):
         return
 
 
+###############------FFMPEF Log------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('ffmpeg')))
 async def _ffmpeg_log(event):
         if not await is_authorized(event): return
@@ -944,6 +940,7 @@ async def _ffmpeg_log(event):
                 await event.reply(f'❗Give Me Process ID.')
         return
 
+###############------Compress------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('compress')))
 async def _compress_video(event):
     if not await is_authorized(event): return
@@ -952,8 +949,10 @@ async def _compress_video(event):
     if user_id not in get_data():
             await new_user(user_id, SAVE_TO_DATABASE)
             
+    # --- AWAL PERBAIKAN ---
     command_name = "compress"
     keyword = f"/{command_name}{CMD_SUFFIX}"
+    # --- AKHIR PERBAIKAN ---
     
     link, custom_file_name = await get_link(event)
     if link=="invalid":
@@ -1005,6 +1004,7 @@ async def _compress_video(event):
     return
 
 
+###############------Status------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('status')))
 async def _status(event):
         if not await is_authorized(event): return
@@ -1049,6 +1049,7 @@ async def _status(event):
         return
 
 
+###############------Settings------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('settings')))
 async def _settings(event):
         if not await is_authorized(event): return
@@ -1071,6 +1072,7 @@ async def _settings(event):
     ])
         return
 
+###############------Watermark------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('watermark')))
 async def _add_watermark_to_video(event):
     if not await is_authorized(event): return
@@ -1136,6 +1138,7 @@ async def _add_watermark_to_video(event):
     return
 
 
+###############------Merge_Videos------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('merge')))
 async def _merge_videos(event):
         if not await is_authorized(event): return
@@ -1209,6 +1212,7 @@ async def _merge_videos(event):
         return
     
 
+###############------SoftMux------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('softmux')))
 async def _softmux_subtitles(event):
         if not await is_authorized(event): return
@@ -1304,6 +1308,7 @@ async def _softmux_subtitles(event):
         await update_status_message(event)
         return
     
+###############------softremux------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('softremux')))
 async def _softremux_subtitles(event):
         if not await is_authorized(event): return
@@ -1399,6 +1404,7 @@ async def _softremux_subtitles(event):
         await update_status_message(event)
         return
 
+###############------Convert------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('convert')))
 async def _convert_video(event):
         if not await is_authorized(event): return
@@ -1436,6 +1442,7 @@ async def _convert_video(event):
         return
 
 
+###############------hardmux------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('hardmux')))
 async def _hardmux_subtitle(event):
         if not await is_authorized(event): return
@@ -1525,6 +1532,7 @@ async def _hardmux_subtitle(event):
         await update_status_message(event)
         return
 
+###############------Change_Config------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changeconfig'), func=lambda e: owner_checker(e)))
 async def _changeconfig(event):
         if not exists('config.env'):
@@ -1540,6 +1548,7 @@ async def _changeconfig(event):
             await event.reply("❗No Variable In `config.env` File")
         return
 
+###############------Clear_Config------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('clearconfigs'), func=lambda e: owner_checker(e)))
 async def _clearconfig(event):
         if exists('./userdata/botconfig.env'):
@@ -1549,12 +1558,14 @@ async def _clearconfig(event):
             await event.reply(f"❗Config Not Found")
         return
 
+###############------Check_Sudo------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('checksudo'), func=lambda e: owner_checker(e)))
 async def _checksudo(event):
     await event.reply(str(sudo_users))
     return
     
 
+###############------Add_Sudo------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('addsudo'), func=lambda e: owner_checker(e)))
 async def _addsudo(event):
     chat_id = event.message.chat.id
@@ -1584,6 +1595,7 @@ async def _addsudo(event):
         return
 
 
+###############------Delete_Sudo------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('delsudo'), func=lambda e: owner_checker(e)))
 async def _delsudo(event):
     chat_id = event.message.chat.id
@@ -1613,6 +1625,7 @@ async def _delsudo(event):
         return
 
 
+###############------Generate_Sample_Video------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('gensample')))
 async def _gen_video_sample(event):
         if not await is_authorized(event): return
@@ -1648,6 +1661,7 @@ async def _gen_video_sample(event):
         await update_status_message(event)
         return
 
+###############------Generate_Screenshots------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('genss')))
 async def _gen_screenshots(event):
         if not await is_authorized(event): return
@@ -1684,6 +1698,7 @@ async def _gen_screenshots(event):
         return
 
 
+###############------Change_MetaData------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changemetadata')))
 async def _change_metadata(event):
         if not await is_authorized(event): return
@@ -1737,6 +1752,7 @@ async def _change_metadata(event):
         return
 
 
+###############------Change_index------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('changeindex')))
 async def _change_index(event):
         if not await is_authorized(event): return
@@ -1793,6 +1809,7 @@ async def _change_index(event):
         return
 
 
+###############------Leech_File------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('leech')))
 async def _leech_file(event):
         if not await is_authorized(event): return
@@ -1830,6 +1847,7 @@ async def _leech_file(event):
         return
 
 
+###############------mirror_File------###############
 @TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('mirror')))
 async def _mirror_file(event):
         if not await is_authorized(event): return
@@ -1865,3 +1883,29 @@ async def _mirror_file(event):
         create_task(add_task(task))
         await update_status_message(event)
         return
+
+
+# --- PERINTAH BARU UNTUK MELIHAT KEAHLIAN ---
+@TELETHON_CLIENT.on(events.NewMessage(incoming=True, pattern=cmd_pattern('myskills')))
+async def _my_skills(event):
+    if not await is_authorized(event): return
+    user_id = event.sender_id
+
+    if user_id not in get_data() or 'skills' not in get_data().get(user_id, {}):
+        await event.reply("Anda belum memiliki statistik keahlian. Coba gunakan beberapa perintah terlebih dahulu!")
+        return
+
+    user_skills = get_data()[user_id]['skills']
+    
+    message = f"**Keahlian Anda, {get_mention(event)}:**\n\n"
+    for skill, data in user_skills.items():
+        level = data['level']
+        xp = data['xp']
+        xp_needed = level * 100
+        # Memanggil fungsi get_title untuk mendapatkan gelar
+        title = get_title(skill, level)
+        
+        message += f"🔹 **{skill}** - **{title}** (Level {level})\n"
+        message += f"   - XP: `{xp} / {xp_needed}`\n"
+
+    await event.reply(message)
