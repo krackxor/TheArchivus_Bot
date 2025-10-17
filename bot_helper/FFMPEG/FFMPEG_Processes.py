@@ -35,15 +35,7 @@ async def run_process_command(command):
             stdout=asyncioPIPE,
             stderr=asyncioPIPE,
             )
-        while True:
-                    try:
-                            async for line in process.stderr:
-                                        line = line.decode('utf-8').strip()
-                                        print(line)
-                    except ValueError:
-                            continue
-                    else:
-                            break
+        # Tidak perlu print output stderr di sini agar tidak spam
         await process.wait()
         return_code = process.returncode
         if return_code == 0:
@@ -105,7 +97,66 @@ async def generate_screenshoot(ss_time, input_video, ss_name):
 
 class FFMPEG:
 
-###############------Split_Video------###############
+    # --- FUNGSI BARU UNTUK EKSTRAKSI ---
+
+    async def get_stream_info(file_path):
+        """Menganalisis file video dan mengembalikan info stream yang terstruktur."""
+        try:
+            command = f"ffprobe -v quiet -print_format json -show_streams '{file_path}'"
+            stdout = await execute(command)
+            streams_json = loads(stdout)
+            
+            audio_streams = []
+            sub_streams = []
+            
+            for stream in streams_json.get("streams", []):
+                lang = stream.get("tags", {}).get("language", "unk")
+                codec = stream.get("codec_name", "N/A")
+                index = stream.get("index")
+                
+                if stream.get("codec_type") == "audio":
+                    audio_streams.append({"index": index, "lang": lang, "codec": codec})
+                elif stream.get("codec_type") == "subtitle":
+                    sub_streams.append({"index": index, "lang": lang, "codec": codec})
+            
+            return audio_streams, sub_streams
+        except Exception as e:
+            LOGGER.error(f"Gagal mendapatkan info stream: {e}")
+            return None, None
+
+    async def run_extraction(process_status, selections, original_filename):
+        """Menjalankan proses ekstraksi berdasarkan pilihan pengguna."""
+        input_file = process_status.send_files[-1]
+        base_name, _ = splitext(original_filename)
+        extracted_files = []
+        
+        for index in selections:
+            try:
+                process_status.update_process_message(f"📦 Mengekstrak stream #{index}...")
+                
+                # Menentukan ekstensi file output
+                # (Ini bisa disempurnakan lebih lanjut)
+                output_filename = f"{base_name}.track_{index}.mka" # Default untuk audio/sub
+                
+                command = [
+                    "ffmpeg", "-hide_banner", "-i", input_file,
+                    "-map", f"0:{index}", "-c", "copy",
+                    "-y", f"{process_status.dir}/{output_filename}"
+                ]
+                
+                success = await run_process_command(command)
+                if success:
+                    extracted_files.append(f"{process_status.dir}/{output_filename}")
+                else:
+                    LOGGER.error(f"Gagal mengekstrak stream #{index}")
+            except Exception as e:
+                LOGGER.error(f"Error saat ekstraksi stream #{index}: {e}")
+        
+        process_status.replace_send_list(extracted_files)
+        return True
+
+    # --- SISA FUNGSI LAMA TETAP SAMA ---
+    # ... (split_video_file, generate_ss, gen_sample_video, change_metadata, select_audio) ...
     async def split_video_file(file, split_size, dirpath, event):
         success = []
         split_size = split_size-50000000
@@ -143,8 +194,6 @@ class FFMPEG:
             await event.reply(f"❗Error While Splitting {str(file)}\n\n{str(e)}")
             LOGGER.info(str(e))
             return False
-
-###############------Send_ScreenShots------###############
     async def generate_ss(process_status, force_gen=False):
                 if get_data()[process_status.user_id]['gen_ss'] or force_gen:
                         if not force_gen:
@@ -170,8 +219,6 @@ class FFMPEG:
                                         sn0+=1
                                         await sleep(1)
                 return
-
-###############------Send_Sample_Video------###############
     async def gen_sample_video(process_status, force_gen=False):
         if get_data()[process_status.user_id]['gen_sample'] or force_gen:
                 input_video = f'{str(process_status.send_files[-1])}'
@@ -185,7 +232,6 @@ class FFMPEG:
                                 vframes = '750'
                         else:
                                 vframes = '1500'
-                        # cmd_sample = ["ffmpeg", "-ss", str(vstart_time), "-to",  str(vend_time), "-i", f"{input_video}","-c", "copy", '-y', f"{sample_name}"]
                         cmd_sample= ['ffmpeg', '-ss', f'{vstart_time}s', '-i', f"{input_video}", '-vframes', f'{vframes}', '-vsync', '1', '-async', '-1', '-acodec', 'copy', '-vcodec', 'copy', '-y', f"{sample_name}"]
                         sample_result = await run_process_command(cmd_sample)
                         if sample_result and exists(sample_name):
@@ -200,7 +246,6 @@ class FFMPEG:
                         if force_gen:
                                 await process_status.event.reply(f'❌Video Duration Must Be Greater Than 60 secs To Generate Sample')
         return
-    ###############------Change_Metadata------###############
     async def change_metadata(process_status):
         if get_data()[process_status.user_id]['custom_metadata']:
                 dl_loc = f'{str(process_status.send_files[-1])}'
@@ -228,9 +273,6 @@ class FFMPEG:
                         return
         else:
             return
-    
-    
-    ###############------Select_Audio------###############
     async def select_audio(process_status):
                                         if get_data()[process_status.user_id]['select_stream']:
                                                 language = get_data()[process_status.user_id]['stream']
@@ -241,7 +283,6 @@ class FFMPEG:
                                                         stream_data = {}
                                                         smsg = ''
                                                         for stream in details["streams"]:
-                                                                # stream_name = stream["codec_name"]
                                                                 stream_type = stream["codec_type"]
                                                                 codec_long_name = stream['codec_long_name']
                                                                 if stream_type in ("audio"):
