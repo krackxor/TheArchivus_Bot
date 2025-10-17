@@ -233,7 +233,9 @@ async def start_task(task):
                 await process_status.event.reply(process_status.message)
                 break
             else:
-                process_status.move_dw_file(aria2_status.name())
+                # PERBAIKAN: Hapus baris ini
+                # process_status.move_dw_file(aria2_status.name())
+                pass
         else:
             try:
                 download = await Telegram.download_tg_file(process_status, task['functions'][i][1], dw_index)
@@ -294,8 +296,6 @@ async def start_task(task):
                                 process_status.replace_send_list(output_list)
                         else:
                             if exists(f"{process_status.dir}/FFMPEG_LOG.txt"):
-                                    # with open(f"{process_status.dir}/FFMPEG_LOG.txt", "w", encoding="utf-8") as f:
-                                    #             f.write(str(ffmpeg_status.process_logs))
                                     await process_status.event.client.send_file(process_status.chat_id, file=f"{process_status.dir}/FFMPEG_LOG.txt", allow_cache=False, reply_to=process_status.event.message, caption=f"❌{process_status.process_type} Process Error\n\nReturn Code: {return_code}\n\nFileName: {input_file.split('/')[-1]}")
                                     remove(f"{process_status.dir}/FFMPEG_LOG.txt")
                             else:
