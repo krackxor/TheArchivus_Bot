@@ -5,13 +5,6 @@ from bot_helper.Others.Helper_Functions import delete_all, get_config, get_env_d
 from bot_helper.Database.User_Data import get_data, new_user, saveconfig, saveoptions, resetdatabase
 from os.path import exists
 from bot_helper.Telegram.Telegram_Client import Telegram
-from bot_helper.Process.Process_Status import ProcessStatus
-from bot_helper.Others.Names import Names
-from bot_helper.Aria2.Aria2_Engine import Aria2
-from asyncio import create_task
-from bot_helper.Process.Running_Tasks import add_task
-from .start import update_status_message
-
 
 #////////////////////////////////////Variables////////////////////////////////////#
 sudo_users = Config.SUDO_USERS
@@ -63,6 +56,7 @@ async def callback(event):
             [Button.inline('🚍 HardMux', 'hardmux_settings')],
             [Button.inline('🎮 SoftMux', 'softmux_settings')],
             [Button.inline('🛩SoftReMux', 'softremux_settings')],
+            [Button.inline('📂 Ekstrak', 'extract_settings')],
             [Button.inline('⭕Close Settings', 'close_settings')]
         ])
             return
@@ -184,6 +178,10 @@ async def callback(event):
                 await watermark_callback(event, txt, user_id, True)
             return
         
+        elif txt.startswith("extract"):
+            await extract_callback(event, txt, user_id)
+            return
+        
         
         elif txt=="nik66bots":
             await event.answer(f"⚡Bot By Sahil⚡", alert=True)
@@ -219,47 +217,7 @@ async def callback(event):
             await event.answer(f"✅Current Metadata: {str(cmetadata)}", alert=True)
             return
         
-        elif txt.startswith("extract_"):
-            parts = txt.split("_")
-            process_id = parts[1]
-            stream_type = parts[2]
-            stream_index = parts[3]
-            
-            # Retrieve the original ProcessStatus and the link
-            if not hasattr(Telegram, 'temp_files') or process_id not in Telegram.temp_files:
-                await event.answer("❗Sesi proses tidak ditemukan atau telah kedaluwarsa.", alert=True)
-                return
-                
-            link = Telegram.temp_files.pop(process_id)
-            
-            # Create a new ProcessStatus for the actual task
-            original_event = await event.get_message()
-            
-            process_status = ProcessStatus(
-                user_id, 
-                chat_id, 
-                event.sender.username, 
-                event.sender.first_name, 
-                original_event, 
-                Names.extract, 
-                custom_metadata=f"{stream_type}-{stream_index}" # We'll use this to pass the selection
-            )
-
-            task = {}
-            task['process_status'] = process_status
-            task['functions'] = []
-            
-            if isinstance(link, str):
-                task['functions'].append(["Aria", Aria2.add_aria2c_download, [link, process_status, False, False, False, False]])
-            else:
-                task['functions'].append(["TG", [link]])
-            
-            await event.edit("✅ Pilihan Anda telah diterima. Memulai proses ekstraksi...")
-            create_task(add_task(task))
-            # The original event object from the /extract command might not be directly accessible here
-            # We will rely on the user to call /status separately.
-            return
-
+        
         return
 
 
@@ -1039,3 +997,37 @@ async def metadata_settings_callback(event, txt, user_id, process_type):
         await event.edit(f"⚙ {process_type.capitalize()} Metadata Settings", buttons=KeyBoard)
     except:
         pass
+
+###############------Extract------###############
+async def extract_callback(event, txt, user_id):
+    parts = txt.split("_", 1)
+    new_position = parts[1] if len(parts) > 1 else None
+    KeyBoard = []
+    if txt.startswith("extractall_audios"):
+        await saveconfig(user_id, 'extract', 'extract_all_audios', eval(new_position), SAVE_TO_DATABASE)
+        await event.answer(f"✅Ekstrak Semua Audio - {str(new_position)}")
+    elif txt.startswith("extractall_subtitles"):
+        await saveconfig(user_id, 'extract', 'extract_all_subtitles', eval(new_position), SAVE_TO_DATABASE)
+        await event.answer(f"✅Ekstrak Semua Subtitle - {str(new_position)}")
+    elif txt.startswith("extractall"):
+        await saveconfig(user_id, 'extract', 'extract_all', eval(new_position), SAVE_TO_DATABASE)
+        await event.answer(f"✅Ekstrak Semua - {str(new_position)}")
+
+    extract_all_audios = get_data()[user_id]['extract']['extract_all_audios']
+    extract_all_subtitles = get_data()[user_id]['extract']['extract_all_subtitles']
+    extract_all = get_data()[user_id]['extract']['extract_all']
+    KeyBoard.append([Button.inline(f'🎵 Ekstrak Semua Audio - {str(extract_all_audios)}', 'nik66bots')])
+    for board in gen_keyboard(bool_list, extract_all_audios, "extractall_audios", 2, False):
+        KeyBoard.append(board)
+    KeyBoard.append([Button.inline(f'📝 Ekstrak Semua Subtitle - {str(extract_all_subtitles)}', 'nik66bots')])
+    for board in gen_keyboard(bool_list, extract_all_subtitles, "extractall_subtitles", 2, False):
+        KeyBoard.append(board)
+    KeyBoard.append([Button.inline(f'📂 Ekstrak Semua (Audio & Subtitle) - {str(extract_all)}', 'nik66bots')])
+    for board in gen_keyboard(bool_list, extract_all, "extractall", 2, False):
+        KeyBoard.append(board)
+    KeyBoard.append([Button.inline(f'↩Back', 'settings')])
+    try:
+        await event.edit("⚙ Extract Settings", buttons=KeyBoard)
+    except:
+        pass
+    return
