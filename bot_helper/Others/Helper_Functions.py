@@ -236,7 +236,7 @@ def get_video_duration(filename):
 
 
 ###############------Get_Process_Output------###############
-async def execute(cmnd: str) -> Tuple[str, str, int, int]:
+async def execute(cmnd: str) -> str:
     LOGGER.info(cmnd)
     cmnds = shlexsplit(cmnd)
     process = await create_subprocess_exec(
@@ -244,7 +244,10 @@ async def execute(cmnd: str) -> Tuple[str, str, int, int]:
         stdout=PIPE,
         stderr=PIPE
     )
-    stdout, _ = await process.communicate()
+    stdout, stderr = await process.communicate()
+    stderr_str = stderr.decode('utf-8', 'replace').strip()
+    if stderr_str:
+        LOGGER.error(f"Error dalam menjalankan perintah: {cmnd}\n{stderr_str}")
     return stdout.decode('utf-8', 'replace').strip()
 
 
