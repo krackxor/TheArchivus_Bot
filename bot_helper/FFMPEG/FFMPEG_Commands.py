@@ -22,8 +22,6 @@ def get_output_name(process_status, convert_quality=False):
 
 
 def get_commands(process_status):
-    # ... (kode untuk proses lain tetap sama) ...
-    
     if process_status.process_type==Names.compress:
             compress_encoder = get_data()[process_status.user_id]['compress']['encoder']
             compress_preset = get_data()[process_status.user_id]['compress']['preset']
@@ -352,51 +350,38 @@ def get_commands(process_status):
         command = ['ffmpeg','-hide_banner', '-progress', f"{log_file}", '-i', f'{str(input_file)}', '-map', '0:v?'] + process_status.custom_index
         command += ["-c", "copy", '-y', f"{output_file}"]
         return command, log_file, input_file, output_file, file_duration
-
+    
+    # BLOK BARU UNTUK EKSTRAKSI
     elif process_status.process_type == Names.extract:
-        # --- AWAL PERBAIKAN ---
-        user_data = get_data().get(process_status.user_id, {})
-        if 'extract' not in user_data:
-            user_data['extract'] = {
-                'extract_all_audios': False,
-                'extract_all_subtitles': False,
-                'extract_all': False
-            }
-        # --- AKHIR PERBAIKAN ---
-            
         create_direc(f"{process_status.dir}/extract/")
         log_file = f"{process_status.dir}/extract/extract_logs_{process_status.process_id}.txt"
-        input_file = f'{str(process_status.send_files[0])}'
+        input_file = f'{str(process_status.send_files[-1])}'
         file_duration = get_video_duration(input_file)
-        output_file = "dummy" # Placeholder
         
-        command = ['ffmpeg', '-hide_banner',
-                   '-progress', f"{log_file}",
-                   '-i', f'{input_file}']
+        command = ['ffmpeg', '-hide_banner', '-progress', f"{log_file}", '-i', f'{input_file}']
         
-        # --- PERBAIKAN LOGIKA FFMPEG ---
-        if process_status.custom_index:
-            for stream_selection in process_status.custom_index:
-                command.extend(stream_selection['map'].split())
-            command.extend(['-c', 'copy'])
-            # Setel nama file output berdasarkan pilihan
-            if len(process_status.custom_index) == 1:
-                output_file = process_status.custom_index[0]['path']
-                command.append(output_file)
-            else: # Jika lebih dari satu, FFMPEG akan menangani penamaan
-                base_name, _ = splitext(get_output_name(process_status))
-                output_prefix = f"{process_status.dir}/extract/{base_name}"
-                command.append(output_prefix)
+        output_file_list = []
+        for stream_idx in process_status.extract_streams:
+            for stream_data in process_status.streams_data:
+                if stream_data['index'] == stream_idx:
+                    map_str = f"0:{stream_data['index']}"
+                    
+                    # Tentukan ekstensi file
+                    codec = stream_data.get('codec_name', 'bin')
+                    ext = codec
+                    if codec == 'subrip': ext = 'srt'
+                    elif codec == 'mov_text': ext = 'srt'
+                    elif codec == 'ass': ext = 'ass'
+                    elif codec in ['aac', 'mp3', 'opus', 'flac']: ext = codec
+                    else: ext = 'mka' if stream_data['codec_type'] == 'audio' else 'sup'
 
-        else: 
-            base_name, _ = splitext(get_output_name(process_status))
-            output_prefix = f"{process_status.dir}/extract/{base_name}"
-            
-            if user_data['extract']['extract_all']:
-                command.extend(['-map', '0:a?', '-c:a', 'copy', '-map', '0:s?', '-c:s', 'copy', output_prefix])
-            elif user_data['extract']['extract_all_audios']:
-                command.extend(['-map', '0:a?', '-c:a', 'copy', '-vn', '-sn', output_prefix])
-            elif user_data['extract']['extract_all_subtitles']:
-                command.extend(['-map', '0:s?', '-c:s', 'copy', '-vn', '-an', output_prefix])
-
+                    out_name = f"{process_status.dir}/extract/stream_{stream_idx}.{ext}"
+                    output_file_list.append(out_name)
+                    
+                    command.extend(['-map', map_str, '-c', 'copy', out_name])
+                    break
+        
+        # Atur file output untuk status (bisa yang pertama atau dummy)
+        output_file = output_file_list[0] if output_file_list else f"{process_status.dir}/extract/dummy"
+        
         return command, log_file, input_file, output_file, file_duration
