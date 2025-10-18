@@ -1952,7 +1952,10 @@ async def _extract_streams(event):
         if not download:
             await temp_event.edit("`❌ Gagal mengunduh file.`")
             return
-        await process_status.update_status(aria_status)
+        # Tunggu unduhan selesai
+        while aria_status.process_status == 0:
+            await asynciosleep(2)
+        
         if aria_status.process_status != 1:
             await temp_event.edit(f"`❌ Gagal mengunduh: {process_status.message}`")
             return
@@ -1970,9 +1973,16 @@ async def _extract_streams(event):
     try:
         probe_cmd = f"ffprobe -v error -show_streams -select_streams a:s -of json \"{input_file}\""
         stdout = await execute(probe_cmd)
+        if not stdout:
+            await event.reply("❌ Gagal menganalisis video. Output `ffprobe` kosong. Cek log untuk detailnya.")
+            return
         streams = json.loads(stdout).get('streams', [])
+    except json.JSONDecodeError:
+        await event.reply(f"❌ Gagal mem-parsing output ffprobe. Output tidak valid.")
+        LOGGER.error(f"FFPROBE invalid JSON output: {stdout}")
+        return
     except Exception as e:
-        await event.reply(f"❌ Gagal menganalisis video: `{e}`")
+        await event.reply(f"❌ Terjadi error saat menganalisis video: `{e}`")
         return
 
     if not streams:
@@ -2015,7 +2025,7 @@ async def _extract_streams(event):
     try:
         async with TELETHON_CLIENT.conversation(chat_id, timeout=300) as conv:
             while True:
-                press = await conv.wait_event(events.CallbackQuery(from_users=user_id))
+                press = await conv.wait_event(events.CallbackQuery(from_users=user_id, message=selection_msg))
                 data = press.data.decode()
 
                 if data == "extract_done":
