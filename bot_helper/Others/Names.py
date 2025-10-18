@@ -6,7 +6,7 @@ class Names:
     softremux = "SoftReMux"
     convert = "Convert"
     hardmux = "Hardmux"
-    extract = "Extract"
+    extract = "Extract"  # <-- BARIS BARU
     aria = "Aria"
     ffmpeg = "FFMPEG"
     telethon = "Telethon"
@@ -25,7 +25,7 @@ class Names:
                         softremux: "🛩SoftReMuxing Subtitles",
                         convert: "🚜Converting Video", 
                         hardmux: "🚍HardMuxing Subtitle",
-                        extract: "📂Extracting",
+                        extract: "📤Extracting Streams",  # <-- BARIS BARU
                         changeMetadata: "🪀Changing MetaData",
                         changeindex: "🎨Changing Index"}
     FFMPEG_PROCESSES = [compress, 
@@ -35,13 +35,13 @@ class Names:
                                                         softremux, 
                                                         convert, 
                                                         hardmux,
-                                                        extract,
+                                                        extract,  # <-- BARIS BARU
                                                         changeMetadata,
                                                         changeindex]
     STATUS_UPLOADING = "🔼Uploading"
-    STATUS_CLONING= "🧬Cloning"
+    STATUS_CLONING = "🧬Cloning"
     STATUS_DOWNLOADING = "🔽Downloading"
-    STATUS_COPYING= "🔁Copying"
+    STATUS_COPYING = "🔁Copying"
     STATUS_ARCHIVING = "🔐Archiving"
     STATUS_EXTRACTING = "📂Extracting"
     STATUS_SPLITTING = "✂️Splitting"
