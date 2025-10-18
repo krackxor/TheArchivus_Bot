@@ -11,7 +11,7 @@ from bot_helper.FFMPEG.FFMPEG_Status import FfmpegStatus
 from bot_helper.Database.User_Data import get_task_limit, get_data, add_skill_xp
 from time import time
 from bot_helper.FFMPEG.FFMPEG_Processes import FFMPEG
-from os.path import exists
+from os.path import exists, splitext
 from bot_helper.Others.Helper_Functions import verify_rclone_account
 from bot_helper.Rclone.Rclone_Upload import upload_drive
 from os import remove
@@ -236,7 +236,7 @@ async def start_task(task):
             
     if process_completed and process_status.process_type in Names.FFMPEG_PROCESSES:
             process_completed = False
-            if process_status.process_type not in [Names.merge, Names.changeMetadata, Names.changeindex]:
+            if process_status.process_type not in [Names.merge, Names.changeMetadata, Names.changeindex, Names.extract]:
                 if not len(multi_tasks):
                         await FFMPEG.select_audio(process_status)
                         await FFMPEG.change_metadata(process_status)
@@ -272,6 +272,23 @@ async def start_task(task):
                                 await ffmpeg_process.wait()
                                 return_code = ffmpeg_process.returncode
                         if return_code==0:
+                            if process_status.process_type == Names.extract:
+                                # Menambahkan semua file hasil ekstraksi ke daftar kirim
+                                for stream_idx in process_status.extract_streams:
+                                    for stream_data in process_status.streams_data:
+                                        if stream_data['index'] == stream_idx:
+                                            codec = stream_data.get('codec_name', 'bin')
+                                            ext = codec
+                                            if codec == 'subrip': ext = 'srt'
+                                            elif codec == 'mov_text': ext = 'srt'
+                                            elif codec == 'ass': ext = 'ass'
+                                            elif codec in ['aac', 'mp3', 'opus', 'flac']: ext = codec
+                                            else: ext = 'mka' if stream_data['codec_type'] == 'audio' else 'sup'
+                                            out_name = f"{process_status.dir}/extract/stream_{stream_idx}.{ext}"
+                                            output_list.append(out_name)
+                                            break
+                                process_status.replace_send_list(output_list)
+                            else:
                                 output_list.append(output_file)
                                 process_status.replace_send_list(output_list)
                         else:
