@@ -1002,6 +1002,17 @@ async def metadata_settings_callback(event, txt, user_id, process_type):
 async def extract_callback(event, txt, user_id):
     parts = txt.split("_", 1)
     new_position = parts[1] if len(parts) > 1 else None
+    
+    # --- AWAL PERBAIKAN ---
+    user_data = get_data().get(user_id, {})
+    if 'extract' not in user_data:
+        user_data['extract'] = {
+            'extract_all_audios': False,
+            'extract_all_subtitles': False,
+            'extract_all': False
+        }
+    # --- AKHIR PERBAIKAN ---
+
     KeyBoard = []
     if txt.startswith("extractall_audios"):
         await saveconfig(user_id, 'extract', 'extract_all_audios', eval(new_position), SAVE_TO_DATABASE)
@@ -1013,9 +1024,10 @@ async def extract_callback(event, txt, user_id):
         await saveconfig(user_id, 'extract', 'extract_all', eval(new_position), SAVE_TO_DATABASE)
         await event.answer(f"✅Ekstrak Semua - {str(new_position)}")
 
-    extract_all_audios = get_data()[user_id]['extract']['extract_all_audios']
-    extract_all_subtitles = get_data()[user_id]['extract']['extract_all_subtitles']
-    extract_all = get_data()[user_id]['extract']['extract_all']
+    extract_all_audios = user_data['extract']['extract_all_audios']
+    extract_all_subtitles = user_data['extract']['extract_all_subtitles']
+    extract_all = user_data['extract']['extract_all']
+    
     KeyBoard.append([Button.inline(f'🎵 Ekstrak Semua Audio - {str(extract_all_audios)}', 'nik66bots')])
     for board in gen_keyboard(bool_list, extract_all_audios, "extractall_audios", 2, False):
         KeyBoard.append(board)
