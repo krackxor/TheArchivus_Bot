@@ -10,6 +10,7 @@ from combat import generate_battle_puzzle, validate_answer
 from states import GameState
 from config import BOT_TOKEN
 from shop import get_shop_keyboard, process_purchase
+from skills import use_skill_reveal  # <-- Pastikan file skills.py sudah ada
 
 dp = Dispatcher()
 
@@ -19,6 +20,12 @@ def get_nav_keyboard():
         [InlineKeyboardButton(text="⬅️ Barat", callback_data="move_barat"), InlineKeyboardButton(text="Timur ➡️", callback_data="move_timur")],
         [InlineKeyboardButton(text="⬇️ Selatan", callback_data="move_selatan")],
         [InlineKeyboardButton(text="📊 Cek Status", callback_data="check_status"), InlineKeyboardButton(text="🛒 Toko", callback_data="open_shop")]
+    ])
+
+def get_combat_keyboard():
+    """Keyboard khusus saat bertarung untuk menggunakan skill"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔮 Revelatio (10 MP)", callback_data="use_skill")]
     ])
 
 @dp.message(CommandStart())
@@ -38,7 +45,11 @@ async def start_handler(message: Message, state: FSMContext):
 @dp.callback_query(GameState.exploring, F.data == "check_status")
 async def status_handler(callback: CallbackQuery):
     p = get_player(callback.from_user.id)
-    text = f"📊 **Buku Catatan Weaver**\n❤️ HP: {p['hp']}/{p['max_hp']} | 🔮 MP: {p['mp']}/{p['max_mp']}\n💰 Gold: {p['gold']} | 💀 Kills: {p['kills']}"
+    text = (
+        f"📊 **Buku Catatan Weaver**\n"
+        f"❤️ HP: {p['hp']}/{p['max_hp']} | 🔮 MP: {p['mp']}/{p['max_mp']}\n"
+        f"💰 Gold: {p['gold']} | 💀 Kills: {p['kills']}"
+    )
     await callback.message.edit_text(text, reply_markup=get_nav_keyboard())
     await callback.answer()
 
@@ -63,7 +74,32 @@ async def buy_item_handler(callback: CallbackQuery):
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_shop_keyboard())
     await callback.answer()
 
-# --- MOVE HANDLER (DENGAN AUTO-TIMER COMBAT) ---
+# --- SKILL HANDLER ---
+@dp.callback_query(GameState.in_combat, F.data == "use_skill")
+async def skill_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    puzzle = data.get("puzzle")
+
+    success, message, new_hint = use_skill_reveal(user_id, puzzle)
+    
+    if not success:
+        await callback.answer(message, show_alert=True)
+        return
+
+    # Update data puzzle dengan hint yang baru
+    puzzle['current_hint'] = new_hint
+    await state.update_data(puzzle=puzzle)
+    
+    text = (
+        f"⚔️ **{puzzle['monster_name']} MUNCUL!**\n"
+        f"🔥 `\"{puzzle['question']}\"`\n\n"
+        f"💡 Petunjuk: `{new_hint}`"
+    )
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_combat_keyboard())
+    await callback.answer(message)
+
+# --- MOVE HANDLER ---
 @dp.callback_query(GameState.exploring, F.data.startswith("move_"))
 async def move_handler(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -73,22 +109,25 @@ async def move_handler(callback: CallbackQuery, state: FSMContext):
     if event_type == "monster":
         player = get_player(user_id)
         puzzle = generate_battle_puzzle(player['kills'])
+        
+        # Inisialisasi hint kosong (____)
+        puzzle['current_hint'] = "_" * len(puzzle['answer'])
+        
         await state.set_state(GameState.in_combat)
         await state.update_data(puzzle=puzzle)
         
         text = (
             f"👣 Kamu melangkah ke {arah}.\n{narration}\n\n"
             f"⚔️ **{puzzle['monster_name']} MUNCUL!**\n"
-            f"Cepat jawab dalam **{puzzle['timer']} detik** atau darahmu akan terkuras!\n"
-            f"🔥 `\"{puzzle['question']}\"`"
+            f"Waktu: **{puzzle['timer']} detik**\n"
+            f"🔥 `\"{puzzle['question']}\"`\n\n"
+            f"💡 Petunjuk: `{puzzle['current_hint']}`"
         )
-        msg = await callback.message.edit_text(text, parse_mode="Markdown")
+        msg = await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_combat_keyboard())
         
-        # --- BACKGROUND TIMER ---
         await asyncio.sleep(puzzle['timer'])
         current_state = await state.get_state()
         
-        # Jika masih combat setelah waktu habis, kurangi darah otomatis
         if current_state == GameState.in_combat:
             p = get_player(user_id)
             new_hp = p['hp'] - 35
@@ -98,13 +137,13 @@ async def move_handler(callback: CallbackQuery, state: FSMContext):
                 await msg.answer(f"⌛ **WAKTU HABIS.**\n\n*{pesan_mati}*", reply_markup=get_nav_keyboard())
             else:
                 update_player(user_id, {"hp": new_hp})
-                await msg.answer(f"⚠️ **KAMU TERLALU LAMA DIAM!**\nMonster melukaimu! HP berkurang 35 (Sisa: {new_hp}).\nCepat jawab!")
+                await msg.answer(f"⚠️ **TERLALU LAMA!** HP -35 (Sisa: {new_hp}). Jawab!")
                 
     elif event_type in ["npc_baik", "npc_jahat"]:
-        text = f"👣 Kamu melangkah ke {arah}.\n{narration}\n\n👤 **{event_data['identity']}**:\n*\"{event_data['dialog']}\"*"
+        text = f"👣 {narration}\n\n👤 **{event_data['identity']}**:\n*\"{event_data['dialog']}\"*"
         await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_nav_keyboard())
     else:
-        await callback.message.edit_text(f"👣 {narration}\nKe mana selanjutnya?", reply_markup=get_nav_keyboard())
+        await callback.message.edit_text(f"👣 {narration}", reply_markup=get_nav_keyboard())
     
     await callback.answer()
 
@@ -120,18 +159,18 @@ async def combat_handler(message: Message, state: FSMContext):
         p = get_player(user_id)
         update_player(user_id, {"kills": p['kills'] + 1, "gold": p['gold'] + 10})
         await state.set_state(GameState.exploring)
-        await message.answer("✅ **BENAR!**\nMonster hancur menjadi debu (+10 Gold).", reply_markup=get_nav_keyboard())
+        await message.answer("✅ **BENAR!** (+10 Gold).", reply_markup=get_nav_keyboard())
     else:
         p = get_player(user_id)
         new_hp = p['hp'] - 35
         if new_hp <= 0:
             pesan_mati = reset_player_death(user_id, "death_combat")
             await state.set_state(GameState.exploring)
-            await message.answer(f"🌑 **KEMATIAN.**\n\n*{pesan_mati}*", reply_markup=get_nav_keyboard())
+            await message.answer(f"🌑 **MATI.**\n\n*{pesan_mati}*", reply_markup=get_nav_keyboard())
         else:
             update_player(user_id, {"hp": new_hp})
             label = "WAKTU HABIS!" if is_timeout else "SALAH!"
-            await message.answer(f"❌ **{label}**\nHP berkurang! (Sisa: {new_hp}). Jawab lagi!")
+            await message.answer(f"❌ **{label}** HP -35 (Sisa: {new_hp}). Jawab lagi!")
 
 async def main():
     auto_seed_content()
