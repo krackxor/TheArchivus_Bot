@@ -1,30 +1,47 @@
 import random
 import time
 
-# --- GUDANG TEKA-TEKI LOGIKA ---
+# --- 20 GUDANG TEKA-TEKI LOGIKA (MUDAH) ---
 LOGIC_PUZZLES = [
-    {"q": "Aku punya banyak daun, tapi aku bukan pohon. Siapakah aku?", "a": "buku"},
-    {"q": "Selalu jatuh tapi tidak pernah terluka. Apakah itu?", "a": "hujan"},
-    {"q": "Semakin banyak kau ambil, semakin banyak yang tertinggal.", "a": "jejak"},
-    {"q": "Aku tidak bisa bicara, tapi akan membalas jika kau bersuara.", "a": "gema"}
+    {"q": "Aku punya lubang banyak, tapi bisa menampung air. Siapa aku?", "a": "spons"},
+    {"q": "Aku punya leher, tapi tidak punya kepala. Aku adalah...", "a": "botol"},
+    {"q": "Aku punya gigi banyak, tapi tidak bisa menggigit.", "a": "sisir"},
+    {"q": "Semakin besar aku, semakin sedikit yang bisa kau lihat.", "a": "gelap"},
+    {"q": "Aku punya satu mata, tapi tidak bisa melihat apa-apa.", "a": "jarum"},
+    {"q": "Aku selalu ada di depanmu, tapi kau tidak bisa melihatku.", "a": "masa depan"},
+    {"q": "Jika kau mengucapkanku, kau akan merusakku. Siapa aku?", "a": "diam"},
+    {"q": "Aku akan basah saat sedang mengeringkan.", "a": "handuk"},
+    {"q": "Aku punya leher tapi tak punya kepala, punya lengan tapi tak punya tangan.", "a": "baju"},
+    {"q": "Aku bisa pecah tanpa pernah disentuh atau dijatuhkan.", "a": "janji"},
+    {"q": "Aku bisa bicara banyak bahasa tanpa punya mulut.", "a": "buku"},
+    {"q": "Aku selalu lari, tapi tidak pernah lelah.", "a": "jam"},
+    {"q": "Aku punya banyak kunci, tapi tidak bisa membuka satu pintu pun.", "a": "piano"},
+    {"q": "Semakin banyak kau memberi padaku, semakin haus aku.", "a": "api"},
+    {"q": "Aku bisa terbang tanpa sayap dan menangis tanpa mata.", "a": "awan"},
+    {"q": "Aku hanya bisa hidup jika diberi makan, tapi mati jika diberi minum.", "a": "api"},
+    {"q": "Milikmu, tapi lebih sering digunakan oleh orang lain.", "a": "nama"},
+    {"q": "Aku selalu naik dan tidak pernah turun.", "a": "umur"},
+    {"q": "Aku punya jari, tapi tidak punya kuku.", "a": "sarung tangan"},
+    {"q": "Apa yang bisa kau tangkap, tapi tidak bisa kau lempar?", "a": "flu"}
 ]
 
-# --- GUDANG ANAGRAM (THE GLITCH) ---
-ANAGRAM_WORDS = ["archivus", "weaver", "memory", "shadow", "glitch", "silence", "hollow", "void"]
+# --- 20 GUDANG ANAGRAM (KATA ARCHIVUS & UMUM) ---
+ANAGRAM_WORDS = [
+    "tinta", "buku", "weaver", "shadow", "memory", "void", "hollow", "glitch",
+    "kunci", "pintu", "gelap", "cahaya", "rutan", "pedang", "istana", "hantu",
+    "darah", "nyawa", "emas", "mimpi"
+]
 
 # --- GUDANG KATA BOSS (THE KEEPER) ---
-BOSS_WORDS = ["ARCHIVUS ETERNAL", "WEAVER OF DESTINY", "HOLLOW MEMORIES", "BEYOND THE VOID"]
+BOSS_WORDS = ["PENJAGA GERBANG", "MEMORI HILANG", "DUNIA HAMPA", "CAHAYA WEAVER"]
 
 def generate_battle_puzzle(player_kills):
     """
-    Menghasilkan teka-teki. 
-    Setiap kelipatan 10 kills, akan memunculkan THE KEEPER (Boss).
+    Menghasilkan teka-teki dengan rasio 50:50 antara Logika dan Anagram.
     """
-    # Cek apakah pemicu Boss aktif (Kelipatan 10)
     is_boss = (player_kills > 0 and player_kills % 10 == 0)
     
     if is_boss:
-        # --- LOGIKA BOSS ---
         target_word = random.choice(BOSS_WORDS)
         scrambled = list(target_word)
         random.shuffle(scrambled)
@@ -33,16 +50,16 @@ def generate_battle_puzzle(player_kills):
         tier_name = "⚠️ THE KEEPER (BOSS)"
         answer = target_word
         question = f"SANG PENJAGA MENGHADANGMU! Susun segel ini: **{scrambled_word.upper()}**"
-        timer = 12  # Waktu sangat sempit untuk kata panjang
+        timer = 15 
         
     else:
-        # --- LOGIKA MONSTER BIASA ---
         is_anagram = random.random() > 0.5
         if is_anagram:
             target_word = random.choice(ANAGRAM_WORDS)
             scrambled = list(target_word)
             random.shuffle(scrambled)
             scrambled_word = "".join(scrambled)
+            # Pastikan tidak sama dengan aslinya
             while scrambled_word == target_word:
                 random.shuffle(scrambled)
                 scrambled_word = "".join(scrambled)
@@ -56,20 +73,16 @@ def generate_battle_puzzle(player_kills):
             answer = puzzle["a"]
             question = puzzle["q"]
 
-        # --- SCALING DIFFICULTY (Timer & Distorsi Teks) ---
+        # Scaling Kesulitan berdasarkan kills
         if player_kills <= 10:
             timer = 20
             final_question = question
         elif player_kills <= 30:
             timer = 15
-            if not is_anagram:
-                final_question = question.replace('a', '*').replace('e', '*').replace('i', '*')
-            else:
-                final_question = f"{question} (Data Corrupted...)"
+            final_question = question.replace(' ', ' . ')
         else:
             timer = 10
-            noise = random.choice([" [VOID]", " [ERROR]", " [NULL]"])
-            final_question = f"{question.upper()} {noise}"
+            final_question = f"{question.upper()} [ERROR]"
             
         question = final_question
 
