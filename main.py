@@ -332,4 +332,27 @@ async def status_handler(message: Message):
     p = get_player(message.from_user.id)
     text = (
         f"📊 **Status Weaver** | 🔄 Siklus: {p.get('cycle', 1)}\n"
-        f
+        f"📍 Lokasi: {p.get('location', 'The Whispering Hall')}\n\n"
+        f"❤️ HP: {p['hp']}/{p['max_hp']} | 🔮 MP: {p['mp']}/{p['max_mp']}\n"
+        f"💰 Gold: {p['gold']} | 💀 Kills: {p['kills']}\n"
+    )
+    
+    history = p.get('history', [])
+    if history:
+        text += f"\n📜 **Sejarah Terakhir:**\n- {history[-1]}"
+        
+    await message.answer(text, reply_markup=get_main_reply_keyboard())
+
+@dp.message(GameState.exploring, F.text == "🛒 Toko")
+async def shop_handler(message: Message):
+    p = get_player(message.from_user.id)
+    await message.answer(f"⚖️ **Toko** (Gold: {p['gold']})\n\"Pilih pertukaranmu...\"", reply_markup=get_shop_keyboard())
+
+# --- BOILERPLATE ---
+async def main():
+    auto_seed_content()
+    bot = Bot(token=BOT_TOKEN)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
