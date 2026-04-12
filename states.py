@@ -1,6 +1,7 @@
-from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.state import State, StatesGroup
 
 class GameState(StatesGroup):
-    exploring = State()    # Mode jelajah normal (Navigasi bebas)
-    in_combat = State()    # Mode pertarungan (Waktu terbatas, input jawaban)
-    traveling = State()    # Mode navigasi misi (Wajib mengikuti arah NPC 5x)
+    exploring = State()    # Jalan normal
+    traveling = State()    # Misi manual 5 langkah dari NPC
+    in_combat = State()    # Lawan Monster/Boss
+    in_quiz = State()      # Sedang ditanya oleh NPC Quiz
