@@ -10,70 +10,79 @@ LOGIC_PUZZLES = [
 ]
 
 # --- GUDANG ANAGRAM (THE GLITCH) ---
-# Kata-kata yang berhubungan dengan lore Archivus
 ANAGRAM_WORDS = ["archivus", "weaver", "memory", "shadow", "glitch", "silence", "hollow", "void"]
+
+# --- GUDANG KATA BOSS (THE KEEPER) ---
+BOSS_WORDS = ["ARCHIVUS ETERNAL", "WEAVER OF DESTINY", "HOLLOW MEMORIES", "BEYOND THE VOID"]
 
 def generate_battle_puzzle(player_kills):
     """
-    Menghasilkan teka-teki acak antara Logika atau Anagram.
-    Kesulitan meningkat berdasarkan jumlah kills pemain.
+    Menghasilkan teka-teki. 
+    Setiap kelipatan 10 kills, akan memunculkan THE KEEPER (Boss).
     """
-    # Tentukan jenis monster (50% Logic, 50% Anagram)
-    is_anagram = random.random() > 0.5
+    # Cek apakah pemicu Boss aktif (Kelipatan 10)
+    is_boss = (player_kills > 0 and player_kills % 10 == 0)
     
-    if is_anagram:
-        # LOGIKA ANAGRAM
-        target_word = random.choice(ANAGRAM_WORDS)
+    if is_boss:
+        # --- LOGIKA BOSS ---
+        target_word = random.choice(BOSS_WORDS)
         scrambled = list(target_word)
         random.shuffle(scrambled)
         scrambled_word = "".join(scrambled)
         
-        # Pastikan kata yang diacak tidak sama dengan aslinya
-        while scrambled_word == target_word:
+        tier_name = "⚠️ THE KEEPER (BOSS)"
+        answer = target_word
+        question = f"SANG PENJAGA MENGHADANGMU! Susun segel ini: **{scrambled_word.upper()}**"
+        timer = 12  # Waktu sangat sempit untuk kata panjang
+        
+    else:
+        # --- LOGIKA MONSTER BIASA ---
+        is_anagram = random.random() > 0.5
+        if is_anagram:
+            target_word = random.choice(ANAGRAM_WORDS)
+            scrambled = list(target_word)
             random.shuffle(scrambled)
             scrambled_word = "".join(scrambled)
-            
-        tier_name = "The Glitch"
-        answer = target_word
-        question = f"Susun kembali kata yang terdistorsi ini: **{scrambled_word.upper()}**"
-    else:
-        # LOGIKA TEKA-TEKI BIASA
-        puzzle = random.choice(LOGIC_PUZZLES)
-        tier_name = "Shadow Lurker"
-        answer = puzzle["a"]
-        question = puzzle["q"]
-
-    # --- SCALING DIFFICULTY (Timer & Distorsi Teks) ---
-    if player_kills <= 10:
-        timer = 20
-        # Teks normal
-        final_question = question
-    elif player_kills <= 30:
-        timer = 15
-        # Distorsi: Hilangkan vokal jika tipe teka-teki logika
-        if not is_anagram:
-            final_question = question.replace('a', '*').replace('e', '*').replace('i', '*')
+            while scrambled_word == target_word:
+                random.shuffle(scrambled)
+                scrambled_word = "".join(scrambled)
+                
+            tier_name = "The Glitch"
+            answer = target_word
+            question = f"Susun kembali kata yang terdistorsi ini: **{scrambled_word.upper()}**"
         else:
-            final_question = f"{question} (Data Corrupted...)"
-    else:
-        timer = 10
-        # Distorsi Elit: Uppercase + Noise
-        noise = random.choice([" [VOID]", " [ERROR]", " [NULL]"])
-        final_question = f"{question.upper()} {noise}"
+            puzzle = random.choice(LOGIC_PUZZLES)
+            tier_name = "Shadow Lurker"
+            answer = puzzle["a"]
+            question = puzzle["q"]
+
+        # --- SCALING DIFFICULTY (Timer & Distorsi Teks) ---
+        if player_kills <= 10:
+            timer = 20
+            final_question = question
+        elif player_kills <= 30:
+            timer = 15
+            if not is_anagram:
+                final_question = question.replace('a', '*').replace('e', '*').replace('i', '*')
+            else:
+                final_question = f"{question} (Data Corrupted...)"
+        else:
+            timer = 10
+            noise = random.choice([" [VOID]", " [ERROR]", " [NULL]"])
+            final_question = f"{question.upper()} {noise}"
+            
+        question = final_question
 
     return {
         "monster_name": tier_name,
-        "question": final_question,
+        "question": question,
         "answer": answer,
         "timer": timer,
+        "is_boss": is_boss,
         "generated_time": time.time()
     }
 
 def validate_answer(user_answer, correct_answer, generated_time, time_limit):
-    """
-    Validasi jawaban pemain.
-    Return: (is_correct, is_timeout)
-    """
     time_taken = time.time() - generated_time
     if time_taken > time_limit:
         return (False, True)
