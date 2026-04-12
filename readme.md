@@ -1,65 +1,43 @@
-# A Multi-Feature Telegram Bot
+# 📜 The Archivus 
+**An Endless Text-Based RPG Telegram Bot**
 
+*"Kabut Archivus tidak memiliki ujung. Sejarah terus ditulis, dan nama-nama terus memudar."*
 
-### Configuration
-To configure this bot add the environment variables stated below. Or add them in [sample_config.env](./sample_config.env) and change the name to `config.env`. Or add the environment variable `CONFIG_FILE_URL` and put config.env direct url in it.
-- `API_ID` - (Required)Get it by creating an app on [https://my.telegram.org](https://my.telegram.org)
-- `API_HASH` - (Required)Get it by creating an app on [https://my.telegram.org](https://my.telegram.org)
-- `TOKEN` - (Required)Get it by creating a bot on [https://t.me/BotFather](https://t.me/BotFather)
-- `OWNER_ID` - (Required)Numerical User ID of bot owner
-- `SUDO_USERS` - (Required)Numerical User IDs of sudo users separated by space.
-- `AUTH_GROUP_ID` - (Optional)Numerical chat id of group, required if you want to use pyrogram download/upload in group.
-- `RESTART_NOTIFY_ID` - (Optional)Numerical user id of user or chat id of group/channel to notify on bot start, set it False if you don't want notification on start.
-- `AUTO_SET_BOT_CMDS` - (Required)Set True if you want bot to setup its commands by itself otherwise set it False.
-- `RUNNING_TASK_LIMIT` - (Required)Number Of Concurrent Tasks.
-- `UNFINISHED_PROGRESS_STR` - (Required)Unfinished progress bar string value.
-- `FINISHED_PROGRESS_STR` - (Required)Finished progress bar string value.
-- `UPDATE_PACKAGES` - (Optional)Set True if you want to update the packages.
-- `UPSTREAM_REPO` - (Optional)Your github repository link, if your repo is private add https://username:{githubtoken}@github.com/{username}/{reponame} format.
-- `UPSTREAM_BRANCH` - (Optional)Upstream branch for update.
-- `TIMEZONE` - (Optional)Timezone for clock time in status. Default is `Asia/Kolkata`.
-- `SAVE_TO_DATABASE` - (Required)Set value True if you want to use MongoDB Database else False.
-- `MONGODB_URI` - (Optional*)MongoDB URL to save data, only required when SAVE_TO_DATABASE's value is True.
-- `Use_Session_String` - (Required)Set value True if you want to use Telegram user session string to upload 4GB file to telegram else False.
-- `Session_String` - (Optional*)Telethon Session String, only required when Use_Session_String's value is True.
+The Archivus adalah game Text-RPG berbasis Telegram yang mengusung genre *Endless Roguelite*. Dikembangkan dengan narasi sinematik yang gelap, pemain (disebut *Weaver*) harus bertahan hidup dari distorsi memori dengan memecahkan berbagai teka-teki logika, matematika, dan linguistik.
 
-### Commands
-```
-compress - Compress Video
-merge - Merge Video
-watermark - Add Watermark To Video
-convert - Convert Video
-hardmux - Hardmux Video
-softmux - Softmux Video
-softremux - Softremux Video
-gensample - Generate Sample Video
-genss - Generate Screenshots
-changemetadata - Change Video Metadata
-changeindex - Change Index Or Remove Stream
-savewatermark - Save Watermark Image
-savethumb - Save Static Thumbnail
-saveconfig - Save Rclone Config
-tasklimit - Change Task Limit
-status - Check Process Status
-log - Get Log Message
-logs - Get Log File
-renew - Renew Storage
-resetdb - Reset Database
-changeconfig - Change Bot Config
-clearconfigs - Restore To Default Config
-addsudo - Add Sudo User
-delsudo - Delete Sudo User
-checksudo - Check Sudo Users
-time - Get Bot Uptime
-stats - Get Stats
-speedtest - SpeedTest
-settings - Settings Section
-restart - Restart Bot
-herokurestart - Restart Heroku Dyno
-```
+Dipersembahkan oleh **Studio Khoirul**.
 
+---
 
+## ✨ Fitur Utama (Core Features)
 
-### Copyright & License
-- Copyright &copy; 2023 &mdash; [Nik66](https://github.com/sahilgit55)
-- Licensed under the terms of the [GNU General Public License Version 3 &dash; 29 June 2007](./LICENSE)
+* **♾️ Endless Cycle System:** Game tidak pernah tamat. Kalahkan *Sang Penjaga* (Boss) untuk menaikkan siklus (New Game+) dengan tingkat kesulitan yang terus meningkat.
+* **⚔️ Multi-Genre Combat:** Pertarungan melawan monster dilakukan dengan memecahkan *puzzle* dalam batas waktu (60 detik). Genre puzzle bervariasi:
+  * *Linguistik* (Anagram & Word Scramble)
+  * *Numerik* (Matematika Terdistorsi)
+  * *Lore & History* (Pengetahuan dunia Archivus)
+* **🗺️ Dynamic Locations:** Wilayah Archivus akan terus bergeser seiring dengan bertambahnya jumlah monster yang dibunuh pemain (Kills).
+* **🎭 Hidden Identity NPCs:** Interaksi NPC tanpa label. Pemain harus menebak niat NPC dari gaya bahasanya:
+  * **The Guide (Baik):** Memberikan pemulihan dan petunjuk arah yang benar.
+  * **The Corrupted (Jahat):** Menyesatkan pemain ke dalam jebakan monster tier tinggi.
+  * **The Memory Thief (Kuis):** Menguji ingatan pemain dengan taruhan HP/MP.
+* **🧭 Manual Navigation:** Sistem navigasi 5-langkah yang mengikat (Traveling State). Salah melangkah berarti kehilangan energi mental (MP).
+* **📖 Persistent Lore History:** Setiap pencapaian, kematian, dan perpindahan lokasi dicatat abadi di database sebagai "Sejarah Pemain".
+
+---
+
+## 🛠️ Prasyarat (Prerequisites)
+
+Pastikan server (VPS Ubuntu) Anda telah menginstal komponen berikut:
+* **Python 3.10+**
+* **MongoDB** (Berjalan di `localhost:27017`)
+* **Git**
+
+---
+
+## 🚀 Instalasi & Persiapan (Setup)
+
+**1. Clone Repositori**
+```bash
+git clone [https://github.com/krackxor/TheArchivus_Bot.git](https://github.com/krackxor/TheArchivus_Bot.git)
+cd TheArchivus_Bot
