@@ -8,8 +8,8 @@ from engine import process_move
 from database import get_player, update_player, auto_seed_content, reset_player_death
 from combat import generate_battle_puzzle, validate_answer
 from states import GameState
+from config import BOT_TOKEN  # <-- Mengambil token aman dari config.py
 
-TOKEN = "TOKEN_BOT_MU_DI_SINI"
 dp = Dispatcher()
 
 def get_nav_keyboard():
@@ -94,7 +94,7 @@ async def combat_handler(message: Message, state: FSMContext):
 
 async def main():
     auto_seed_content()
-    bot = Bot(token=TOKEN)
+    bot = Bot(token=BOT_TOKEN) # <-- Bot sekarang menggunakan token dari file .env
     print("👁️ The Archivus telah bangkit. Bot sedang mendengarkan...")
     await dp.start_polling(bot)
 
