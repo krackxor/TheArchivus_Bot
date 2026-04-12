@@ -1,23 +1,33 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import CommandStart
+
+# Import dari mesin The Archivus yang sudah kita buat
 from engine import process_move
 from database import get_player, auto_seed_content
 
 TOKEN = "TOKEN_BOT_MU_DI_SINI"
 
-def get_nav_keyboard():
-    """Membuat susunan tombol yang terorganisir untuk navigasi."""
-    keyboard = [
-        [InlineKeyboardButton("Utara ⬆️", callback_data="move_utara")],
-        [InlineKeyboardButton("Barat ⬅️", callback_data="move_barat"), InlineKeyboardButton("Timur ➡️", callback_data="move_timur")],
-        [InlineKeyboardButton("Selatan ⬇️", callback_data="move_selatan")],
-        [InlineKeyboardButton("📊 Cek Status", callback_data="check_status")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+# Inisialisasi Dispatcher
+dp = Dispatcher()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.first_name
+def get_nav_keyboard():
+    """Membuat susunan tombol Inline Keyboard ala Aiogram"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Utara ⬆️", callback_data="move_utara")],
+        [InlineKeyboardButton(text="Barat ⬅️", callback_data="move_barat"), 
+         InlineKeyboardButton(text="Timur ➡️", callback_data="move_timur")],
+        [InlineKeyboardButton(text="Selatan ⬇️", callback_data="move_selatan")],
+        [InlineKeyboardButton(text="📊 Cek Status", callback_data="check_status")]
+    ])
+
+@dp.message(CommandStart())
+async def start_handler(message: Message):
+    user_id = message.from_user.id
+    username = message.from_user.first_name
+    
+    # Init player di MongoDB
     get_player(user_id, username)
 
     welcome_text = (
@@ -26,66 +36,68 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "satu-satunya yang bisa menyusun kembali realita lewat kata-kata.\n\n"
         "Pilih arah jalanmu untuk mulai menjelajah."
     )
-    await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=get_nav_keyboard())
+    await message.answer(welcome_text, parse_mode="Markdown", reply_markup=get_nav_keyboard())
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer() 
+@dp.callback_query(F.data == "check_status")
+async def status_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    player = get_player(user_id)
     
-    user_id = query.from_user.id
-    data = query.data
+    status_text = (
+        f"📊 **Catatan {player['username']}**\n"
+        f"❤️ HP: {player['hp']}/{player['max_hp']} | 🔮 MP: {player['mp']}/{player['max_mp']}\n"
+        f"💰 Gold: {player['gold']} | 💀 Kills: {player['kills']}\n"
+        f"📍 Kewaspadaan: {player['step_counter']}/15"
+    )
+    # Kirim pesan status dan berikan tombol navigasi lagi
+    await callback.message.answer(status_text, reply_markup=get_nav_keyboard())
+    # Wajib memanggil answer() agar tombol di Telegram tidak loading terus
+    await callback.answer()
 
-    if data == "check_status":
-        player = get_player(user_id)
-        status_text = (
-            f"📊 **Catatan {player['username']}**\n"
-            f"❤️ HP: {player['hp']}/{player['max_hp']} | 🔮 MP: {player['mp']}/{player['max_mp']}\n"
-            f"💰 Gold: {player['gold']} | 💀 Kills: {player['kills']}\n"
-            f"📍 Kewaspadaan: {player['step_counter']}/15"
+@dp.callback_query(F.data.startswith("move_"))
+async def move_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    arah = callback.data.split("_")[1].capitalize()
+    
+    # Memanggil mesin 3-15 langkah
+    event_type, event_data, narration = process_move(user_id)
+    
+    # Edit pesan tombol yang ditekan menjadi narasi perjalanan
+    await callback.message.edit_text(f"👣 Kamu berjalan ke {arah}.\n{narration}")
+    
+    # Reaksi terhadap Event
+    if event_type in ["npc_baik", "npc_jahat"]:
+        npc_name = event_data["identity"]
+        npc_dialog = event_data["dialog"]
+        text = (
+            f"👤 **Seseorang muncul!**\n\n"
+            f"Kamu bertemu {npc_name}.\n"
+            f"Dia berbisik: *\"{npc_dialog}\"*"
         )
-        await query.message.reply_text(status_text, reply_markup=get_nav_keyboard())
-        return
-
-    if data.startswith("move_"):
-        arah = data.split("_")[1].capitalize()
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=get_nav_keyboard())
         
-        # Proses mesin logika
-        event_type, event_data, narration = process_move(user_id)
+    elif event_type == "monster":
+        monster_name = event_data["name"]
+        text = f"⚔️ **AWAS!**\n**{monster_name}** menghadang jalanmu!"
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=get_nav_keyboard())
         
-        await query.edit_message_text(f"👣 Kamu berjalan ke {arah}.\n{narration}")
+    else:
+        # Jika aman (safe), munculkan tombol arah lagi untuk langkah berikutnya
+        await callback.message.answer("Area ini terasa kosong. Ke mana selanjutnya?", reply_markup=get_nav_keyboard())
+        
+    await callback.answer()
 
-        if event_type in ["npc_baik", "npc_jahat"]:
-            npc_name = event_data["identity"]
-            npc_dialog = event_data["dialog"]
-            text = (
-                f"👤 **Seseorang muncul!**\n\n"
-                f"Kamu bertemu {npc_name}.\n"
-                f"Dia berbisik: *\"{npc_dialog}\"*"
-            )
-            await query.message.reply_text(text, parse_mode='Markdown', reply_markup=get_nav_keyboard())
-            
-        elif event_type == "monster":
-            monster_name = event_data["name"]
-            text = f"⚔️ **AWAS!**\n**{monster_name}** menghadang jalanmu!"
-            await query.message.reply_text(text, parse_mode='Markdown', reply_markup=get_nav_keyboard())
-            
-        else:
-            # Aman, tampilkan tombol jalan lagi
-            await query.message.reply_text("Area ini terasa kosong. Ke mana selanjutnya?", reply_markup=get_nav_keyboard())
-
-def main():
-    # 1. Jalankan pengecekan dan suntik database
+async def main():
+    # 1. Jalankan pengecekan dan suntik database MongoDB
     auto_seed_content()
 
-    # 2. Bangun bot
-    app = Application.builder().token(TOKEN).build()
-
-    # 3. Daftarkan handler
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-
-    print("👁️ The Archivus telah bangkit. Bot sedang mendengarkan...")
-    app.run_polling()
+    # 2. Bangun bot dengan Aiogram
+    bot = Bot(token=TOKEN)
+    
+    print("👁️ The Archivus telah bangkit dengan Aiogram. Bot sedang mendengarkan...")
+    
+    # 3. Jalankan polling
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
