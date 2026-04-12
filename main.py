@@ -317,6 +317,38 @@ async def quiz_answer_handler(message: Message, state: FSMContext):
 
     await state.set_state(GameState.exploring)
 
+# --- SKILL HANDLERS ---
+
+@dp.callback_query(F.data == "use_skill")
+async def use_skill_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    player = get_player(user_id)
+    
+    # Ambil data puzzle yang sedang aktif
+    data = await state.get_data()
+    puzzle = data.get("puzzle")
+    
+    if not puzzle:
+        return await callback.answer("Tidak ada anomali yang bisa diungkap.", show_alert=True)
+
+    # 1. Validasi MP (Magic Point)
+    if player['mp'] < 10:
+        return await callback.answer("🔮 MP tidak cukup!\nKamu membutuhkan 10 MP untuk menggunakan Revelatio.", show_alert=True)
+
+    # 2. Eksekusi Skill (Potong MP)
+    update_player(user_id, {"mp": player['mp'] - 10})
+
+    # 3. Tampilkan Pop-Up Jawaban
+    jawaban = puzzle['answer']
+    pesan_revelatio = (
+        "👁️ REVELATIO AKTIF 👁️\n\n"
+        "Matamu menembus kabut ilusi Archivus...\n"
+        f"Jawaban dari teka-teki ini adalah:\n\n👉 {jawaban}"
+    )
+    
+    # show_alert=True akan membuat pesan muncul sebagai Pop-Up di tengah layar Telegram
+    await callback.answer(pesan_revelatio, show_alert=True)
+
 # --- TRANSACTION HANDLERS ---
 
 @dp.callback_query(F.data == "npc_accept")
