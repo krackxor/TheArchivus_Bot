@@ -39,59 +39,62 @@ ITEM_POOL = [
     {"id": "item_buku", "name": "Lembaran Kosong"}
 ]
 
-def generate_npc(is_liar=None):
+def generate_npc(player_gold=0, is_liar=None):
     """
-    Menghasilkan NPC secara acak. 
-    Mendukung parameter is_liar dari engine.py untuk mencegah TypeError.
+    Menghasilkan NPC dinamis berdasarkan progres kekayaan pemain.
     """
-    # 1. Tentukan Niat (Gunakan input engine atau acak jika None)
     if is_liar is None:
         is_liar = random.choice([True, False])
     
-    # 2. Pilih Kategori berdasarkan niat
-    if is_liar:
-        cat_key = random.choice(["BERBAHAYA", "NEGATIF", "EKSTREM"])
-    else:
-        cat_key = random.choice(["POSITIF", "NETRAL"])
-    
-    trait = random.choice(TRAITS_DB[cat_key])
     name = random.choice(NPC_NAMES)
+    req = None
     
-    # 3. Tentukan Permintaan (Requirement)
-    if random.random() > 0.5:
-        req = {"type": "gold", "amount": random.randint(15, 60), "name": "Gold"}
-    else:
-        selected_item = random.choice(ITEM_POOL)
-        req = {"type": "item", "amount": 1, "id": selected_item['id'], "name": selected_item['name']}
+    # --- 1. FASE EARLY (Gold < 300) : Pemandu / Penyesat ---
+    if player_gold < 300:
+        trait = "Penyesat" if is_liar else "Pemandu"
+        cat_key = "NEGATIF" if is_liar else "POSITIF"
+        
+        if is_liar:
+            dialogs = [
+                "Ke Utara saja, Weaver. Aku melihat cahaya pintu keluar di sana.",
+                "Barat adalah jalan paling cepat menuju Toko. Jangan lewatkan itu.",
+                "Aku bersumpah Timur sedang kosong. Monster-monster sedang tidur."
+            ]
+        else:
+            dialogs = [
+                "Hati-hati, aku mendengar geraman di Selatan. Putar baliklah.",
+                "Gunakan jalan Barat jika ingin menghindari jebakan di lorong ini.",
+                "Tetaplah di jalur Utara, Archivus sedang stabil di arah itu."
+            ]
+            
+    # --- 2. FASE MID (300 <= Gold < 800) : Transaksi / Pemalak ---
+    elif 300 <= player_gold < 800:
+        cat_key = random.choice(["BERBAHAYA", "NEGATIF"]) if is_liar else random.choice(["NETRAL", "POSITIF"])
+        trait = random.choice(TRAITS_DB[cat_key])
+        
+        # Minta 15% dari total Gold pemain (dibulatkan)
+        amt = int(player_gold * 0.15)
+        req = {"type": "gold", "amount": amt, "name": "Gold"}
+        
+        if is_liar:
+            dialogs = [f"Beri aku {amt} Gold, dan aku akan membisikkan rahasia besar padamu."]
+        else:
+            dialogs = [f"Aku butuh {amt} Gold untuk menyalakan lentera ini kembali. Bantu aku?"]
 
-    # 4. Logika Dialog (Psikologi Terbalik)
-    if cat_key == "BERBAHAYA":
-        dialogs = [
-            f"Aku melihat jiwa yang murni dalam dirimu. Berikan {req['name']} itu, biar aku menjagamu dari kegelapan.",
-            f"Hanya kau yang bisa membantuku. Setelah kau beri {req['name']}, aku akan memberikan seluruh hartaku padamu.",
-            f"Jangan takut, Weaver. Aku di sini untuk menolongmu. Cukup sedikit {req['name']} sebagai tanda persahabatan."
-        ]
-    elif cat_key == "EKSTREM":
-        dialogs = [
-            f"Hidup ini tak berarti. Berikan {req['name']}-mu, atau biarkan ia membusuk bersamamu.",
-            f"Aku mendengar bisikan bahwa kau akan mati. Berikan {req['name']} itu sekarang jika ingin kutunda ajalmu."
-        ]
-    elif cat_key == "POSITIF":
-        dialogs = [
-            f"Jangan bodoh! Cepat berikan {req['name']} itu jika kau tidak ingin hancur di langkah berikutnya!",
-            f"Berikan padaku! Archivus tidak butuh Weaver yang lamban. Aku akan memperkuat lenteramu dengan ini!",
-            f"Kau membawa {req['name']} itu seperti beban. Sini, biar kuurus dan kuberikan kau perlindungan!"
-        ]
-    elif cat_key == "NEGATIF":
-        dialogs = [
-            f"Heh, Weaver payah. Berikan {req['name']}-mu sebagai upeti karena telah mengganggu jalanku!",
-            f"Aku butuh {req['name']}. Berikan atau aku akan memastikan monster di depan mencabikmu!"
-        ]
-    else: # NETRAL
-        dialogs = [
-            f"Mari bicara realistis. Aku butuh {req['name']}, dan kau butuh selamat. Setuju?",
-            f"Secara logika, pertukaran ini menguntungkanmu. Berikan {req['name']}-nya."
-        ]
+    # --- 3. FASE LATE (Gold >= 800) : The Collector / Corrupted Soul ---
+    else:
+        cat_key = "EKSTREM" if is_liar else "POSITIF"
+        trait = random.choice(TRAITS_DB[cat_key])
+        
+        # Minta 30% Gold atau satu Item acak
+        if random.random() > 0.5:
+            amt = int(player_gold * 0.3)
+            req = {"type": "gold", "amount": amt, "name": "Gold (Pajak)"}
+            dialogs = [f"Harta itu terlalu berat untukmu. Setor {amt} Gold padaku sekarang!"]
+        else:
+            selected_item = random.choice(ITEM_POOL)
+            req = {"type": "item", "amount": 1, "id": selected_item['id'], "name": selected_item['name']}
+            dialogs = [f"Berikan {selected_item['name']}-mu. Orang mati tidak butuh barang mewah."]
 
     return {
         "identity": f"{name} ({trait})",
@@ -105,8 +108,8 @@ def generate_npc(is_liar=None):
 def get_death_message(cause):
     death_notes = [
         "Tinta habis. Ceritamu terhenti di tengah kalimat.",
-        "Namamu perlahan memudar dari halaman Archivus.",
-        "Kegelapan menelan Weaver terakhir. Cahaya itu kini padam.",
-        "Nihilist benar, pada akhirnya tidak ada yang tersisa darimu."
+        "Namamu memudar dari halaman Archivus.",
+        "Kegelapan menelan Weaver terakhir.",
+        "Nihilist benar, pada akhirnya tidak ada yang tersisa."
     ]
     return random.choice(death_notes)
