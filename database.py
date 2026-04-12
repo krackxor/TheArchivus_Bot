@@ -1,56 +1,85 @@
-from pymongo import MongoClient
 import datetime
+from pymongo import MongoClient
+from dotenv import load_dotenv
+import os
 
+# Memuat variabel dari .env
+load_dotenv()
+
+# Koneksi ke MongoDB Lokal
 client = MongoClient("mongodb://localhost:27017/")
-db = client["TheArchivus_Game"]
+db = client["the_archivus_db"]
 
+# Koleksi (Tables)
 players_col = db["players"]
 narratives_col = db["narratives"]
 
-def auto_seed_content():
-    if narratives_col.count_documents({}) == 0:
-        print("⚙️ [SISTEM] Database kosong terdeteksi. Menyuntikkan Naskah Archivus...")
-        base_narratives = [
-            {"category": "npc_dialog", "reason": "npc_lie", "text": "Ke Utara sana aman, aku bersumpah. Jangan lihat ke belakang."},
-            {"category": "npc_dialog", "reason": "npc_lie", "text": "Matikan lenteramu sekarang! Monster di depan sangat membenci cahaya."},
-            {"category": "npc_dialog", "reason": "npc_honest", "text": "Hati-hati dengan bau karat di Selatan. Kematian menunggumu di sana!"},
-            {"category": "npc_dialog", "reason": "npc_honest", "text": "Hanya jawaban teka-teki dari belakang yang bisa membunuh bayangan itu."},
-            {"category": "death_note", "reason": "death_trap", "text": "Sial! Kau benar-benar melompat ke maut hanya karena lidah manisnya? Bangun, dasar naif!"},
-            {"category": "death_note", "reason": "death_combat", "text": "Pedangmu tumpul, otakmu lebih tumpul lagi. Kau mati konyol. Berdiri!"}
-        ]
-        narratives_col.insert_many(base_narratives)
-        print("✅ [SISTEM] Naskah Dasar berhasil ditanam. Archivus siap.")
-
 def get_player(user_id, username="Weaver"):
+    """Mengambil data pemain atau membuat baru jika belum ada."""
     player = players_col.find_one({"user_id": user_id})
     if not player:
         new_player = {
-            "user_id": user_id, "username": username,
-            "hp": 100, "max_hp": 100,
-            "mp": 50, "max_mp": 50,
-            "gold": 0, "kills": 0,
-            "step_counter": 0, "is_confused": False,
+            "user_id": user_id,
+            "username": username,
+            "hp": 100,
+            "max_hp": 100,
+            "mp": 50,      # Status awal MP untuk skill
+            "max_mp": 50,
+            "gold": 0,
+            "kills": 0,
+            "step_counter": 0,
             "last_seen": datetime.datetime.now()
         }
         players_col.insert_one(new_player)
         return new_player
     return player
 
-def update_player(user_id, update_data):
-    update_data["last_seen"] = datetime.datetime.now()
-    players_col.update_one({"user_id": user_id}, {"$set": update_data})
-
-def get_random_narrative(category, reason=None):
-    query = {"category": category}
-    if reason:
-        query["reason"] = reason
-    pipeline = [{"$match": query}, {"$sample": {"size": 1}}]
-    result = list(narratives_col.aggregate(pipeline))
-    return result[0]["text"] if result else "Keheningan menyelimuti Archivus..."
+def update_player(user_id, data):
+    """Memperbarui data spesifik pemain."""
+    players_col.update_one({"user_id": user_id}, {"$set": data})
 
 def reset_player_death(user_id, cause):
-    pesan_mati = get_random_narrative("death_note", reason=cause)
-    update_player(user_id, {
-        "hp": 100, "mp": 50, "gold": 0, "step_counter": 0, "is_confused": False
-    })
-    return pesan_mati
+    """Logika saat pemain mati: Reset status namun tetap menyimpan identitas."""
+    # Kamu bisa menambahkan sistem pengurangan gold di sini jika mau
+    players_col.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "hp": 100,
+            "mp": 50,
+            "step_counter": 0,
+            "gold": 0,    # Hukuman mati: Gold hangus (Roguelike)
+            "kills": 0    # Kills reset karena tidak ada sistem level
+        }}
+    )
+    
+    if cause == "death_combat":
+        return "Jiwamu hancur berkeping-keping. Archivus menarikmu kembali ke titik awal."
+    else:
+        return "Waktu telah memakan ingatanmu. Kamu terbangun tanpa mengetahui siapa dirimu."
+
+def auto_seed_content():
+    """Menyuntikkan naskah awal jika database narasi masih kosong."""
+    if narratives_col.count_documents({}) == 0:
+        print("[SISTEM] Database narasi kosong. Menyuntikkan naskah awal...")
+        content = [
+            # --- PERJALANAN AMAN ---
+            {"category": "safe_travel", "text": "Hanya suara langkah kakimu yang bergema di lorong sunyi ini."},
+            {"category": "safe_travel", "text": "Cahaya redup dari lentera Weaver-mu membelah kegelapan pekat."},
+            {"category": "safe_travel", "text": "Kamu merasakan hembusan angin dingin, tapi tidak ada jendela di sini."},
+            
+            # --- EVENT MONSTER ---
+            {"category": "monster_event", "text": "Tiba-tiba, bayangan di dinding memisahkan diri dan menyerang!"},
+            {"category": "monster_event", "text": "Ruang di depanmu terdistorsi. Sesuatu yang haus akan memori muncul."},
+            {"category": "monster_event", "text": "Langkahmu terhenti oleh geraman rendah dari balik kegelapan."},
+            
+            # --- EVENT NPC ---
+            {"category": "npc_event", "text": "Seorang sosok berjubah duduk di sudut, menatapmu dengan mata kosong."},
+            {"category": "npc_event", "text": "Suara bisikan memanggil namamu dari kegelapan di depan."},
+            {"category": "npc_event", "text": "Kamu melihat seseorang sedang menulis di udara dengan jari yang gemetar."}
+        ]
+        narratives_col.insert_many(content)
+        print(f"[SISTEM] {len(content)} Naskah berhasil disuntikkan!")
+
+# Jalankan seeding saat file ini diimpor pertama kali
+if __name__ == "__main__":
+    auto_seed_content()
