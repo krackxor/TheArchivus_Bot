@@ -1,6 +1,6 @@
 import random
 
-# --- DATABASE NAMA (Wajib ada agar tidak NameError) ---
+# --- DATABASE NAMA ---
 NPC_NAMES = [
     "The Wanderer", "Hollow Sentinel", "Echo of Silence", "Pale Weaver", "Blind Scholar",
     "Broken Vessel", "Shadow Weaver", "Lost Archivist", "Dust Walker", "Cursed Scribe",
@@ -15,32 +15,57 @@ ITEM_POOL = [
     {"id": "item_buku", "name": "Lembaran Kosong"}
 ]
 
-def generate_npc(player_gold=0, is_liar=None):
+# --- BANK SOAL NPC QUIZ (LORE ARCHIVUS) ---
+QUIZ_POOL = [
+    {"q": "Siapa entitas pencatat memori di dimensi ini?", "a": "ARCHIVUS"},
+    {"q": "Apa julukan untuk para penjelajah sepertimu?", "a": "WEAVER"},
+    {"q": "Jawab dengan satu kata: Apakah kabut ini membawa kehidupan atau kematian?", "a": "KEMATIAN"},
+    {"q": "Benda apa yang kau andalkan untuk membelah kegelapan Archivus?", "a": "LENTERA"},
+    {"q": "Berapa banyak arah langkah yang bisa kau pilih di persimpangan?", "a": "4"}
+]
+
+def generate_npc(player_gold=0, is_liar=None, is_quiz=False):
     """
     Menghasilkan NPC dinamis tanpa label pembocor.
+    Sekarang mendukung intervensi dari NPC Quiz (The Memory Thief).
     """
+    
+    # --- INTERSEPSI NPC QUIZ ---
+    if is_quiz:
+        quiz = random.choice(QUIZ_POOL)
+        return {
+            "identity": "The Memory Thief", 
+            "is_liar": False,
+            "is_quiz": True,
+            "dialog": f"Berhenti, Weaver! Buktikan ingatanmu belum membusuk. Jawab pertanyaanku: *\"{quiz['q']}\"*",
+            "requirement": {"type": "quiz", "question": quiz['q'], "answer": quiz['a']}
+        }
+
+    # --- LOGIKA NPC NORMAL (BAIK/JAHAT) ---
     if is_liar is None:
         is_liar = random.choice([True, False])
     
     name = random.choice(NPC_NAMES)
     req = None
     
-    # --- 1. FASE EARLY (Gold < 300) ---
+    # --- 1. FASE EARLY (Navigasi & Petunjuk Arah) ---
     if player_gold < 300:
         if is_liar:
             dialogs = [
                 "Ke Utara saja, Weaver. Aku melihat cahaya pintu keluar di sana.",
                 "Barat adalah jalan paling cepat menuju Toko. Jangan lewatkan itu.",
-                "Aku bersumpah Timur sedang kosong. Monster-monster sedang tidur."
+                "Aku bersumpah Timur sedang kosong. Monster-monster sedang tidur.",
+                "Lorong Selatan terlihat sangat aman. Percayalah padaku."
             ]
         else:
             dialogs = [
-                "Hati-hati, aku mendengar geraman di Selatan. Putar baliklah.",
+                "Hati-hati, aku mendengar geraman. Lebih baik putar ke Utara.",
                 "Gunakan jalan Barat jika ingin menghindari jebakan di lorong ini.",
-                "Tetaplah di jalur Utara, Archivus sedang stabil di arah itu."
+                "Tetaplah di jalur Timur, Archivus sedang stabil di arah itu.",
+                "Hawa dingin berhembus dari Selatan, tapi itu adalah jalan yang benar."
             ]
             
-    # --- 2. FASE MID (300 <= Gold < 800) ---
+    # --- 2. FASE MID (Transaksi Gold Skala Kecil) ---
     elif 300 <= player_gold < 800:
         amt = int(player_gold * 0.15)
         req = {"type": "gold", "amount": amt, "name": "Gold"}
@@ -50,7 +75,7 @@ def generate_npc(player_gold=0, is_liar=None):
         else:
             dialogs = [f"Aku butuh {amt} Gold untuk menyalakan lentera ini kembali. Bantu aku?"]
 
-    # --- 3. FASE LATE (Gold >= 800) ---
+    # --- 3. FASE LATE (Pajak Besar & Pencurian Item) ---
     else:
         if random.random() > 0.5:
             amt = int(player_gold * 0.3)
@@ -64,6 +89,7 @@ def generate_npc(player_gold=0, is_liar=None):
     return {
         "identity": name, 
         "is_liar": is_liar,
+        "is_quiz": False,
         "dialog": random.choice(dialogs),
         "requirement": req
     }
