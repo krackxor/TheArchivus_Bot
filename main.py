@@ -8,7 +8,8 @@ from engine import process_move
 from database import get_player, update_player, auto_seed_content, reset_player_death
 from combat import generate_battle_puzzle, validate_answer
 from states import GameState
-from config import BOT_TOKEN  # <-- Mengambil token aman dari config.py
+from config import BOT_TOKEN
+from shop import get_shop_keyboard, process_purchase  # <-- Import sistem Toko
 
 dp = Dispatcher()
 
@@ -17,7 +18,8 @@ def get_nav_keyboard():
         [InlineKeyboardButton(text="⬆️ Utara", callback_data="move_utara")],
         [InlineKeyboardButton(text="⬅️ Barat", callback_data="move_barat"), InlineKeyboardButton(text="Timur ➡️", callback_data="move_timur")],
         [InlineKeyboardButton(text="⬇️ Selatan", callback_data="move_selatan")],
-        [InlineKeyboardButton(text="📊 Cek Status", callback_data="check_status")]
+        # <-- Tombol Toko ditambahkan di sebelah Cek Status
+        [InlineKeyboardButton(text="📊 Cek Status", callback_data="check_status"), InlineKeyboardButton(text="🛒 Toko", callback_data="open_shop")]
     ])
 
 @dp.message(CommandStart())
@@ -40,6 +42,45 @@ async def status_handler(callback: CallbackQuery):
     text = f"📊 **Buku Catatan Weaver**\n❤️ HP: {p['hp']}/{p['max_hp']} | 🔮 MP: {p['mp']}/{p['max_mp']}\n💰 Gold: {p['gold']} | 💀 Kills: {p['kills']}\n📍 Kewaspadaan: {p['step_counter']}/15"
     await callback.message.edit_text(text, reply_markup=get_nav_keyboard())
     await callback.answer()
+
+# ==========================================
+# HANDLER TOKO & TRANSAKSI
+# ==========================================
+@dp.callback_query(GameState.exploring, F.data == "open_shop")
+async def open_shop_handler(callback: CallbackQuery):
+    player = get_player(callback.from_user.id)
+    text = (
+        "⚖️ **Toko Sang Pedagang Buta**\n\n"
+        f"💰 *Gold milikmu: {player['gold']}*\n\n"
+        "\"Nyawa bisa dibeli jika kamu punya koin yang tepat... Apa yang kau butuhkan, Weaver?\""
+    )
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_shop_keyboard())
+    await callback.answer()
+
+@dp.callback_query(GameState.exploring, F.data == "close_shop")
+async def close_shop_handler(callback: CallbackQuery):
+    await callback.message.edit_text("👣 Kamu melangkah menjauh dari pedagang itu. Ke mana sekarang?", reply_markup=get_nav_keyboard())
+    await callback.answer()
+
+@dp.callback_query(GameState.exploring, F.data.startswith("buy_"))
+async def buy_item_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    item_code = callback.data
+    
+    # Proses transaksi memanggil shop.py
+    is_success, pesan_transaksi = process_purchase(user_id, item_code)
+    
+    # Refresh data pemain untuk menampilkan sisa gold terbaru
+    player = get_player(user_id)
+    text = (
+        f"{pesan_transaksi}\n\n"
+        f"💰 *Sisa Gold: {player['gold']}*\n\n"
+        "\"Ada lagi yang kau inginkan?\""
+    )
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=get_shop_keyboard())
+    await callback.answer()
+# ==========================================
 
 @dp.callback_query(GameState.exploring, F.data.startswith("move_"))
 async def move_handler(callback: CallbackQuery, state: FSMContext):
@@ -94,7 +135,7 @@ async def combat_handler(message: Message, state: FSMContext):
 
 async def main():
     auto_seed_content()
-    bot = Bot(token=BOT_TOKEN) # <-- Bot sekarang menggunakan token dari file .env
+    bot = Bot(token=BOT_TOKEN)
     print("👁️ The Archivus telah bangkit. Bot sedang mendengarkan...")
     await dp.start_polling(bot)
 
