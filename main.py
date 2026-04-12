@@ -154,23 +154,40 @@ async def move_handler(message: Message, state: FSMContext):
             await state.update_data(target_direction=None, follow_step=0)
             npc_data = data.get("npc_data")
 
+            # --- LOGIKA JEBAKAN NAVIGASI (BARU) ---
             if npc_data['is_liar']:
-                p = get_player(user_id)
-                tier_level = min(5, max(1, (p['kills'] // 5) + 1))
-                puzzle = generate_battle_puzzle(tier_level, is_boss=False) 
+                # Roll dadu: 30% Peluang Instant Death Trap, 70% Peluang Monster Ambush
+                trap_roll = random.random()
                 
-                await state.set_state(GameState.in_combat)
-                await state.update_data(puzzle=puzzle, current_stage=1, target_stages=1)
+                if trap_roll <= 0.30: 
+                    msg_text = reset_player_death(user_id, "disesatkan ke dalam Jurang Kehampaan")
+                    narasi_mati = (
+                        "💀 **DISESATKAN MENUJU KEMATIAN!**\n\n"
+                        "Langkah kelimamu tidak menginjak lantai, melainkan udara kosong. "
+                        "NPC itu telah menipumu. Kamu jatuh ke dalam jurang tanpa dasar Archivus, "
+                        "tercabik-cabik oleh anomali ruang waktu sebelum sempat berteriak."
+                    )
+                    return await message.answer(f"{narasi_mati}\n\n{msg_text}", reply_markup=get_main_reply_keyboard())
                 
-                res = (
-                    "💀 **DIKHIANATI!**\n"
-                    "Saran itu jebakan! Kamu sampai di ujung jalan yang buntu dan monster telah menunggumu.\n\n"
-                    f"⚔️ **{puzzle['monster_name']}** (TIER {puzzle['tier']})\n"
-                    f"🧩 `\"{puzzle['question']}\"`"
-                )
-                msg = await message.answer(res, reply_markup=get_combat_keyboard())
-                asyncio.create_task(combat_timeout_task(msg, state, puzzle, user_id))
-                return
+                else: 
+                    p = get_player(user_id)
+                    tier_level = min(5, max(1, (p['kills'] // 5) + 2)) # Tier monster dinaikkan +1 karena jebakan
+                    puzzle = generate_battle_puzzle(tier_level, is_boss=False) 
+                    
+                    await state.set_state(GameState.in_combat)
+                    await state.update_data(puzzle=puzzle, current_stage=1, target_stages=1)
+                    
+                    res = (
+                        "💀 **DIJEBAK!**\n"
+                        "Saran itu adalah omong kosong. Kamu disesatkan ke sarang monster! "
+                        "Tidak ada jalan mundur.\n\n"
+                        f"⚔️ **{puzzle['monster_name']}** (TIER {puzzle['tier']})\n"
+                        f"🧩 `\"{puzzle['question']}\"`"
+                    )
+                    msg = await message.answer(res, parse_mode="Markdown", reply_markup=get_combat_keyboard())
+                    asyncio.create_task(combat_timeout_task(msg, state, puzzle, user_id))
+                    return
+
             else:
                 update_player(user_id, {"mp": min(get_player(user_id)['max_mp'], get_player(user_id)['mp'] + 20)})
                 return await message.answer(
@@ -308,16 +325,59 @@ async def npc_accept_handler(callback: CallbackQuery, state: FSMContext):
     player = get_player(user_id)
     data = await state.get_data()
     npc_data = data.get("npc_data")
-    if not npc_data: return
+    if not npc_data: 
+        return await callback.answer("Entitas itu sudah memudar...", show_alert=True)
 
-    req = npc_data['requirement']
-    if req['type'] == "gold" and player['gold'] < req['amount']:
-        return await callback.answer("❌ Gold tidak cukup!", show_alert=True)
+    req = npc_data.get('requirement')
     
-    update_player(user_id, {"gold": player['gold'] - req['amount'] if req['type'] == "gold" else player['gold']})
-    msg = "✅ **BERKAH.** Tubuhmu menguat!" if data.get("current_npc_type") == "npc_baik" else "❌ **DIRAMPOK!** Barangmu dibawa kabur."
-    await callback.message.edit_text(msg)
-    await callback.message.answer("Perjalanan berlanjut...", reply_markup=get_main_reply_keyboard())
+    # 1. Validasi Persyaratan (Misal: NPC minta Gold)
+    if req and req['type'] == "gold":
+        if player['gold'] < req['amount']:
+            return await callback.answer("❌ Pecahan memori (Gold) tidak cukup!", show_alert=True)
+        # Potong gold sebagai biaya awal transaksi
+        player['gold'] -= req['amount']
+
+    # 2. EKSEKUSI INTERAKSI (GAME EFFECT)
+    effect = npc_data.get('game_effect')
+    updates = {"gold": player['gold']} # Update dasar
+    
+    if effect:
+        if effect['type'] == "heal":
+            updates['hp'] = min(player['max_hp'], player['hp'] + effect['value'])
+        elif effect['type'] == "buff_mp":
+            updates['mp'] = min(player['max_mp'], player['mp'] + effect['value'])
+        elif effect['type'] == "give_item":
+            inventory = player.get('inventory', [])
+            inventory.append(effect['value'])
+            updates['inventory'] = inventory
+        elif effect['type'] == "damage":
+            updates['hp'] = player['hp'] - effect['value']
+        elif effect['type'] == "steal_gold":
+            updates['gold'] = max(0, player['gold'] - effect['value'])
+        elif effect['type'] == "curse_mp":
+            updates['mp'] = max(0, player['mp'] - effect['value'])
+        elif effect['type'] == "fatal_trap":
+            updates['hp'] = 0 # Paksa HP menjadi 0 untuk memicu kematian
+
+    # 3. Simpan Perubahan ke Database
+    update_player(user_id, updates)
+
+    # 4. Cek Kematian Akibat NPC
+    if updates.get('hp', player['hp']) <= 0:
+        msg_text = reset_player_death(user_id, "terjebak tipu daya entitas Archivus")
+        pesan_mati = effect['msg'] if effect else "Kamu gugur dalam keheningan."
+        
+        await callback.message.edit_text(f"{pesan_mati}\n\n{msg_text}")
+        await state.set_state(GameState.exploring)
+        return await callback.message.answer("Archivus tidak memiliki belas kasihan. Tentukan langkah barumu...", reply_markup=get_main_reply_keyboard())
+
+    # 5. Tampilkan Hasil Interaksi yang Sinematik
+    hasil_interaksi = effect['msg'] if effect else "Transaksi selesai dalam keheningan."
+    await callback.message.edit_text(f"🎭 **INTERAKSI SELESAI**\n\n{hasil_interaksi}")
+    
+    # Lanjut jalan
+    await state.set_state(GameState.exploring)
+    await callback.message.answer("Kabut kembali menyelimuti sekitarmu...", reply_markup=get_main_reply_keyboard())
 
 @dp.callback_query(F.data == "npc_ignore")
 async def npc_ignore_handler(callback: CallbackQuery, state: FSMContext):
