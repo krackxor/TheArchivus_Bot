@@ -35,15 +35,16 @@ def get_combat_keyboard():
     ])
 
 def get_npc_interaction_keyboard(req):
+    """Mendukung Fase Early (req is None) tanpa label pembocor"""
     if req is None:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🧭 Ikuti Sarannya", callback_data="npc_follow", color="blue")],
-            [InlineKeyboardButton(text="👣 Abaikan & Pergi", callback_data="npc_ignore", color="red")]
+            [InlineKeyboardButton(text="👣 Abaikan", callback_data="npc_ignore", color="red")]
         ])
     
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🤝 Beri {req['amount']} {req['name']}", callback_data="npc_accept", color="green")],
-        [InlineKeyboardButton(text="👣 Abaikan & Pergi", callback_data="npc_ignore", color="red")]
+        [InlineKeyboardButton(text="👣 Abaikan", callback_data="npc_ignore", color="red")]
     ])
 
 # --- BASIC HANDLERS ---
@@ -55,7 +56,7 @@ async def start_handler(message: Message, state: FSMContext):
     await state.set_state(GameState.exploring)
     await message.answer("📜 **The Archivus telah bangkit.**", reply_markup=get_main_reply_keyboard())
 
-# --- NPC LOGIC ---
+# --- NPC LOGIC (HIDDEN IDENTITY) ---
 
 @dp.callback_query(F.data == "npc_follow")
 async def npc_follow_handler(callback: CallbackQuery, state: FSMContext):
@@ -75,7 +76,7 @@ async def npc_follow_handler(callback: CallbackQuery, state: FSMContext):
         update_player(user_id, {"mp": min(player['max_mp'], player['mp'] + 20)})
 
     await callback.message.edit_text(res)
-    await callback.message.answer("Melanjutkan langkah...", reply_markup=get_main_reply_keyboard())
+    await callback.message.answer("Perjalanan berlanjut...", reply_markup=get_main_reply_keyboard())
     await callback.answer()
 
 @dp.callback_query(F.data == "npc_accept")
@@ -104,15 +105,21 @@ async def npc_accept_handler(callback: CallbackQuery, state: FSMContext):
 
     if npc_type == "npc_baik":
         update_player(user_id, {"max_hp": player['max_hp'] + 20, "hp": player['max_hp'] + 20})
-        msg = "✅ **BERKAH.**\nPengorbananmu dibalas mantra suci. Tubuhmu menguat!"
+        msg = "✅ **BERKAH.**\nPengorbananmu membuahkan perlindungan. Tubuhmu menguat!"
     else:
-        msg = "❌ **DIRAMPOK!**\nDia lenyap tertawa. Kamu berdiri mematung, rugi besar."
+        msg = "❌ **DIRAMPOK!**\nDia lenyap tertawa. Kamu berdiri mematung di kegelapan."
 
     await callback.message.edit_text(msg)
-    await callback.message.answer("Melanjutkan langkah...", reply_markup=get_main_reply_keyboard())
+    await callback.message.answer("Perjalanan berlanjut...", reply_markup=get_main_reply_keyboard())
     await callback.answer()
 
-# --- CORE MOVE HANDLER (DAMAGE DINAMIS) ---
+@dp.callback_query(F.data == "npc_ignore")
+async def npc_ignore_handler(callback: CallbackQuery):
+    await callback.message.edit_text("👣 Kamu mengabaikannya dan melangkah pergi.")
+    await callback.message.answer("Perjalanan berlanjut...", reply_markup=get_main_reply_keyboard())
+    await callback.answer()
+
+# --- CORE MOVE HANDLER (TIER & DYNAMIC DAMAGE) ---
 
 @dp.message(GameState.exploring, F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
 async def move_handler(message: Message, state: FSMContext):
@@ -127,7 +134,6 @@ async def move_handler(message: Message, state: FSMContext):
         await state.set_state(GameState.in_combat)
         await state.update_data(puzzle=puzzle)
         
-        # UI Combat menampilkan Tier
         tier_label = f"TIER {puzzle['tier']}" if not puzzle['is_boss'] else "⚠️ BOSS"
         text = (
             f"👣 {narration}\n\n"
@@ -137,13 +143,13 @@ async def move_handler(message: Message, state: FSMContext):
         )
         await message.answer(text, parse_mode="Markdown", reply_markup=get_combat_keyboard())
         
-        # Menunggu Jawaban (1 Menit)
-        await asyncio.sleep(puzzle['timer'])
+        # Timeout 1 Menit
+        await asyncio.sleep(60) 
         
         current_state = await state.get_state()
         if current_state == GameState.in_combat:
             p = get_player(user_id)
-            damage_taken = puzzle.get('damage', 5) # Ambil damage dari tier monster
+            damage_taken = puzzle.get('damage', 5) 
             new_hp = p['hp'] - damage_taken
             
             if new_hp <= 0:
@@ -154,7 +160,7 @@ async def move_handler(message: Message, state: FSMContext):
                 update_player(user_id, {"hp": new_hp})
                 await message.answer(
                     f"⚠️ **WAKTU HABIS!**\n"
-                    f"{puzzle['monster_name']} melukaimu: **-{damage_taken} HP**.\n"
+                    f"{puzzle['monster_name']} menyerang: **-{damage_taken} HP**.\n"
                     f"Sisa HP: {new_hp}", 
                     reply_markup=get_main_reply_keyboard()
                 )
@@ -163,14 +169,14 @@ async def move_handler(message: Message, state: FSMContext):
     elif event_type in ["npc_baik", "npc_jahat"]:
         await state.update_data(npc_data=event_data, current_npc_type=event_type)
         req = event_data['requirement']
-        detail_req = "Dia ingin memberimu petunjuk jalan." if req is None else f"Dia meminta: **{req['amount']} {req['name']}**"
+        detail_req = "Dia menawarkan petunjuk jalan." if req is None else f"Dia meminta: **{req['amount']} {req['name']}**"
 
-        text = (f"👤 **{event_data['identity']}**:\n*\"{event_data['dialog']}\"*\n\n💎 {detail_req}")
+        text = (f"👤 **{event_data['identity']}**\n*\"{event_data['dialog']}\"*\n\n💎 {detail_req}")
         await message.answer(text, parse_mode="Markdown", reply_markup=get_npc_interaction_keyboard(req))
     else:
         await message.answer(f"👣 {narration}", reply_markup=get_main_reply_keyboard())
 
-# --- COMBAT HANDLER (JAWABAN SALAH) ---
+# --- COMBAT HANDLER (DYNAMIC DAMAGE) ---
 
 @dp.message(GameState.in_combat)
 async def combat_answer_handler(message: Message, state: FSMContext):
@@ -189,7 +195,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
         await message.answer(f"✅ **BENAR!** (+{reward} Gold)", reply_markup=get_main_reply_keyboard())
     else:
         p = get_player(user_id)
-        damage_taken = puzzle.get('damage', 5) # Damage sesuai tier
+        damage_taken = puzzle.get('damage', 5)
         new_hp = p['hp'] - damage_taken
         
         if new_hp <= 0:
@@ -201,7 +207,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             label = "WAKTU HABIS!" if is_timeout else "SALAH!"
             await message.answer(f"❌ **{label}** HP -{damage_taken}. Coba lagi!")
 
-# --- SISTEM HANDLERS ---
+# --- STATUS & SHOP ---
 
 @dp.message(GameState.exploring, F.text == "📊 Status")
 async def status_handler(message: Message):
@@ -213,7 +219,7 @@ async def status_handler(message: Message):
 @dp.message(GameState.exploring, F.text == "🛒 Toko")
 async def shop_handler(message: Message):
     player = get_player(message.from_user.id)
-    text = f"⚖️ **Toko** (Gold: {player['gold']})\n\"Apa yang kau cari, pengembara?\""
+    text = f"⚖️ **Toko** (Gold: {player['gold']})\n\"Pilih pertukaranmu, Weaver...\""
     await message.answer(text, reply_markup=get_shop_keyboard())
 
 # --- BOILERPLATE ---
