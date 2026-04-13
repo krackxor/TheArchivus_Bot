@@ -13,7 +13,7 @@ from config import BOT_TOKEN
 
 # === NEW ARCHITECTURE IMPORTS ===
 # Memanggil dari folder game/systems/
-from game.systems.exploration import process_move  # <--- INI YANG BARU KITA UBAH!
+from game.systems.exploration import process_move  
 from game.systems.shop import get_shop_keyboard, process_purchase
 from game.systems.combat import generate_battle_puzzle, validate_answer
 from game.systems.events import roll_loot_drop, trigger_random_event, process_event_outcome, check_easter_egg
@@ -123,7 +123,7 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
             
             # Update message dengan warning
             try:
-                warning_text = f"⚠️ **WAKTU TERSISA: {warning} DETIK!**"
+                warning_text = f"⚠️ *WAKTU TERSISA: {warning} DETIK!*"
                 # Bisa edit message kalau mau (optional)
             except:
                 pass
@@ -147,15 +147,16 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
             death_msg = create_death_screen("Waktu habis di pertarungan", stats)
             msg_text = reset_player_death(user_id, "death_combat")
             
-            await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard())
+            await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard(), parse_mode="Markdown")
         else:
             update_player(user_id, {"hp": new_hp})
             # Reset combo
             update_player(user_id, {"current_combo": 0})
             
             await message.answer(
-                f"⏰ **WAKTU HABIS!**\n\n{puzzle['monster_name']} menyerangmu!\n{create_hp_bar(new_hp, p['max_hp'])}", 
-                reply_markup=get_main_reply_keyboard()
+                f"⏰ *WAKTU HABIS!*\n\n*{puzzle['monster_name']}* menyerangmu!\n{create_hp_bar(new_hp, p['max_hp'])}", 
+                reply_markup=get_main_reply_keyboard(),
+                parse_mode="Markdown"
             )
 
 # === COMMAND HANDLERS ===
@@ -169,19 +170,19 @@ async def start_handler(message: Message, state: FSMContext):
     await state.set_state(GameState.exploring)
     
     welcome_msg = f"""
-╔═══════════════════════════╗
-║   📜 THE ARCHIVUS 📜
-╠═══════════════════════════╣
-║  Selamat datang, {username}
-║  
-║  Kau telah memasuki dimensi
-║  tanpa ujung ini sebagai
-║  **Weaver** - penenun takdir.
-║  
-║  Bertahanlah, pecahkan
-║  misteri, dan catatkan
-║  namamu dalam sejarah...
-╚═══════════════════════════╝
+━━━━━━━━━━━━━━━━━━━━
+📜 *THE ARCHIVUS* 📜
+━━━━━━━━━━━━━━━━━━━━
+Selamat datang, {username}
+ 
+Kau telah memasuki dimensi
+tanpa ujung ini sebagai
+*Weaver* - penenun takdir.
+ 
+Bertahanlah, pecahkan
+misteri, dan catatkan
+namamu dalam sejarah...
+━━━━━━━━━━━━━━━━━━━━
 
 Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
 {create_hp_bar(player['hp'], player['max_hp'])}
@@ -190,7 +191,7 @@ Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
 🔮 Ketik /help untuk panduan
 """
     
-    await message.answer(welcome_msg, reply_markup=get_main_reply_keyboard(player))
+    await message.answer(welcome_msg, reply_markup=get_main_reply_keyboard(player), parse_mode="Markdown")
     
     # Check daily quests
     import datetime
@@ -211,41 +212,41 @@ Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
             for q in daily_quests
         ])
         
-        await message.answer(f"🌅 **DAILY QUESTS UPDATED!**\n\n{quest_card}")
+        await message.answer(f"🌅 *DAILY QUESTS UPDATED!*\n\n{quest_card}", parse_mode="Markdown")
 
 @dp.message(F.text == "/help")
 async def help_handler(message: Message):
     help_text = """
-📖 **PANDUAN THE ARCHIVUS**
+📖 *PANDUAN THE ARCHIVUS*
 
-**🎮 Cara Bermain:**
+🎮 *Cara Bermain:*
 • Gunakan tombol arah untuk menjelajah
 • Pecahkan puzzle untuk mengalahkan monster
 • Kumpulkan gold dan item
 • Tingkatkan level dan unlock skill
 
-**⚔️ Combat:**
+⚔️ *Combat:*
 • Jawab puzzle dengan benar dalam waktu yang ditentukan
 • Gunakan skill dengan menekan tombol di combat
 • Combo = bonus reward!
 
-**🏆 Progression:**
+🏆 *Progression:*
 • Selesaikan Daily Quests untuk bonus
 • Unlock Achievements untuk reward permanen
 • Level up = stat boost + skill baru
 
-**💡 Tips:**
+💡 *Tips:*
 • Kelola MP dengan bijak untuk skill
 • Simpan ramuan untuk boss fight
 • NPC bisa baik atau jahat - hati-hati!
 • Loot drops bervariasi berdasarkan tier monster
 
-**🎁 Easter Eggs:**
+🎁 *Easter Eggs:*
 • Explore dan eksperimen untuk menemukan rahasia!
 
-Selamat berpetualang, Weaver!
+_Selamat berpetualang, Weaver!_
 """
-    await message.answer(help_text)
+    await message.answer(help_text, parse_mode="Markdown")
 
 # === STATUS & INVENTORY HANDLERS ===
 
@@ -264,11 +265,11 @@ async def status_handler(message: Message):
     # Add active buffs
     active_buffs = p.get('active_buffs', [])
     if active_buffs:
-        status_card += "\n\n✨ **ACTIVE BUFFS:**\n"
+        status_card += "\n\n✨ *ACTIVE BUFFS:*\n"
         for buff in active_buffs:
             status_card += f"• {buff['name']} ({buff.get('duration', 0)} left)\n"
     
-    await message.answer(status_card, reply_markup=get_main_reply_keyboard(p))
+    await message.answer(status_card, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
 @dp.message(GameState.exploring, F.text == "🎒 Inventory")
 async def inventory_handler(message: Message):
@@ -291,7 +292,8 @@ async def inventory_handler(message: Message):
     
     await message.answer(
         inv_display,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="Markdown"
     )
 
 @dp.message(GameState.exploring, F.text == "🏆 Quest")
@@ -326,7 +328,8 @@ async def quest_handler(message: Message):
     
     await message.answer(
         quest_card,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="Markdown"
     )
 
 # === MOVEMENT & EXPLORATION (ENHANCED) ===
@@ -351,7 +354,7 @@ async def move_handler(message: Message, state: FSMContext):
     # Check easter eggs
     easter_egg = check_easter_egg(player, "movement_sequence")
     if easter_egg:
-        await message.answer(easter_egg['message'])
+        await message.answer(easter_egg['message'], parse_mode="Markdown")
         # Apply rewards...
         return
     
@@ -363,12 +366,12 @@ async def move_handler(message: Message, state: FSMContext):
         await state.update_data(current_event=event)
         
         event_msg = f"""
-🎲 **RANDOM EVENT!**
+🎲 *RANDOM EVENT!*
 
-**{event['name']}**
+*{event['name']}*
 _{event['description']}_
 """
-        await message.answer(event_msg, reply_markup=get_event_keyboard(event))
+        await message.answer(event_msg, reply_markup=get_event_keyboard(event), parse_mode="Markdown")
         return
     
     # Normal movement processing (sekarang memakai exploration.py!)
@@ -385,7 +388,7 @@ _{event['description']}_
         boss_name = "SANG PENJAGA"
         warning = create_boss_warning(boss_name)
         
-        await message.answer(warning)
+        await message.answer(warning, parse_mode="Markdown")
         await asyncio.sleep(2)  # Dramatic pause
         
         # Start boss combat
@@ -405,7 +408,7 @@ _{event['description']}_
         combat_msg = f"""
 {combat_header}
 
-🧩 **PUZZLE STAGE 1:**
+🧩 *PUZZLE STAGE 1:*
 `{puzzle['question']}`
 
 {create_hp_bar(p['hp'], p['max_hp'])}
@@ -447,7 +450,7 @@ _{event['description']}_
 
 {combo_text}
 
-🧩 **PUZZLE:**
+🧩 *PUZZLE:*
 `{puzzle['question']}`
 
 {create_hp_bar(p['hp'], p['max_hp'])}
@@ -464,7 +467,7 @@ _{event['description']}_
         
     else:
         # Safe travel or NPC
-        await message.answer(narration, reply_markup=get_main_reply_keyboard(player))
+        await message.answer(narration, reply_markup=get_main_reply_keyboard(player), parse_mode="Markdown")
 
 # === COMBAT HANDLER (ENHANCED) ===
 
@@ -513,7 +516,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             combo_indicator = create_combo_indicator(current_combo)
             
             next_msg = f"""
-✅ **BENAR!** {combo_indicator}
+✅ *BENAR!* {combo_indicator}
 
 {create_combat_header(new_puzzle['monster_name'], puzzle.get('tier', 1), current_stage + 1, target_stages)}
 
@@ -627,7 +630,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             loot_display = create_loot_drop(loot_drops)
             
             victory_msg = f"""
-🎉 **KEMENANGAN!** 🎉
+🎉 *KEMENANGAN!* 🎉
 
 {combo_indicator}
 
@@ -644,11 +647,11 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 victory_msg += "\n" + level_up_msg
             
             await state.set_state(GameState.exploring)
-            await message.answer(victory_msg, reply_markup=get_main_reply_keyboard(updated_player))
+            await message.answer(victory_msg, reply_markup=get_main_reply_keyboard(updated_player), parse_mode="Markdown")
             
             # Send achievement notifications
             for ach_msg in achievement_msgs:
-                await message.answer(ach_msg)
+                await message.answer(ach_msg, parse_mode="Markdown")
     
     else:
         # WRONG ANSWER PATH
@@ -673,16 +676,18 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             await state.set_state(GameState.exploring)
             await message.answer(
                 death_screen + "\n\n" + msg_text,
-                reply_markup=get_main_reply_keyboard()
+                reply_markup=get_main_reply_keyboard(),
+                parse_mode="Markdown"
             )
         else:
             update_player(user_id, {"hp": new_hp})
             
-            label = "⏰ WAKTU HABIS!" if is_timeout else "❌ SALAH!"
+            label = "⏰ *WAKTU HABIS!*" if is_timeout else "❌ *SALAH!*"
             
             await message.answer(
-                f"{label}\n\n{puzzle['monster_name']} menyerang!\n\n{create_hp_bar(new_hp, p['max_hp'])}",
-                reply_markup=get_main_reply_keyboard()
+                f"{label}\n\n*{puzzle['monster_name']}* menyerang!\n\n{create_hp_bar(new_hp, p['max_hp'])}",
+                reply_markup=get_main_reply_keyboard(),
+                parse_mode="Markdown"
             )
             
             await state.set_state(GameState.exploring)
