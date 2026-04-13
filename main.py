@@ -13,7 +13,7 @@ from config import BOT_TOKEN
 
 # === NEW ARCHITECTURE IMPORTS ===
 # Memanggil dari folder game/systems/
-from game.systems.engine import process_move
+from game.systems.exploration import process_move  # <--- INI YANG BARU KITA UBAH!
 from game.systems.shop import get_shop_keyboard, process_purchase
 from game.systems.combat import generate_battle_puzzle, validate_answer
 from game.systems.events import roll_loot_drop, trigger_random_event, process_event_outcome, check_easter_egg
@@ -371,7 +371,7 @@ _{event['description']}_
         await message.answer(event_msg, reply_markup=get_event_keyboard(event))
         return
     
-    # Normal movement processing
+    # Normal movement processing (sekarang memakai exploration.py!)
     event_type, event_data, narration = process_move(user_id)
     
     # Update daily stats
