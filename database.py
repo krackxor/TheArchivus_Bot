@@ -77,8 +77,10 @@ def get_player(user_id, username="Weaver"):
             "trap_survived": 0,
             "quiz_correct_count": 0,
             
-            # Buffs & Debuffs (NEW)
+            # Buffs & Debuffs (NEW) - TERMASUK RESIN/MANTRA
             "active_buffs": [],
+            "active_resin": None, # Menyimpan elemen mantra sementara (misal: "Api")
+            "resin_duration": 0,  # Berapa turn lagi mantra aktif
             "has_companion": False,
             "companion_duration": 0,
             
@@ -130,8 +132,10 @@ def get_player(user_id, username="Weaver"):
     if "trap_survived" not in player: updates["trap_survived"] = 0
     if "quiz_correct_count" not in player: updates["quiz_correct_count"] = 0
     
-    # NEW Buff fields
+    # NEW Buff fields (Resin System)
     if "active_buffs" not in player: updates["active_buffs"] = []
+    if "active_resin" not in player: updates["active_resin"] = None
+    if "resin_duration" not in player: updates["resin_duration"] = 0
     if "has_companion" not in player: updates["has_companion"] = False
     if "companion_duration" not in player: updates["companion_duration"] = 0
     
@@ -176,7 +180,7 @@ def add_history(user_id, event_text):
     history = player.get("history", [])
     history.append(log)
     
-    # Simpan max 20 sejarah terakhir (increased from 10)
+    # Simpan max 20 sejarah terakhir
     if len(history) > 20:
         history.pop(0)
         
@@ -209,11 +213,13 @@ def reset_player_death(user_id, cause):
         "gold": new_gold,
         "exp": new_exp,
         "kills": 0,
-        "inventory": [],  # Item hilang
+        "inventory": [],  # ITEM HILANG (Termasuk equip, durability, dll - Sangat Hardcore)
         "monster_streak": 0,
         "steps_since_event": 0,
         "current_combo": 0,
         "active_buffs": [],  # Buff hilang
+        "active_resin": None, # Resin/Mantra hilang
+        "resin_duration": 0,
         "has_companion": False,
         "companion_duration": 0
     }
@@ -231,7 +237,7 @@ Jiwa Weaver hancur berkeping-keping...
 **Penalti:**
 • 💰 Gold: -{gold_lost} ({gold_loss_percent * 100:.0f}%)
 • ⭐ EXP: -{exp_penalty} (20%)
-• 🎒 Semua item hilang
+• 🎒 Semua item & equipment hancur lebur
 • 🔥 Combo reset
 
 **Yang Tersisa:**
@@ -319,17 +325,31 @@ def add_buff(user_id, buff_data):
     update_player(user_id, {'active_buffs': buffs})
 
 def tick_buffs(user_id):
-    """Kurangi duration buff dan remove yang expired"""
+    """Kurangi duration buff dan Resin/Mantra, remove yang expired"""
     player = get_player(user_id)
-    buffs = player.get('active_buffs', [])
+    updates = {}
     
+    # 1. Update Regular Buffs
+    buffs = player.get('active_buffs', [])
     active_buffs = []
     for buff in buffs:
         buff['duration'] = buff.get('duration', 0) - 1
         if buff['duration'] > 0:
             active_buffs.append(buff)
+    updates['active_buffs'] = active_buffs
     
-    update_player(user_id, {'active_buffs': active_buffs})
+    # 2. Update Resin / Mantra Weapon (Berkurang per turn combat)
+    if player.get('active_resin') and player.get('resin_duration', 0) > 0:
+        new_duration = player['resin_duration'] - 1
+        if new_duration <= 0:
+            updates['active_resin'] = None
+            updates['resin_duration'] = 0
+            # Kita bisa nge-print notif ke user di main.py nanti "Efek Mantramu habis!"
+        else:
+            updates['resin_duration'] = new_duration
+            
+    if updates:
+        update_player(user_id, updates)
 
 if __name__ == "__main__":
     auto_seed_content()
