@@ -1,6 +1,6 @@
 """
 Sistem Pertarungan, Engine Genre, Kalkulasi RPG (Dodge, Element, Weight), dan Validasi Waktu.
-Sudah di-balance penuh sesuai GDD Final (Mage Heal = Cahaya Only, Weight Penalties, dll).
+Sudah di-balance penuh sesuai GDD Final (Mage Heal, Weight Penalties, Durability, dan Resin Mantra).
 """
 import time
 import random
@@ -28,6 +28,9 @@ ELEMENT_CHART = {
 def calculate_equipment_stats(player):
     """
     Mengekstrak seluruh data equipment (Atk, Def, Weight, Speed, dll) dari inventory/tas pemain.
+    FITUR BARU: 
+    1. Mengabaikan stat dari barang yang sudah rusak (durability <= 0).
+    2. Mengubah elemen secara dinamis jika ada buff Resin/Mantra.
     """
     inventory = player.get('inventory', [])
     stats = {
@@ -38,10 +41,16 @@ def calculate_equipment_stats(player):
         "weapon_type": "unarmed",
         "gloves_type": "none",
         "has_shield": False,
-        "element": player.get('element', "Netral") # Default Netral jika tidak ada equip elemen
+        # Prioritaskan 'active_resin' (kertas mantra), jika tidak ada gunakan elemen bawaan equip/Netral
+        "element": player.get('active_resin') or player.get('element', "Netral") 
     }
     
     for item in inventory:
+        # CEK DURABILITY: Abaikan barang yang sudah hancur
+        if item.get('type') in ['weapon', 'shield', 'chest', 'head', 'gloves', 'boots']:
+            if item.get('durability', 1) <= 0:
+                continue # SKIP ITEM RUSAK!
+                
         # Kalkulasi Stat Dasar
         stats["atk"] += item.get('bonus_atk', 0)
         stats["def"] += item.get('bonus_def', 0)
