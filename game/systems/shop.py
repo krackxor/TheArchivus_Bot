@@ -1,6 +1,6 @@
 """
 Sistem Toko Archivus (Shop System)
-Terintegrasi dengan Master Data Equipment (Senjata, Armor, Ramuan).
+Terintegrasi dengan Master Data Equipment (Senjata, Armor, Ramuan, Mantra, dan Repair Kit).
 """
 import uuid
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,6 +16,11 @@ SHOP_CATALOG = {
     "buy_heal_30": {"name": "🧪 Minor HP Potion", "desc": "+30 HP", "cost": 50, "type": "potion", "effect": "heal_30"},
     "buy_heal_80": {"name": "🧪 Major HP Potion", "desc": "+80 HP", "cost": 120, "type": "potion", "effect": "heal_80"},
     "buy_mp_40": {"name": "🔮 Tetesan Memori", "desc": "+40 MP", "cost": 60, "type": "potion", "effect": "mp_40"},
+    
+    # PERAWATAN & BUFF (Fitur Baru!)
+    "buy_repair_kit": {"name": "⚒️ Repair Kit", "desc": "Perbaiki 100% Durability Equip", "cost": 150, "type": "potion", "effect": "repair_all"},
+    "buy_resin_fire": {"name": "📜 Mantra Api", "desc": "Elemen Api ke senjata Melee", "cost": 100, "type": "potion", "effect": "resin_Api"},
+    "buy_resin_wind": {"name": "📜 Mantra Angin", "desc": "Elemen Angin ke senjata Melee", "cost": 100, "type": "potion", "effect": "resin_Angin"},
     
     # EQUIPMENT (Tarik data otomatis dari equipment.py - Kita sediakan Tier 1)
     "buy_wpn_katana": {"type": "equipment", "category": "weapon", "equip_id": "wpn_katana", "tier": 1},
@@ -84,7 +89,12 @@ def process_purchase(user_id, item_code):
             "weight": eq.get("weight", 0),
             "speed": eq.get("speed", "medium"),
             "bonus_type": eq.get("bonus_type", None),
-            "is_magic": eq.get("is_magic", False)
+            "is_magic": eq.get("is_magic", False),
+            
+            # FITUR BARU: Pastikan Durability dan Skill ikut masuk ke tas!
+            "durability": eq.get("durability", 50),
+            "max_durability": eq.get("max_durability", 50),
+            "skill": eq.get("skill", None)
         }
         
     # 2. CEK KEUANGAN PEMAIN
