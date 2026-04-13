@@ -505,7 +505,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
         if current_stage < target_stages:
             # Next stage
             tier_level = min(5, max(1, (p['kills'] // 5) + 1))
-            new_puzzle = generate_battle_puzzle(tier_level, puzzle['is_boss'])
+            new_puzzle = generate_battle_puzzle(p, tier_level, puzzle['is_boss'])
             
             await state.update_data(
                 puzzle=new_puzzle,
