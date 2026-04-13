@@ -1,146 +1,31 @@
-import random
+"""
+Sistem Pertarungan, Engine Genre, dan Validasi Waktu
+"""
 import time
+import random
 
-# --- DATABASE MONSTER BERDASARKAN TIER (ENDLESS) ---
-MONSTER_NAMES = {
-    1: ["Shadow Crawler", "Dust Mite", "Hollow Whisper", "Lost Fragment", "Gloom Fiend", "Crawling Ink", "Blind Rat"],
-    2: ["Archivus Guard", "Void Stalker", "Ink Slime", "Memory Parasite", "Shattered Knight", "Faceless Scribe", "Echo Phantom"],
-    3: ["Soul Eater", "Memory Butcher", "The Forgotten Weaver", "Crimson Wraith", "Abyssal Hound", "Grief Lurker", "Tomb Warden"],
-    4: ["Abyssal Knight", "Glitch Specter", "Time Devourer", "Chaos Oracle", "Void Behemoth", "Doom Herald", "Ruin Walker"],
-    5: ["Ancient Behemoth", "Reality Weaver", "Void Leviathan", "The First Scribe", "Astral Dragon", "The Nameless King", "Eternal Nightmare"]
-}
+# Memanggil Entitas
+from game.entities.monsters import get_random_monster
+from game.entities.bosses import get_random_boss
 
-# --- DATABASE BANK KATA (LINGUISTIK) ---
-WORDS_T1 = ["TINTA", "PENA", "BUKU", "KATA", "DEBU", "JALAN", "KABUT", "LUKA", "ASAP", "GELAP", "MATI", "LARI", "JIWA", "PINTU"]
-WORDS_T2 = ["PEDANG", "LENTERA", "MEMORI", "KERTAS", "BAYANG", "JALUR", "HANCUR", "TERIAK", "KUTUKAN", "PENJAGA", "RAHASIA"]
-WORDS_T3 = ["ARCHIVUS", "KEGELAPAN", "DISTORSI", "FRAGMEN", "WEAVER", "KEABADIAN", "PENGKHIANAT", "KEHAMPAAN", "NEMESIS", "LABIRIN"]
-
-# --- DATABASE LOGIKA & SEJARAH (LORE ARCHIVUS & EASTER EGGS) ---
-LORE_PUZZLES = [
-    {"q": "Aku punya lubang banyak, tapi bisa menampung air. Siapa aku?", "a": "spons"},
-    {"q": "Semakin besar aku, semakin sedikit yang bisa kau lihat.", "a": "gelap"},
-    {"q": "Apa nama entitas pencatat memori di dimensi Archivus ini?", "a": "ARCHIVUS"},
-    {"q": "Tragedi kereta apa yang berujung pada hancurnya pegunungan Arklay? (Dua kata)", "a": "ECLIPTIC EXPRESS"},
-    {"q": "Siapa pendiri yang dikhianati dan bangkit kembali dari lintah?", "a": "JAMES MARCUS"},
-    {"q": "Organisasi payung yang menciptakan virus mematikan itu bernama?", "a": "UMBRELLA"},
-    {"q": "Kota yang hancur lebur oleh penyebaran virus T adalah Raccoon...? (Satu kata)", "a": "CITY"},
-    {"q": "Senjata ikonik dari sang hantu Tsushima adalah? (Satu kata)", "a": "KATANA"},
-    {"q": "Siapa dewa perang yang menghancurkan Olympus? (Dua kata)", "a": "KRATOS"},
-    {"q": "Senjata rantai ikonik milik sang Dewa Perang adalah Blade of...? (Satu kata)", "a": "CHAOS"},
-    {"q": "Pangeran Lucis yang melakukan perjalanan bersama tiga sahabatnya adalah? (Satu kata)", "a": "NOCTIS"},
-    {"q": "Nama pedang raksasa milik Cloud Strife adalah? (Dua kata)", "a": "BUSTER SWORD"},
-    {"q": "Pusat dari energi Mako di dunia FF7 adalah kota?", "a": "MIDGAR"},
-    {"q": "Jika kau mengucapkanku, kau akan merusakku. Siapa aku?", "a": "diam"},
-    {"q": "Mata uang yang digunakan oleh para Weaver di Archivus disebut pecahan...", "a": "MEMORI"},
-    {"q": "NPC pencuri yang menguji ingatanmu dengan kuis disebut The Memory...?", "a": "THIEF"}
-]
-
-def generate_math_puzzle(tier):
-    """Menghasilkan kombinasi puzzle matematika dinamis."""
-    if tier == 1:
-        a = random.randint(10, 50)
-        b = random.randint(1, 30)
-        op = random.choice(['+', '-'])
-        answer = str(a + b) if op == '+' else str(max(a, b) - min(a, b)) 
-        real_q = f"{max(a, b)} - {min(a, b)}" if op == '-' else f"{a} + {b}"
-        return f"Pecahkan distorsi numerik ini: {real_q} = ?", answer
-        
-    elif tier == 2:
-        a = random.randint(4, 12)
-        b = random.randint(3, 9)
-        return f"Sandi perkalian Archivus: {a} x {b} = ?", str(a * b)
-        
-    elif tier == 3:
-        a = random.randint(3, 8)
-        b = random.randint(3, 8)
-        c = random.randint(10, 50)
-        return f"Uraikan kode matriks ini: ({a} x {b}) + {c} = ?", str((a * b) + c)
-        
-    else:
-        a = random.randint(5, 12)
-        x = random.randint(4, 12) 
-        b = a * x
-        return f"Pecahkan anomali persamaan ini: {a} x Y = {b}. Berapa nilai Y?", str(x)
-
-def generate_sequence_puzzle(tier):
-    """Menghasilkan kombinasi deret angka logika."""
-    start = random.randint(1, 10)
-    if tier <= 2:
-        step = random.randint(2, 6)
-        seq = [start + (i * step) for i in range(4)]
-        answer = str(start + (4 * step))
-        return f"Lengkapi deret memori ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
-        
-    elif tier <= 4:
-        step = random.randint(2, 4)
-        seq = [start * (step ** i) for i in range(4)]
-        answer = str(start * (step ** 4))
-        return f"Pecahkan pola eksponensial ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
-        
-    else:
-        seq = [start, start + random.randint(1, 5)]
-        for i in range(2, 5):
-            seq.append(seq[-1] + seq[-2])
-        answer = str(seq[-1] + seq[-2])
-        return f"Sandi Kuno Archivus (Deret): {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, {seq[4]}, ... ?", answer
-
-def generate_linguistic_puzzle(tier):
-    """Menghasilkan anagram/word scramble."""
-    if tier == 1:
-        word = random.choice(WORDS_T1)
-    elif tier in [2, 3]:
-        word = random.choice(WORDS_T2)
-    else:
-        word = random.choice(WORDS_T3)
-        
-    scrambled = list(word)
-    random.shuffle(scrambled)
-    while "".join(scrambled) == word:
-        random.shuffle(scrambled)
-        
-    return f"Susun kembali kata terdistorsi: **{''.join(scrambled).upper()}**", word
-
-def generate_cipher_puzzle(tier):
-    """GENRE BARU: Kriptografi, Pembalikan Teks, dan Observasi Pola"""
-    if tier <= 2:
-        # Teks Terbalik (Reverse String)
-        word = random.choice(WORDS_T1 + WORDS_T2)
-        reversed_word = word[::-1]
-        return f"Mantra ini ditulis terbalik oleh roh penasaran: **{reversed_word}**. Apa makna aslinya?", word
-        
-    elif tier == 3:
-        # Pencarian Indeks Huruf
-        word = random.choice(WORDS_T3)
-        n = random.randint(1, len(word))
-        answer = word[n-1]
-        return f"Dalam kata agung **{word}**, huruf ke-{n} adalah kunci segelnya. Huruf apakah itu?", answer
-        
-    else:
-        # Glitch / Noise Counting (Fokus Mata)
-        target_char = random.choice(['X', 'Z', 'V', 'Q'])
-        count = random.randint(3, 8)
-        noise = [random.choice(['A', 'B', 'C', 'D', 'E', 'F', 'H', 'J', 'W', 'Y']) for _ in range(15)]
-        
-        for _ in range(count):
-            noise.insert(random.randint(0, len(noise)), target_char)
-        noise_str = "".join(noise)
-        
-        return f"Jangan berkedip! Berapa banyak huruf **{target_char}** yang menyusup dalam distorsi ini: **{noise_str}**?", str(count)
-
-def generate_lore_puzzle():
-    """Mengambil pertanyaan logika atau sejarah dunia Archivus/Easter Eggs."""
-    puzzle = random.choice(LORE_PUZZLES)
-    return puzzle["q"], puzzle["a"]
+# Memanggil Generator Puzzle
+from game.puzzles.generator import (
+    generate_math_puzzle,
+    generate_sequence_puzzle,
+    generate_linguistic_puzzle,
+    generate_cipher_puzzle,
+    generate_lore_puzzle
+)
 
 def generate_battle_puzzle(tier_level=1, is_boss=False):
     """Sistem Multi-Genre Engine (Menghasilkan ribuan permutasi)."""
+    
     if is_boss:
-        m_name = random.choice(["THE KEEPER", "JAMES MARCUS ECHO", "VOID OVERLORD", "THE FINAL ARCHIVIST", "ORPHAN OF THE ARCHIVES"])
+        m_name = get_random_boss()
         tier_label = "BOSS"
         damage = random.randint(25, 40) + (tier_level * 5)
     else:
-        safe_tier = min(tier_level, 5)
-        m_name = random.choice(MONSTER_NAMES[safe_tier])
+        m_name = get_random_monster(tier_level)
         tier_label = tier_level
         damage = random.randint(8, 15) + (tier_level * random.randint(3, 6))
 
