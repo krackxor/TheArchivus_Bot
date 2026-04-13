@@ -760,6 +760,64 @@ async def skill_shield_handler(callback: CallbackQuery, state: FSMContext):
         show_alert=True
     )
 
+# === INVENTORY & MENU CALLBACK HANDLERS ===
+
+@dp.callback_query(F.data.startswith("use_item_"))
+async def use_item_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    item_id = callback.data.replace("use_item_", "")
+    p = get_player(user_id)
+    
+    inventory = p.get('inventory', [])
+    
+    # Cari item di dalam tas pemain
+    item_index = -1
+    for i, item in enumerate(inventory):
+        if item.get('id') == item_id:
+            item_index = i
+            break
+            
+    if item_index == -1:
+        return await callback.answer("❌ Item tidak ditemukan atau sudah habis!", show_alert=True)
+        
+    # Ambil dan hapus 1 item dari inventory
+    used_item = inventory.pop(item_index)
+    effect = used_item.get('effect', '')
+    
+    updates = {'inventory': inventory}
+    alert_msg = f"Memakai {used_item['name']}!\n"
+    
+    # Proses efek ramuan
+    if effect.startswith("heal_"):
+        amount = int(effect.split("_")[1])
+        updates['hp'] = min(p['max_hp'], p['hp'] + amount)
+        alert_msg += f"❤️ +{amount} HP"
+    elif effect.startswith("mp_"):
+        if effect == "mp_full":
+            updates['mp'] = p['max_mp']
+            alert_msg += "🔮 MP Pulih Sepenuhnya!"
+        else:
+            amount = int(effect.split("_")[1])
+            updates['mp'] = min(p['max_mp'], p['mp'] + amount)
+            alert_msg += f"🔮 +{amount} MP"
+    
+    # Simpan status baru ke database
+    update_player(user_id, updates)
+    
+    # Hapus pesan inventory lama agar chat tetap rapi
+    await callback.message.delete()
+    
+    # Munculkan pop-up di layar HP dan kirim pesan konfirmasi
+    await callback.answer(alert_msg, show_alert=True)
+    await callback.message.answer(f"✨ Kamu menenggak *{used_item['name']}*.\n{alert_msg}", parse_mode="Markdown")
+
+@dp.callback_query(F.data.in_(["close_inventory", "close_quests"]))
+async def close_menu_handler(callback: CallbackQuery):
+    """Fungsi untuk tombol 'Close' di Inventory dan Quest"""
+    await callback.message.delete()
+    await callback.answer()
+
+
 # === BOILERPLATE ===
 async def main():
     auto_seed_content()
