@@ -6,25 +6,29 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-from engine import process_move
+# === ROOT IMPORTS ===
 from database import get_player, update_player, auto_seed_content, reset_player_death, add_history
-from combat import generate_battle_puzzle, validate_answer
 from states import GameState
 from config import BOT_TOKEN
-from shop import get_shop_keyboard, process_purchase
 
-# NEW IMPORTS
-from helper_ui import (
+# === NEW ARCHITECTURE IMPORTS ===
+# Memanggil dari folder game/systems/
+from game.systems.engine import process_move
+from game.systems.shop import get_shop_keyboard, process_purchase
+from game.systems.combat import generate_battle_puzzle, validate_answer
+from game.systems.events import roll_loot_drop, trigger_random_event, process_event_outcome, check_easter_egg
+from game.systems.achievements import (
+    get_all_unlockable_achievements, award_achievement, generate_daily_quests,
+    check_daily_quest_progress, calculate_level_from_exp, calculate_exp_needed
+)
+
+# Memanggil dari folder utils/
+from utils.helper_ui import (
     create_hp_bar, create_mp_bar, create_status_card, create_combat_header,
     create_achievement_notification, create_loot_drop, create_level_up_animation,
     create_combo_indicator, create_daily_quest_card, create_boss_warning,
     create_death_screen, create_location_transition
 )
-from achievements import (
-    get_all_unlockable_achievements, award_achievement, generate_daily_quests,
-    check_daily_quest_progress, calculate_level_from_exp, calculate_exp_needed
-)
-from events import roll_loot_drop, trigger_random_event, process_event_outcome, check_easter_egg
 
 dp = Dispatcher()
 
@@ -57,8 +61,6 @@ def get_enhanced_combat_keyboard(player_mp, has_companion=False):
     buttons = [[InlineKeyboardButton(text="🔮 Revelatio (10 MP)", callback_data="skill_reveal")]]
     
     # Additional skills unlocked di level tertentu
-    player_level = player_mp  # Simplified, bisa ambil dari player data
-    
     if player_mp >= 20:
         buttons.append([InlineKeyboardButton(text="⚡ Time Warp (20 MP)", callback_data="skill_timewarp")])
     
@@ -271,7 +273,7 @@ async def status_handler(message: Message):
 @dp.message(GameState.exploring, F.text == "🎒 Inventory")
 async def inventory_handler(message: Message):
     p = get_player(message.from_user.id)
-    from helper_ui import create_inventory_display
+    from utils.helper_ui import create_inventory_display # Memanggil dari utils
     
     inv_display = create_inventory_display(p.get('inventory', []))
     
@@ -704,8 +706,54 @@ async def skill_reveal_handler(callback: CallbackQuery, state: FSMContext):
         show_alert=True
     )
 
-# Continue dengan handlers lainnya...
-# (File terlalu panjang, saya akan create di file terpisah untuk shop, events, dll)
+@dp.callback_query(F.data == "skill_timewarp")
+async def skill_timewarp_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Skill Time Warp: Menambah waktu 15 detik ke puzzle saat ini.
+    Biaya: 20 MP.
+    """
+    user_id = callback.from_user.id
+    player = get_player(user_id)
+    data = await state.get_data()
+    puzzle = data.get("puzzle")
+    
+    if not puzzle or player['mp'] < 20:
+        return await callback.answer("🔮 MP tidak cukup! (Butuh 20 MP)", show_alert=True)
+    
+    update_player(user_id, {"mp": player['mp'] - 20})
+    
+    puzzle['timer'] += 15
+    await state.update_data(puzzle=puzzle)
+    
+    await callback.answer(
+        "⚡ TIME WARP AKTIF!\n\nWaktu diperpanjang 15 detik.",
+        show_alert=True
+    )
+
+@dp.callback_query(F.data == "skill_shield")
+async def skill_shield_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Skill Shield: Menahan 50% damage dari serangan monster berikutnya.
+    Biaya: 30 MP.
+    """
+    user_id = callback.from_user.id
+    player = get_player(user_id)
+    data = await state.get_data()
+    puzzle = data.get("puzzle")
+    
+    if not puzzle or player['mp'] < 30:
+        return await callback.answer("🔮 MP tidak cukup! (Butuh 30 MP)", show_alert=True)
+    
+    update_player(user_id, {"mp": player['mp'] - 30})
+    
+    original_damage = puzzle.get('damage', 10)
+    puzzle['damage'] = int(original_damage * 0.5)
+    await state.update_data(puzzle=puzzle)
+    
+    await callback.answer(
+        "🛡️ SHIELD AKTIF!\n\nDamage monster berkurang 50%.",
+        show_alert=True
+    )
 
 # === BOILERPLATE ===
 async def main():
