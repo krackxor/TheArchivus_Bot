@@ -128,30 +128,92 @@ def process_staff_magic(element):
     }
     return effects.get(element, {"effect": "none", "value": 0, "desc": "Tidak ada efek sihir"})
 
-def generate_battle_puzzle(player, tier_level=1, is_boss=False):
-    """Sistem Multi-Genre Engine yang digabungkan dengan stat Monster RPG."""
+def roll_monster_skill(m_element, tier_level, is_boss):
+    """
+    Menentukan apakah monster menggunakan skill khusus berdasarkan elemennya.
+    Peluang skill meningkat berdasarkan tier dan status Boss.
+    """
+    skill_chance = 0.15 + (tier_level * 0.05)
+    if is_boss:
+        skill_chance += 0.20
+        
+    if random.random() > skill_chance:
+        return None # Serangan biasa
+        
+    # Dictionary Skill Monster berdasar Elemen
+    monster_skills = {
+        "Api": {"name": "Semburan Api", "type": "damage_boost", "multiplier": 1.5, "msg": "menyemburkan api panas!"},
+        "Air": {"name": "Tidal Wave", "type": "defense_pierce", "multiplier": 1.2, "msg": "menerjang dengan gelombang yang mengabaikan pertahanan!"},
+        "Petir": {"name": "Thunder Strike", "type": "time_cut", "multiplier": 1.0, "msg": "menyerang secepat kilat (Waktu dikurangi)!"},
+        "Tanah": {"name": "Earthquake", "type": "heavy_damage", "multiplier": 1.8, "msg": "mengguncang tanah dengan sangat keras!"},
+        "Angin": {"name": "Gale Force", "type": "dodge_bypass", "multiplier": 1.0, "msg": "menyerang dari segala arah (Dodge sulit)!"},
+        "Cahaya": {"name": "Holy Ray", "type": "heal_self", "multiplier": 1.0, "msg": "memulihkan dirinya sendiri dengan cahaya!"},
+        "Kegelapan": {"name": "Shadow Drain", "type": "vampire", "multiplier": 1.3, "msg": "menghisap energi kehidupanmu!"},
+        "Natural": {"name": "Poison Spores", "type": "damage_boost", "multiplier": 1.4, "msg": "melepaskan spora beracun!"}
+    }
+    
+    return monster_skills.get(m_element)
+
+def generate_battle_puzzle(player, tier_level=1, is_boss=False, existing_monster=None):
+    """
+    Sistem Multi-Genre Engine yang digabungkan dengan stat Monster RPG.
+    Menerima parameter 'existing_monster' agar HP tidak keriset saat lanjut ronde.
+    """
     
     # 1. Kalkulasi Stat Pemain
     p_stats = calculate_equipment_stats(player)
     
-    # 2. Tentukan Stat Monster
-    m_element = random.choice(ELEMENTS)
-    
-    if is_boss:
-        m_name = get_random_boss()
-        tier_label = "BOSS"
-        base_damage = random.randint(25, 40) + (tier_level * 5)
-        m_hp = 300 + (tier_level * 100)
+    # 2. Tentukan Stat Monster (Buat baru atau pakai yang sudah ada)
+    if existing_monster:
+        m_name = existing_monster["name"]
+        m_element = existing_monster["element"]
+        m_hp = existing_monster["hp"]
+        m_max_hp = existing_monster["max_hp"]
+        tier_label = existing_monster["tier"]
+        base_damage = existing_monster["base_damage"]
     else:
-        m_name = get_random_monster(tier_level)
-        tier_label = tier_level
-        base_damage = random.randint(8, 15) + (tier_level * random.randint(3, 6))
-        m_hp = 50 + (tier_level * 30)
+        m_element = random.choice(ELEMENTS)
+        if is_boss:
+            m_name = get_random_boss()
+            tier_label = "BOSS"
+            base_damage = random.randint(25, 40) + (tier_level * 5)
+            m_max_hp = 300 + (tier_level * 100)
+        else:
+            m_name = get_random_monster(tier_level)
+            tier_label = tier_level
+            base_damage = random.randint(8, 15) + (tier_level * random.randint(3, 6))
+            m_max_hp = 50 + (tier_level * 30)
+        m_hp = m_max_hp
 
-    # 3. Kalkulasi Damage Monster Masuk (Dipotong Defense)
-    final_monster_damage = max(1, base_damage - p_stats["def"])
+    # 3. Roll Monster Skill
+    m_skill = roll_monster_skill(m_element, tier_level, is_boss)
+    
+    # 4. Kalkulasi Damage Monster Masuk
+    raw_damage = base_damage
+    timer_penalty = 0
+    skill_msg = ""
+    
+    if m_skill:
+        skill_msg = f"✨ *{m_name} {m_skill['msg']}*"
+        
+        if m_skill["type"] == "damage_boost" or m_skill["type"] == "heavy_damage":
+            raw_damage = int(base_damage * m_skill["multiplier"])
+        elif m_skill["type"] == "defense_pierce":
+            raw_damage = int(base_damage * m_skill["multiplier"])
+            p_stats["def"] = int(p_stats["def"] * 0.5) # Kurangi def efektif 50%
+        elif m_skill["type"] == "time_cut":
+            timer_penalty = 5 # Waktu jawab dipotong 5 detik
+        elif m_skill["type"] == "heal_self":
+            heal_amount = int(m_max_hp * 0.15) # Heal 15% Max HP
+            m_hp = min(m_max_hp, m_hp + heal_amount)
+            skill_msg += f" (+{heal_amount} HP)"
+        elif m_skill["type"] == "vampire":
+            raw_damage = int(base_damage * m_skill["multiplier"])
+            # Heal akan dieksekusi di main.py jika serangan kena
+            
+    final_monster_damage = max(1, raw_damage - p_stats["def"])
 
-    # 4. Pilih Puzzle 
+    # 5. Pilih Puzzle 
     if is_boss and random.random() > 0.6:
         target_word = random.choice(["PENJAGA GERBANG", "DUNIA HAMPA", "MEMORI HILANG", "ECLIPTIC EXPRESS", "SANG PENGKHIANAT"])
         scrambled = list(target_word.replace(" ", ""))
@@ -161,18 +223,21 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False):
     else:
         question, answer = get_random_puzzle(tier_level)
 
-    # 5. Dynamic Timer (Makin sulit monster, makin sempit waktu)
-    # Base 60 detik, dikurangi (Tier * 5). Min 25 detik. Untuk Boss dikunci 45 detik.
+    # 6. Dynamic Timer
     timer_limit = max(25, 60 - (tier_level * 5)) if not is_boss else 45
+    timer_limit = max(15, timer_limit - timer_penalty) # Terapkan penalti waktu jika ada skill petir
 
     return {
         "monster_name": m_name,
         "monster_element": m_element,
         "monster_hp": m_hp,
+        "monster_max_hp": m_max_hp,
         "tier": tier_label,
         "damage": final_monster_damage, 
         "base_damage": base_damage,
         "defense_applied": p_stats["def"],
+        "active_skill": m_skill,
+        "skill_message": skill_msg,
         "question": question,
         "answer": str(answer).lower(),
         "timer": timer_limit,
