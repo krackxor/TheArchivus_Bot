@@ -252,22 +252,14 @@ _Selamat berpetualang, Weaver!_
 
 @dp.message(GameState.exploring, F.text == "📊 Status")
 async def status_handler(message: Message):
-    p = get_player(message.from_user.id)
+    user_id = message.from_user.id
+    p = get_player(user_id)
     
+    # helper_ui.py sekarang otomatis menghitung bonus Atk/Def dari inventory p
     status_card = create_status_card(p)
     
-    # Add achievements progress
     unlocked_count = len(p.get('achievements_unlocked', []))
-    total_achievements = 12  # Update based on actual count
-    
-    status_card += f"\n🏆 Achievements: {unlocked_count}/{total_achievements}"
-    
-    # Add active buffs
-    active_buffs = p.get('active_buffs', [])
-    if active_buffs:
-        status_card += "\n\n✨ *ACTIVE BUFFS:*\n"
-        for buff in active_buffs:
-            status_card += f"• {buff['name']} ({buff.get('duration', 0)} left)\n"
+    status_card += f"\n🏆 Achievements: {unlocked_count}/12"
     
     await message.answer(status_card, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
