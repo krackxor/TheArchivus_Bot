@@ -82,6 +82,8 @@ def create_status_card(player):
 👤 *{player.get('username', 'Weaver')}*
 🔄 Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
 ━━━━━━━━━━━━━━━━━━━━
+⚔️ *Atk:* {base_atk} (+{bonus_atk}) 
+🛡️ *Def:* {base_def} (+{bonus_def})
 ❤️ HP: {create_hp_bar(player['hp'], player['max_hp'], 8)}
 🔮 MP: {create_mp_bar(player['mp'], player['max_mp'], 8)}
 ⭐ EXP: {create_exp_bar(player.get('exp', 0), player.get('exp_needed', 100), 8)}
