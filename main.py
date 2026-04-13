@@ -393,7 +393,7 @@ _{event['description']}_
         
         # Start boss combat
         p = get_player(user_id)
-        puzzle = generate_battle_puzzle(5, is_boss=True)
+        puzzle = generate_battle_puzzle(p, 5, is_boss=True)
         
         await state.set_state(GameState.in_combat)
         await state.update_data(
