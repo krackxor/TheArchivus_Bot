@@ -1,6 +1,16 @@
+"""
+Sistem Engine Eksplorasi
+Mengatur logika langkah, perpindahan lokasi, dan pemicu kejadian (Event Triggers).
+"""
+
 import random
+
+# Panggilan ke database (tetap aman karena dijalankan dari luar)
 from database import get_player, update_player, narratives_col, LOCATIONS, add_history
-from generators import generate_npc
+
+# Memanggil sistem NPC dari arsitektur baru
+from game.entities.npcs import get_npc_encounter
+
 
 def get_random_narration(category):
     """Mengambil satu naskah acak dari koleksi narasi berdasarkan kategori."""
@@ -19,11 +29,15 @@ def get_random_narration(category):
         print(f"[ERROR] Gagal mengambil narasi: {e}")
         return "Langkahmu bergema di lorong yang sunyi."
 
+
 def update_location_if_needed(player):
     """Merotasi lokasi berdasarkan jumlah kill. Semakin banyak kill, semakin dalam masuk ke Archivus."""
     kills = player.get('kills', 0)
-    current_loc = player.get('location')
+    current_loc = player.get('location', LOCATIONS[0] if LOCATIONS else "Dimensi Awal")
     
+    if not LOCATIONS: # Keamanan jika array LOCATIONS kosong
+        return current_loc, False
+
     # Pindah wilayah setiap kelipatan 5 kill
     loc_idx = min(kills // 5, len(LOCATIONS) - 1)
     new_location = LOCATIONS[loc_idx]
@@ -33,6 +47,7 @@ def update_location_if_needed(player):
         add_history(player['user_id'], f"Menembus gerbang dan memasuki {new_location}.")
         return new_location, True # True berarti ada perpindahan lokasi
     return current_loc, False
+
 
 def process_move(user_id):
     """
@@ -80,7 +95,7 @@ def process_move(user_id):
         update_player(user_id, {"steps_since_event": 0, "miniboss_slain": True})
         return ("mini_boss", None, f"⚔️ **JALAN TERTUTUP.**\nSeekor letnan kegelapan menghalangimu di {current_loc}. Kalahkan dia untuk lanjut!")
 
-    # 5. REGULAR TRIGGER (Monster, NPC Baik, Jahat, Quiz)
+    # 5. REGULAR TRIGGER (Monster, NPC)
     trigger_threshold = random.randint(3, 5) # Acak antara 3-5 langkah hampa
     
     if steps_since >= trigger_threshold:
@@ -92,22 +107,19 @@ def process_move(user_id):
         if event_roll < 0.60:
             return ("monster", None, get_random_narration("monster_event"))
         else:
-            # Undi jenis NPC
-            npc_type = random.choices(
-                ["npc_baik", "npc_jahat", "npc_quiz"], 
-                weights=[40, 40, 20], # Quiz lebih jarang muncul
-                k=1
-            )[0]
+            # Menggunakan sistem NPC dari file npcs.py yang baru
+            npc_encounter = get_npc_encounter(cycle)
             
-            is_liar = (npc_type == "npc_jahat")
-            
-            if npc_type == "npc_quiz":
-                # Kita akan modifikasi generators.py untuk quiz nanti
-                npc_data = generate_npc(player_gold=player.get("gold", 0), is_liar=False) 
+            # Kita map type dari npcs.py ke format yang dikenali main.py
+            # Jika dia trickster (jahat), scholar (quiz), atau healer/wanderer (baik)
+            if npc_encounter['type'] == 'trickster':
+                event_type = "npc_jahat"
+            elif npc_encounter['type'] == 'scholar':
+                event_type = "npc_quiz"
             else:
-                npc_data = generate_npc(player_gold=player.get("gold", 0), is_liar=is_liar)
-                
-            return (npc_type, npc_data, get_random_narration("npc_event"))
+                event_type = "npc_baik"
+            
+            return (event_type, npc_encounter, get_random_narration("npc_event"))
             
     # 6. JALAN KOSONG / AMAN
     else:
