@@ -817,7 +817,17 @@ async def close_menu_handler(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer()
 
-
+@dp.callback_query(F.data.in_(["buy_heal", "buy_mp", "buy_sword", "buy_shield", "buy_relic"]))
+async def shop_purchase_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    success, message = process_purchase(user_id, callback.data)
+    
+    if success:
+        await callback.answer(message, show_alert=True)
+        # Update pesan status atau toko jika perlu
+    else:
+        await callback.answer(message, show_alert=True)
+        
 # === BOILERPLATE ===
 async def main():
     auto_seed_content()
