@@ -1,208 +1,118 @@
+"""
+Kumpulan Logika Puzzle & Trivia
+"""
 import random
 
-# --- 1. PROCEDURAL NPC NAMES (1000+ Kombinasi) ---
-NPC_ADJECTIVES = [
-    "Hollow", "Pale", "Blind", "Broken", "Shadow", "Lost", "Dust", "Cursed", 
-    "Grim", "Silent", "Nameless", "Forgotten", "Abyssal", "Bleeding", "Crimson",
-    "Weeping", "Iron", "Glass", "Shattered", "Void", "Astral", "Fading", "Ruined",
-    "Veiled", "Eldritch", "Corrupted", "Gleaming", "Tattered", "Wandering", "Exiled",
-    "Grieving", "Mad", "Doomed", "Eternal", "Frozen", "Burning", "Ashen", "Spectral"
+# --- DATABASE BANK KATA ---
+WORDS_T1 = ["TINTA", "PENA", "BUKU", "KATA", "DEBU", "JALAN", "KABUT", "LUKA", "ASAP", "GELAP", "MATI", "LARI", "JIWA", "PINTU"]
+WORDS_T2 = ["PEDANG", "LENTERA", "MEMORI", "KERTAS", "BAYANG", "JALUR", "HANCUR", "TERIAK", "KUTUKAN", "PENJAGA", "RAHASIA"]
+WORDS_T3 = ["ARCHIVUS", "KEGELAPAN", "DISTORSI", "FRAGMEN", "WEAVER", "KEABADIAN", "PENGKHIANAT", "KEHAMPAAN", "NEMESIS", "LABIRIN"]
+
+# --- DATABASE LORE & EASTER EGGS ---
+LORE_PUZZLES = [
+    {"q": "Aku punya lubang banyak, tapi bisa menampung air. Siapa aku?", "a": "spons"},
+    {"q": "Semakin besar aku, semakin sedikit yang bisa kau lihat.", "a": "gelap"},
+    {"q": "Apa nama entitas pencatat memori di dimensi Archivus ini?", "a": "ARCHIVUS"},
+    {"q": "Tragedi kereta apa yang berujung pada hancurnya pegunungan Arklay? (Dua kata)", "a": "ECLIPTIC EXPRESS"},
+    {"q": "Siapa pendiri yang dikhianati dan bangkit kembali dari lintah?", "a": "JAMES MARCUS"},
+    {"q": "Organisasi payung yang menciptakan virus mematikan itu bernama?", "a": "UMBRELLA"},
+    {"q": "Kota yang hancur lebur oleh penyebaran virus T adalah Raccoon...? (Satu kata)", "a": "CITY"},
+    {"q": "Senjata ikonik dari sang hantu Tsushima adalah? (Satu kata)", "a": "KATANA"},
+    {"q": "Siapa dewa perang yang menghancurkan Olympus? (Dua kata)", "a": "KRATOS"},
+    {"q": "Senjata rantai ikonik milik sang Dewa Perang adalah Blade of...? (Satu kata)", "a": "CHAOS"},
+    {"q": "Pangeran Lucis yang melakukan perjalanan bersama tiga sahabatnya adalah? (Satu kata)", "a": "NOCTIS"},
+    {"q": "Nama pedang raksasa milik Cloud Strife adalah? (Dua kata)", "a": "BUSTER SWORD"},
+    {"q": "Pusat dari energi Mako di dunia FF7 adalah kota?", "a": "MIDGAR"},
+    {"q": "Jika kau mengucapkanku, kau akan merusakku. Siapa aku?", "a": "diam"},
+    {"q": "Mata uang yang digunakan oleh para Weaver di Archivus disebut pecahan...", "a": "MEMORI"},
+    {"q": "NPC pencuri yang menguji ingatanmu dengan kuis disebut The Memory...?", "a": "THIEF"}
 ]
 
-NPC_NOUNS = [
-    "Wanderer", "Sentinel", "Echo", "Weaver", "Scholar", "Vessel", "Archivist", 
-    "Walker", "Scribe", "Merchant", "Keeper", "Penitent", "Observer", "Knight",
-    "Oracle", "Mage", "Priest", "Beggar", "King", "Queen", "Jester", "Blacksmith",
-    "Gravekeeper", "Alchemist", "Pilgrim", "Prophet", "Executioner", "Heretic",
-    "Monk", "Thief", "Assassin", "Ghost", "Phantom", "Wraith", "Soul"
-]
-
-def generate_npc_name():
-    """Menghasilkan lebih dari 1300 kombinasi nama NPC unik"""
-    return f"The {random.choice(NPC_ADJECTIVES)} {random.choice(NPC_NOUNS)}"
-
-
-# --- 2. KONFIGURASI ITEM ---
-ITEM_POOL = [
-    {"id": "item_pedang", "name": "Pedang Karat"},
-    {"id": "item_batu", "name": "Batu Jiwa"},
-    {"id": "item_emas", "name": "Batangan Emas"},
-    {"id": "item_buku", "name": "Lembaran Kosong"}
-]
-
-
-# --- 3. BANK SOAL NPC QUIZ (LORE ARCHIVUS) ---
-QUIZ_POOL = [
-    {"q": "Siapa entitas pencatat memori di dimensi ini?", "a": "ARCHIVUS"},
-    {"q": "Apa julukan untuk para penjelajah sepertimu?", "a": "WEAVER"},
-    {"q": "Jawab dengan satu kata: Apakah kabut ini membawa kehidupan atau kematian?", "a": "KEMATIAN"},
-    {"q": "Benda apa yang kau andalkan untuk membelah kegelapan Archivus?", "a": "LENTERA"},
-    {"q": "Berapa banyak arah langkah yang bisa kau pilih di persimpangan?", "a": "4"}
-]
-
-
-# --- 4. FRAGMEN NARASI MODULAR (Pembuka & Penutup) ---
-OPENERS_NEUTRAL = [
-    "Langkahmu terdengar sangat berat, Weaver.",
-    "Kabut ini menelan terlalu banyak nama hari ini...",
-    "Mendekatlah, mataku sudah lama buta oleh kegelapan.",
-    "Tintamu hampir habis... aku bisa menciumnya dari sini.",
-    "Ada bayangan terdistorsi yang terus mengikutimu dari belakang.",
-    "Dingin sekali... apakah kau membawa api dari dunia luar?",
-    "Jangan menatap dinding itu terlalu lama. Mereka bernapas.",
-    "Berapa banyak siklus yang sudah kau lalui hingga tiba di sini?"
-]
-
-CLOSERS_MYSTIC = [
-    "Semoga Sang Penjaga tidak menyadari kehadiranmu.",
-    "Ingat... Archivus tidak pernah lupa, ia hanya menyembunyikannya.",
-    "Bergegaslah, sebelum struktur lorong ini kembali bergeser.",
-    "Jangan percaya pada suara yang memanggil nama aslimu.",
-    "Sejarahmu akan segera berakhir di sini, atau baru saja dimulai.",
-    "Biarkan sisa-sisa debu ini menjadi saksi bisu perjalananmu.",
-    "Waktuku sudah habis. Kegelapan ini memanggilku kembali.",
-    "Jaga lenteramu. Begitu apinya mati, kau akan menjadi seperti kami."
-]
-
-
-# --- 5. EFEK INTERAKSI NPC (Game Consequences) ---
-GOOD_EFFECTS = [
-    {"type": "heal", "value": 30, "msg": "❤️ Luka-lukamu menutup perlahan. (+30 HP)"},
-    {"type": "buff_mp", "value": 20, "msg": "🔮 Pikiranmu menjadi lebih jernih. (+20 MP)"},
-    {"type": "give_item", "value": "item_buku", "msg": "📖 Kamu menerima 'Lembaran Kosong'."}
-]
-
-BAD_EFFECTS = [
-    {"type": "damage", "value": 30, "msg": "💀 Pengkhianatan! Sosok itu menusukmu dari balik jubahnya. (-30 HP)"},
-    {"type": "steal_gold", "value": 100, "msg": "❌ Ilusi! Sosok itu lenyap bersama koin di kantongmu. (-100 Gold)"},
-    {"type": "curse_mp", "value": 50, "msg": "🌑 Menatap matanya menghancurkan kewarasanmu secara instan. (-50 MP)"},
-    {"type": "fatal_trap", "value": 9999, "msg": "💀 **KUTUKAN KEMATIAN!**\nSaat tanganmu menyentuhnya, tubuhnya meledak menjadi kabut hitam pekat yang langsung menelan jiwamu. Nafasmu berhenti detik itu juga."}
-]
-
-
-# --- 6. FUNGSI MERAKIT DIALOG ---
-def generate_dialog_early(direction, is_liar):
-    opener = random.choice(OPENERS_NEUTRAL)
-    closer = random.choice(CLOSERS_MYSTIC)
-    
-    if is_liar:
-        cores = [
-            f"Jalan menuju {direction} benar-benar kosong. Aku berani bersumpah demi sisa memori ini.",
-            f"Aku baru saja lari dari jebakan mematikan, tapi lorong {direction} terlihat sangat aman.",
-            f"Seseorang menjatuhkan banyak harta di jalur {direction}. Ambil sebelum entitas lain melihatnya.",
-            f"Jika kau ingin selamat, berlari lurus ke {direction}. Abaikan suara geraman itu."
-        ]
+def generate_math_puzzle(tier):
+    if tier == 1:
+        a = random.randint(10, 50)
+        b = random.randint(1, 30)
+        op = random.choice(['+', '-'])
+        answer = str(a + b) if op == '+' else str(max(a, b) - min(a, b)) 
+        real_q = f"{max(a, b)} - {min(a, b)}" if op == '-' else f"{a} + {b}"
+        return f"Pecahkan distorsi numerik ini: {real_q} = ?", answer
+        
+    elif tier == 2:
+        a = random.randint(4, 12)
+        b = random.randint(3, 9)
+        return f"Sandi perkalian Archivus: {a} x {b} = ?", str(a * b)
+        
+    elif tier == 3:
+        a = random.randint(3, 8)
+        b = random.randint(3, 8)
+        c = random.randint(10, 50)
+        return f"Uraikan kode matriks ini: ({a} x {b}) + {c} = ?", str((a * b) + c)
+        
     else:
-        cores = [
-            f"Hawa dingin yang murni berhembus dari {direction}. Itu pertanda jalan itu belum terkorupsi.",
-            f"Aku melihat jejak Weaver terdahulu mengarah ke {direction}. Ikuti takdir mereka.",
-            f"Lorong selain {direction} dipenuhi anomali yang menganga. Pilihanmu sangat terbatas.",
-            f"Tinta sejarah menuntun benangmu ke {direction}. Jangan menyimpang dari naskah."
-        ]
-    return f"{opener} {random.choice(cores)} {closer}"
+        a = random.randint(5, 12)
+        x = random.randint(4, 12) 
+        b = a * x
+        return f"Pecahkan anomali persamaan ini: {a} x Y = {b}. Berapa nilai Y?", str(x)
 
-def generate_dialog_mid(amount, is_liar):
-    opener = random.choice(OPENERS_NEUTRAL)
-    closer = random.choice(CLOSERS_MYSTIC)
-    
-    if is_liar:
-        cores = [
-            f"Beri aku {amount} Gold, dan aku akan membisikkan rahasia kelemahan Sang Penjaga padamu.",
-            f"Tukarkan {amount} Gold denganku. Aku menyembunyikan peta jalan pintas di balik jubah ini.",
-            f"Serahkan {amount} Gold, atau aku akan berteriak memanggil letnan kegelapan ke sini!"
-        ]
+def generate_sequence_puzzle(tier):
+    start = random.randint(1, 10)
+    if tier <= 2:
+        step = random.randint(2, 6)
+        seq = [start + (i * step) for i in range(4)]
+        answer = str(start + (4 * step))
+        return f"Lengkapi deret memori ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
+        
+    elif tier <= 4:
+        step = random.randint(2, 4)
+        seq = [start * (step ** i) for i in range(4)]
+        answer = str(start * (step ** 4))
+        return f"Pecahkan pola eksponensial ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
+        
     else:
-        cores = [
-            f"Tubuhku memudar... Aku hanya butuh {amount} Gold untuk menstabilkan jiwaku. Tolonglah.",
-            f"Apakah kau punya {amount} Gold ekstra? Lentera tuaku hampir mati dan aku benci kegelapan.",
-            f"Sumbangkan {amount} Gold untuk jiwa yang terlupakan ini, niscaya karma baik melindungimu."
-        ]
-    return f"{opener} {random.choice(cores)} {closer}"
+        seq = [start, start + random.randint(1, 5)]
+        for i in range(2, 5):
+            seq.append(seq[-1] + seq[-2])
+        answer = str(seq[-1] + seq[-2])
+        return f"Sandi Kuno Archivus (Deret): {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, {seq[4]}, ... ?", answer
 
-def generate_dialog_late(req_name, is_liar):
-    opener = random.choice(OPENERS_NEUTRAL)
-    closer = random.choice(CLOSERS_MYSTIC)
-    
-    if is_liar:
-        cores = [
-            f"Harta itu membebani langkahmu. Serahkan {req_name} sekarang sebelum benda itu membunuhmu!",
-            f"Kau tak akan selamat membawa {req_name}. Berikan padaku, aku akan menyimpannya."
-        ]
+def generate_linguistic_puzzle(tier):
+    if tier == 1:
+        word = random.choice(WORDS_T1)
+    elif tier in [2, 3]:
+        word = random.choice(WORDS_T2)
     else:
-        cores = [
-            f"Untuk melewati gerbang berikutnya, kau harus mengorbankan {req_name}. Serahkan padaku.",
-            f"Entitas penjaga meminta upeti. {req_name} adalah harga yang pantas untuk nyawamu."
-        ]
-    return f"{opener} {random.choice(cores)} {closer}"
+        word = random.choice(WORDS_T3)
+        
+    scrambled = list(word)
+    random.shuffle(scrambled)
+    while "".join(scrambled) == word:
+        random.shuffle(scrambled)
+        
+    return f"Susun kembali kata terdistorsi: **{''.join(scrambled).upper()}**", word
 
-
-# --- 7. FUNGSI UTAMA GENERATE NPC ---
-def generate_npc(player_gold=0, is_liar=None, is_quiz=False):
-    """
-    Menghasilkan NPC dinamis dengan nama acak, dialog prosedural, 
-    dan efek interaksi yang mengikat ke dalam sistem Game.
-    """
-    
-    # 1. INTERSEPSI NPC QUIZ
-    if is_quiz:
-        quiz = random.choice(QUIZ_POOL)
-        return {
-            "identity": "The Memory Thief", 
-            "is_liar": False,
-            "is_quiz": True,
-            "dialog": f"Berhenti, Weaver! Buktikan ingatanmu belum membusuk. Jawab pertanyaanku: *\"{quiz['q']}\"*",
-            "requirement": {"type": "quiz", "question": quiz['q'], "answer": quiz['a']},
-            "game_effect": None
-        }
-
-    # 2. LOGIKA NPC NORMAL (BAIK/JAHAT)
-    if is_liar is None:
-        is_liar = random.choice([True, False])
-    
-    name = generate_npc_name() # Generate nama 1000+ variasi
-    req = None
-    chosen_effect = random.choice(BAD_EFFECTS) if is_liar else random.choice(GOOD_EFFECTS)
-    
-    # --- FASE EARLY (Navigasi & Petunjuk Arah) ---
-    if player_gold < 300:
-        arah_pilihan = random.choice(["Utara", "Selatan", "Timur", "Barat"])
-        # Dialog petunjuk arah ditambahkan efek "interaksi/bantuan opsional"
-        # Supaya kalau pemain berinteraksi, masih ada efeknya
-        req = {"type": "gold", "amount": 10, "name": "Gold"} if player_gold >= 10 else None
-        dialog_final = generate_dialog_early(arah_pilihan, is_liar)
-            
-    # --- FASE MID (Transaksi Gold Skala Menengah) ---
-    elif 300 <= player_gold < 800:
-        amt = int(player_gold * 0.15)
-        req = {"type": "gold", "amount": amt, "name": "Gold"}
-        dialog_final = generate_dialog_mid(amt, is_liar)
-
-    # --- FASE LATE (Pajak Besar & Pencurian Item) ---
+def generate_cipher_puzzle(tier):
+    if tier <= 2:
+        word = random.choice(WORDS_T1 + WORDS_T2)
+        reversed_word = word[::-1]
+        return f"Mantra ini ditulis terbalik oleh roh penasaran: **{reversed_word}**. Apa makna aslinya?", word
+        
+    elif tier == 3:
+        word = random.choice(WORDS_T3)
+        n = random.randint(1, len(word))
+        answer = word[n-1]
+        return f"Dalam kata agung **{word}**, huruf ke-{n} adalah kunci segelnya. Huruf apakah itu?", answer
+        
     else:
-        if random.random() > 0.5:
-            amt = int(player_gold * 0.3)
-            req = {"type": "gold", "amount": amt, "name": "Gold"}
-            dialog_final = generate_dialog_late(f"{amt} Gold", is_liar)
-        else:
-            selected_item = random.choice(ITEM_POOL)
-            req = {"type": "item", "amount": 1, "id": selected_item['id'], "name": selected_item['name']}
-            dialog_final = generate_dialog_late(selected_item['name'], is_liar)
+        target_char = random.choice(['X', 'Z', 'V', 'Q'])
+        count = random.randint(3, 8)
+        noise = [random.choice(['A', 'B', 'C', 'D', 'E', 'F', 'H', 'J', 'W', 'Y']) for _ in range(15)]
+        
+        for _ in range(count):
+            noise.insert(random.randint(0, len(noise)), target_char)
+        noise_str = "".join(noise)
+        
+        return f"Jangan berkedip! Berapa banyak huruf **{target_char}** yang menyusup dalam distorsi ini: **{noise_str}**?", str(count)
 
-    return {
-        "identity": name, 
-        "is_liar": is_liar,
-        "is_quiz": False,
-        "dialog": dialog_final,
-        "requirement": req,
-        "game_effect": chosen_effect # Efek ini akan dieksekusi di main.py
-    }
-
-
-def get_death_message(cause):
-    death_notes = [
-        "Tinta habis. Ceritamu terhenti di tengah kalimat.",
-        "Namamu memudar dari halaman Archivus.",
-        "Kegelapan menelan Weaver terakhir.",
-        "Nihilist benar, pada akhirnya tidak ada yang tersisa."
-    ]
-    return random.choice(death_notes)
+def generate_lore_puzzle():
+    puzzle = random.choice(LORE_PUZZLES)
+    return puzzle["q"], puzzle["a"]
