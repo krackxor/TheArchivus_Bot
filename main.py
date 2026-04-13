@@ -427,7 +427,7 @@ _{event['description']}_
         # Regular combat dengan enhanced UI
         p = get_player(user_id)
         tier_level = min(5, max(1, (p['kills'] // 5) + 1))
-        puzzle = generate_battle_puzzle(tier_level, is_boss=False)
+        puzzle = generate_battle_puzzle(p, tier_level, is_boss=False)
         
         await state.set_state(GameState.in_combat)
         await state.update_data(
