@@ -1,5 +1,5 @@
 """
-Helper UI untuk membuat tampilan visual yang lebih menarik di Telegram
+Helper UI untuk membuat tampilan visual yang lebih menarik di Telegram (Mobile Friendly)
 """
 
 def create_hp_bar(current, maximum, length=10):
@@ -41,7 +41,7 @@ def create_countdown_visual(seconds_left):
     elif seconds_left > 20:
         return f"⏱️ `{seconds_left}s` 🟡"
     else:
-        return f"⏱️ `{seconds_left}s` 🔴 **CEPAT!**"
+        return f"⏱️ `{seconds_left}s` 🔴 *CEPAT!*"
 
 def format_gold(amount):
     """Format gold dengan separator"""
@@ -50,14 +50,14 @@ def format_gold(amount):
 def format_damage(amount):
     """Format damage number dengan style"""
     if amount >= 50:
-        return f"💥 **{amount}** DMG"
+        return f"💥 *{amount}* DMG"
     elif amount >= 25:
-        return f"⚔️ **{amount}** DMG"
+        return f"⚔️ *{amount}* DMG"
     else:
         return f"🗡️ {amount} DMG"
 
 def create_combat_header(monster_name, tier, stage, max_stage):
-    """Header combat yang lebih dramatis"""
+    """Header combat yang lebih dramatis dan responsif"""
     tier_emoji = {
         1: "⚪",
         2: "🟢", 
@@ -70,43 +70,37 @@ def create_combat_header(monster_name, tier, stage, max_stage):
     
     emoji = tier_emoji.get(tier, "⚪")
     
-    header = f"""
-╔═══════════════════════════╗
-║  {emoji} **{monster_name}** {emoji}
-║  📊 Tier: {tier} | Wave: {stage}/{max_stage}
-╚═══════════════════════════╝
-"""
+    header = f"""━━━━━━━━━━━━━━━━━━━━
+{emoji} *{monster_name}* {emoji}
+📊 Tier: {tier} | Wave: {stage}/{max_stage}
+━━━━━━━━━━━━━━━━━━━━"""
     return header
 
 def create_status_card(player):
-    """Membuat status card yang comprehensive"""
-    card = f"""
-╔═══════════════════════════╗
-║ 👤 **{player.get('username', 'Weaver')}**
-║ 🔄 Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
-╠═══════════════════════════╣
-║ ❤️ HP: {create_hp_bar(player['hp'], player['max_hp'], 8)}
-║ 🔮 MP: {create_mp_bar(player['mp'], player['max_mp'], 8)}
-║ ⭐ EXP: {create_exp_bar(player.get('exp', 0), player.get('exp_needed', 100), 8)}
-╠═══════════════════════════╣
-║ 💰 Gold: {player['gold']:,}
-║ ⚔️ Kills: {player.get('kills', 0)}
-║ 🏆 Streak: {player.get('win_streak', 0)}
-║ 📍 {player.get('location', 'The Whispering Hall')}
-╚═══════════════════════════╝
-"""
+    """Membuat status card yang comprehensive dan responsif"""
+    card = f"""━━━━━━━━━━━━━━━━━━━━
+👤 *{player.get('username', 'Weaver')}*
+🔄 Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
+━━━━━━━━━━━━━━━━━━━━
+❤️ HP: {create_hp_bar(player['hp'], player['max_hp'], 8)}
+🔮 MP: {create_mp_bar(player['mp'], player['max_mp'], 8)}
+⭐ EXP: {create_exp_bar(player.get('exp', 0), player.get('exp_needed', 100), 8)}
+━━━━━━━━━━━━━━━━━━━━
+💰 Gold: {player['gold']:,}
+⚔️ Kills: {player.get('kills', 0)}
+🏆 Streak: {player.get('win_streak', 0)}
+📍 {player.get('location', 'The Whispering Hall')}
+━━━━━━━━━━━━━━━━━━━━"""
     return card
 
 def create_achievement_notification(title, description, reward):
     """Notifikasi achievement unlock yang exciting"""
-    notif = f"""
-🎉 **ACHIEVEMENT UNLOCKED!** 🎉
+    notif = f"""🎉 *ACHIEVEMENT UNLOCKED!* 🎉
 
-🏆 **{title}**
+🏆 *{title}*
 _{description}_
 
-🎁 Reward: {reward}
-"""
+🎁 Reward: {reward}"""
     return notif
 
 def create_loot_drop(items):
@@ -114,7 +108,7 @@ def create_loot_drop(items):
     if not items:
         return "💨 Tidak ada yang tersisa..."
     
-    loot_text = "✨ **LOOT DROP!** ✨\n\n"
+    loot_text = "✨ *LOOT DROP!* ✨\n\n"
     for item in items:
         rarity_emoji = {
             "common": "⚪",
@@ -130,39 +124,34 @@ def create_loot_drop(items):
 
 def create_level_up_animation(old_level, new_level):
     """Animasi level up yang epik"""
-    return f"""
-✨✨✨✨✨✨✨✨✨✨
-🎆 **LEVEL UP!** 🎆
-{old_level} ➜ **{new_level}**
+    return f"""✨✨✨✨✨✨✨✨✨✨
+🎆 *LEVEL UP!* 🎆
+{old_level} ➜ *{new_level}*
 
 📈 Stats meningkat!
 🔓 Skill baru tersedia!
-✨✨✨✨✨✨✨✨✨✨
-"""
+✨✨✨✨✨✨✨✨✨✨"""
 
 def create_boss_warning(boss_name):
     """Warning dramatis sebelum boss fight"""
-    return f"""
-⚠️ ═══════════════════ ⚠️
+    return f"""⚠️ ━━━━━━━━━━━━━━ ⚠️
 
-        💀 WARNING 💀
+        💀 *WARNING* 💀
         
-   **{boss_name}**
-      DETECTED
+      *{boss_name}*
+        DETECTED
       
-⚠️ ═══════════════════ ⚠️
+⚠️ ━━━━━━━━━━━━━━ ⚠️
 
 Udara membeku...
 Detak jantungmu melambat...
-Ini adalah ujian sesungguhnya.
-"""
+Ini adalah ujian sesungguhnya."""
 
 def create_death_screen(cause, stats):
     """Death screen yang sinematik"""
-    return f"""
-═══════════════════════════
-        💀 YOU DIED 💀
-═══════════════════════════
+    return f"""━━━━━━━━━━━━━━━━━━━━
+        💀 *YOU DIED* 💀
+━━━━━━━━━━━━━━━━━━━━
 
 Cause of Death:
   {cause}
@@ -172,17 +161,16 @@ Your Legacy:
   ⚔️ Kills: {stats.get('kills', 0)}
   💰 Gold Lost: {stats.get('gold_lost', 0)}
   
-"Archivus claims another soul..."
+_"Archivus claims another soul..."_
 
-═══════════════════════════
-"""
+━━━━━━━━━━━━━━━━━━━━"""
 
 def create_combo_indicator(combo_count):
     """Indikator combo untuk multiple correct answers"""
     if combo_count >= 5:
-        return f"🔥🔥🔥 **LEGENDARY COMBO x{combo_count}!** 🔥🔥🔥"
+        return f"🔥🔥🔥 *LEGENDARY COMBO x{combo_count}!* 🔥🔥🔥"
     elif combo_count >= 3:
-        return f"⚡⚡ **COMBO x{combo_count}!** ⚡⚡"
+        return f"⚡⚡ *COMBO x{combo_count}!* ⚡⚡"
     elif combo_count >= 2:
         return f"✨ Combo x{combo_count} ✨"
     else:
@@ -190,18 +178,17 @@ def create_combo_indicator(combo_count):
 
 def create_daily_quest_card(quests):
     """Card untuk daily quests"""
-    card = """
-╔═══════════════════════════╗
-║   📋 **DAILY QUESTS**
-╠═══════════════════════════╣
-"""
+    card = "━━━━━━━━━━━━━━━━━━━━\n📋 *DAILY QUESTS*\n━━━━━━━━━━━━━━━━━━━━\n"
     for i, quest in enumerate(quests, 1):
         status = "✅" if quest.get('completed') else "⏳"
-        card += f"║ {status} {quest['title']}\n"
-        card += f"║    Progress: {quest['progress']}/{quest['target']}\n"
-        card += f"║    Reward: {quest['reward']}\n"
+        card += f"{status} {quest['title']}\n"
+        card += f"   Progress: {quest['progress']}/{quest['target']}\n"
+        
+        # Penanganan aman jika struktur reward berubah
+        reward_gold = quest['reward'].get('gold', 0) if isinstance(quest['reward'], dict) else quest['reward']
+        card += f"   Reward: {reward_gold} Gold\n\n"
     
-    card += "╚═══════════════════════════╝"
+    card += "━━━━━━━━━━━━━━━━━━━━"
     return card
 
 def create_shop_item_preview(item):
@@ -217,9 +204,8 @@ def create_shop_item_preview(item):
     rarity = item.get('rarity', 'common')
     emoji = rarity_colors.get(rarity, "⚪")
     
-    preview = f"""
-{emoji} **{item['name']}** {emoji}
-━━━━━━━━━━━━━━━━━
+    preview = f"""{emoji} *{item['name']}* {emoji}
+━━━━━━━━━━━━━━━━━━━━
 💰 Price: {item['cost']} Gold
 
 📖 Description:
@@ -227,8 +213,7 @@ def create_shop_item_preview(item):
 
 ✨ Effect:
 {item.get('effect_text', 'Unknown effect')}
-━━━━━━━━━━━━━━━━━
-"""
+━━━━━━━━━━━━━━━━━━━━"""
     return preview
 
 def create_inventory_display(inventory):
@@ -236,7 +221,7 @@ def create_inventory_display(inventory):
     if not inventory:
         return "🎒 Inventory kosong seperti jiwa yang terlupakan..."
     
-    display = "🎒 **INVENTORY**\n\n"
+    display = "🎒 *INVENTORY*\n\n"
     
     # Group by type
     weapons = [i for i in inventory if i.get('type') == 'weapon']
@@ -244,17 +229,17 @@ def create_inventory_display(inventory):
     artifacts = [i for i in inventory if i.get('type') == 'artifact']
     
     if weapons:
-        display += "⚔️ **WEAPONS:**\n"
+        display += "⚔️ *WEAPONS:*\n"
         for w in weapons:
             display += f"  • {w['name']} (+{w.get('damage', 0)} DMG)\n"
     
     if potions:
-        display += "\n🧪 **POTIONS:**\n"
+        display += "\n🧪 *POTIONS:*\n"
         for p in potions:
             display += f"  • {p['name']} x{p.get('quantity', 1)}\n"
     
     if artifacts:
-        display += "\n🔮 **ARTIFACTS:**\n"
+        display += "\n🔮 *ARTIFACTS:*\n"
         for a in artifacts:
             display += f"  • {a['name']}\n"
     
@@ -262,30 +247,26 @@ def create_inventory_display(inventory):
 
 def create_location_transition(old_loc, new_loc):
     """Animasi transisi lokasi"""
-    return f"""
-🌫️ ═══════════════════ 🌫️
+    return f"""🌫️ ━━━━━━━━━━━━━━ 🌫️
 
 Kabut bergeser...
 Realitas terdistorsi...
 
 📍 {old_loc}
       ⬇️
-📍 **{new_loc}**
+📍 *{new_loc}*
 
-"Kau memasuki kedalaman baru..."
+_"Kau memasuki kedalaman baru..."_
 
-🌫️ ═══════════════════ 🌫️
-"""
+🌫️ ━━━━━━━━━━━━━━ 🌫️"""
 
 def create_puzzle_hint_display(question, hint, attempts_left):
     """Tampilan puzzle dengan hint system"""
-    display = f"""
-🧩 **PUZZLE**
-━━━━━━━━━━━━━━━━━
+    display = f"""🧩 *PUZZLE*
+━━━━━━━━━━━━━━━━━━━━
 {question}
 
 💡 Hint: `{hint}`
 🎯 Attempts: {attempts_left}/3
-━━━━━━━━━━━━━━━━━
-"""
+━━━━━━━━━━━━━━━━━━━━"""
     return display
