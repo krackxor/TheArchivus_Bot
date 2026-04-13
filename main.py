@@ -574,7 +574,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             if is_boss:
                 updates['miniboss_slain'] = False
                 updates['boss_kills'] = p.get('boss_kills', 0) + 1
-                add_history(user_id, f"Menghancurkan Sang Penjaga. Memasuki Siklus {new_cycle}.")
+                add_history(user_id, f"Menghancurkan Sang Penjaga. Memas Siklus {new_cycle}.")
                 
                 if is_flawless:
                     updates['flawless_boss_count'] = p.get('flawless_boss_count', 0) + 1
@@ -809,7 +809,12 @@ async def close_menu_handler(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer()
 
-@dp.callback_query(F.data.in_(["buy_heal", "buy_mp", "buy_sword", "buy_shield", "buy_relic"]))
+# ---------------------------------------------------------
+# UPDATE HANDLER TOKO DI SINI:
+# Kita gunakan startswith("buy_") agar semua item dinamis
+# dari equipment.py bisa terbaca dengan sempurna!
+# ---------------------------------------------------------
+@dp.callback_query(F.data.startswith("buy_"))
 async def shop_purchase_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     success, message = process_purchase(user_id, callback.data)
