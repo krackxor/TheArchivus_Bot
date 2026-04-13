@@ -1,93 +1,101 @@
 """
 Sistem Toko Archivus (Shop System)
-Menangani pembelian item konsumsi dan peralatan (Equipment).
+Terintegrasi dengan Master Data Equipment (Senjata, Armor, Ramuan).
 """
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import get_player, update_player
 import uuid
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- KATALOG BARANG TOKO ---
-# Stat Seimbang: Harga naik seiring kegunaan
-SHOP_ITEMS = {
-    # KONSUMSI (Langsung Pakai)
-    "buy_heal": {"name": "🧪 Ramuan Darah", "desc": "+50 HP", "cost": 25, "type": "heal", "value": 50},
-    "buy_mp": {"name": "🔮 Tetesan Memori", "desc": "+40 MP", "cost": 20, "type": "mp", "value": 40},
+# Memanggil fungsi dari file database dan equipment baru
+from database import get_player, update_player
+from game.systems.equipment import get_equipment_stat
+
+# --- KATALOG TOKO ---
+# Menggabungkan konsumsi statik dan equipment dinamis dari equipment.py
+SHOP_CATALOG = {
+    # KONSUMSI (Akan masuk ke tas / inventory)
+    "buy_heal_30": {"name": "🧪 Minor HP Potion", "desc": "+30 HP", "cost": 50, "type": "potion", "effect": "heal_30"},
+    "buy_heal_80": {"name": "🧪 Major HP Potion", "desc": "+80 HP", "cost": 120, "type": "potion", "effect": "heal_80"},
+    "buy_mp_40": {"name": "🔮 Tetesan Memori", "desc": "+40 MP", "cost": 60, "type": "potion", "effect": "mp_40"},
     
-    # PERALATAN (Equip - Masuk Inventory)
-    "buy_sword": {
-        "name": "⚔️ Pedang Karat", 
-        "desc": "+10 Attack", "cost": 150, "type": "weapon", "atk": 10
-    },
-    "buy_shield": {
-        "name": "🛡️ Perisai Kayu", 
-        "desc": "+10 Defense", "cost": 120, "type": "armor", "def": 10
-    },
-    "buy_relic": {
-        "name": "🔱 Relik Kuno", 
-        "desc": "+50 Max HP", "cost": 300, "type": "artifact", "max_hp": 50
-    }
+    # EQUIPMENT (Tarik data otomatis dari equipment.py - Kita sediakan Tier 1)
+    "buy_wpn_katana": {"type": "equipment", "category": "weapon", "equip_id": "wpn_katana", "tier": 1},
+    "buy_wpn_staff": {"type": "equipment", "category": "weapon", "equip_id": "wpn_staff", "tier": 1},
+    "buy_arm_plate": {"type": "equipment", "category": "chest", "equip_id": "arm_plate_armor", "tier": 1},
+    "buy_arm_robe": {"type": "equipment", "category": "chest", "equip_id": "arm_cloth_robe", "tier": 1},
+    "buy_shd_buckler": {"type": "equipment", "category": "shield", "equip_id": "shd_buckler", "tier": 1}
 }
 
 def get_shop_keyboard():
-    """Membuat susunan tombol toko yang rapi"""
+    """Membuat susunan tombol toko yang rapi dan terintegrasi dengan equipment.py"""
     keyboard = []
     
-    for code, item in SHOP_ITEMS.items():
-        button_text = f"{item['name']} ({item['desc']}) - 💰 {item['cost']}"
+    for code, item in SHOP_CATALOG.items():
+        if item["type"] == "potion":
+            button_text = f"{item['name']} ({item['desc']}) - 💰 {item['cost']}"
+        else:
+            # Ambil stat dari equipment.py
+            eq = get_equipment_stat(item["equip_id"], item["category"], item["tier"])
+            if not eq: 
+                continue
+            
+            # Format text tombol, contoh: [Basic] Katana (+27 Atk) - 💰 250
+            stat_val = f"+{eq.get('atk', 0)} Atk" if "atk" in eq else f"+{eq.get('def', 0)} Def"
+            icon = "⚔️" if item["category"] == "weapon" else "🛡️"
+            button_text = f"{icon} {eq['full_name']} ({stat_val}) - 💰 {eq['cost']}"
+            
         keyboard.append([InlineKeyboardButton(text=button_text, callback_data=code)])
     
     keyboard.append([InlineKeyboardButton(text="🔙 Keluar", callback_data="close_shop")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def process_purchase(user_id, item_code):
-    """Logika transaksi dan penerapan efek item"""
+    """Logika transaksi dan memasukkan item ke inventory"""
     player = get_player(user_id)
-    item = SHOP_ITEMS.get(item_code)
+    catalog_item = SHOP_CATALOG.get(item_code)
     
-    if not item:
-        return False, "Barang gaib, tidak ditemukan."
+    if not catalog_item:
+        return False, "Barang gaib, tidak ditemukan di toko."
         
-    if player['gold'] < item['cost']:
-        return False, f"❌ Gold tidak cukup! Kamu butuh *{item['cost']} Gold*."
-        
-    new_gold = player['gold'] - item['cost']
-    update_data = {"gold": new_gold}
-    msg = ""
-
-    # --- LOGIKA ITEM KONSUMSI ---
-    if item['type'] == "heal":
-        new_hp = min(player['hp'] + item['value'], player['max_hp'])
-        update_data["hp"] = new_hp
-        msg = f"✅ HP pulih! (*{new_hp}/{player['max_hp']}*)"
-        
-    elif item['type'] == "mp":
-        new_mp = min(player['mp'] + item['value'], player['max_mp'])
-        update_data["mp"] = new_mp
-        msg = f"✅ MP bertambah! (*{new_mp}/{player['max_mp']}*)"
-
-    # --- LOGIKA EQUIPMENT (Masuk Inventory) ---
-    elif item['type'] in ["weapon", "armor", "artifact"]:
-        inventory = player.get('inventory', [])
-        
-        # Buat objek item unik untuk inventory
-        new_item = {
+    cost = 0
+    final_item = None
+    
+    # 1. BENTUK DATA ITEM YANG AKAN MASUK TAS
+    if catalog_item["type"] == "potion":
+        cost = catalog_item["cost"]
+        final_item = {
             "id": str(uuid.uuid4())[:8],
-            "name": item['name'],
-            "type": item['type'],
-            "bonus_atk": item.get('atk', 0),
-            "bonus_def": item.get('def', 0),
-            "bonus_max_hp": item.get('max_hp', 0)
+            "name": catalog_item["name"],
+            "type": "potion",
+            "effect": catalog_item["effect"]
+        }
+    else:
+        # Ambil data komplit dari equipment.py
+        eq = get_equipment_stat(catalog_item["equip_id"], catalog_item["category"], catalog_item["tier"])
+        if not eq: 
+            return False, "Data equipment rusak!"
+        
+        cost = eq["cost"]
+        final_item = {
+            "id": str(uuid.uuid4())[:8],
+            "name": eq["full_name"],
+            "type": catalog_item["category"], # weapon, chest, shield dll
+            "bonus_atk": eq.get("atk", 0),
+            "bonus_def": eq.get("def", 0),
+            "weight": eq.get("weight", 0),
+            "speed": eq.get("speed", "medium"),
+            "bonus_type": eq.get("bonus_type", None),
+            "is_magic": eq.get("is_magic", False)
         }
         
-        inventory.append(new_item)
-        update_data["inventory"] = inventory
+    # 2. CEK KEUANGAN PEMAIN
+    if player.get('gold', 0) < cost:
+        return False, f"❌ Gold tidak cukup! Kamu butuh *{cost} Gold*."
         
-        # Jika itu artifact Max HP, langsung tambahkan ke player
-        if item['type'] == "artifact" and "max_hp" in item:
-            update_data["max_hp"] = player['max_hp'] + item['max_hp']
-            update_data["hp"] = player['hp'] + item['max_hp']
-            
-        msg = f"✅ Berhasil membeli *{item['name']}*! Barang sudah masuk ke tas (Inventory)."
-
-    update_player(user_id, update_data)
-    return True, msg
+    # 3. EKSEKUSI PEMBELIAN (Potong Uang & Masukkan ke Tas)
+    new_gold = player['gold'] - cost
+    inventory = player.get('inventory', [])
+    inventory.append(final_item)
+    
+    update_player(user_id, {"gold": new_gold, "inventory": inventory})
+    
+    return True, f"✅ Berhasil membeli *{final_item['name']}*!\nBarang sudah masuk ke 🎒 Inventory."
