@@ -3,6 +3,13 @@ Achievement & Progression System
 Memberikan sense of progress dan reward untuk pemain
 """
 
+import math
+import random
+import datetime
+
+# Karena main.py dijalankan di luar, kita bisa langsung memanggil database
+from database import update_player
+
 # Database Achievement
 ACHIEVEMENTS = {
     # Combat Achievements
@@ -218,7 +225,6 @@ def get_all_unlockable_achievements(player):
 def calculate_level_from_exp(exp):
     """Hitung level berdasarkan exp (scaling formula)"""
     # Formula: Level = floor(sqrt(exp / 100)) + 1
-    import math
     return math.floor(math.sqrt(exp / 100)) + 1
 
 def calculate_exp_needed(level):
@@ -228,8 +234,6 @@ def calculate_exp_needed(level):
 
 def award_achievement(player_data, achievement_id):
     """Berikan reward dari achievement dan catat unlock"""
-    from database import update_player
-    
     achievement = ACHIEVEMENTS.get(achievement_id)
     if not achievement:
         return None
@@ -303,9 +307,6 @@ def award_achievement(player_data, achievement_id):
 
 def generate_daily_quests():
     """Generate 3 random daily quests"""
-    import random
-    import datetime
-    
     # Seed berdasarkan tanggal agar konsisten per hari
     today = datetime.datetime.now().date()
     random.seed(str(today))
