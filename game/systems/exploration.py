@@ -2,7 +2,7 @@
 Sistem Eksplorasi (Exploration System)
 Menangani logika pergerakan pemain, transisi wilayah (Biomes), 
 sistem atmosfer/cuaca, dan pemicu kejadian (Encounter Triggers).
-Terintegrasi penuh dengan sistem Bos dan Mini-Bos.
+Terintegrasi penuh dengan sistem Energy, Debuff, Bos, dan NPC.
 """
 
 import random
@@ -15,40 +15,37 @@ from game.entities.npcs import get_npc_encounter
 from game.entities.bosses import get_random_mini_boss
 
 def get_atmosphere(location_name):
-    """
-    Menghasilkan efek suasana/cuaca dinamis berdasarkan lokasi saat ini 
-    agar teks eksplorasi tidak membosankan.
-    """
+    """Menghasilkan efek suasana/cuaca dinamis berdasarkan lokasi saat ini."""
     atmospheres = {
-        "Gerbang Awal": [
+        "The Whispering Hall": [
             "Kabut tipis menyapu pergelangan kakimu.",
             "Udara terasa dingin dan asing di sini.",
             "Keheningan hanya dipecahkan oleh suara langkahmu sendiri."
         ],
-        "Lorong Memori": [
+        "Forgotten Script-Vault": [
             "Bisikan masa lalu terdengar samar dari balik dinding.",
             "Bayangan dari Weaver terdahulu tampak sekilas lalu menghilang.",
             "Kertas-kertas perkamen tua berterbangan tertiup angin hampa."
         ],
-        "Perpustakaan Kelam": [
-            "Aroma buku tua dan tinta kering tercium tajam.",
+        "The Inky Mire": [
+            "Aroma buku tua dan tinta basah tercium tajam.",
             "Lilin-lilin kebiruan menyala redup tanpa mengeluarkan panas.",
-            "Rak-rak raksasa menjulang tinggi hingga tak terlihat ujungnya."
+            "Lantai terasa lengket oleh genangan tinta gelap."
         ],
-        "Labirin Waktu": [
-            "Detak jam raksasa bergema menggetarkan lantai pijakanmu.",
+        "Echoing Abyss": [
+            "Detak jam tak kasat mata bergema menggetarkan lantai pijakanmu.",
             "Ruang dan waktu terasa terdistorsi di area ini.",
-            "Langkahmu terasa lebih lambat, seolah waktu menahanmu."
+            "Suaramu memantul berulang kali dari kedalaman jurang."
         ],
-        "Pusat Kehampaan": [
+        "The Final Archive": [
             "Kegelapan absolut. Hanya insting yang menuntunmu.",
             "Gravitasi terasa tidak stabil, debu-debu melayang ke atas.",
             "Udara terasa berat, seolah dimensi ini menolak kehadiranmu."
         ]
     }
     
-    # Ambil suasana berdasarkan lokasi, jika lokasi belum terdaftar, pakai default
-    safe_atmospheres = atmospheres.get(location_name, ["Kabut menyelimuti jalanmu..."])
+    # Fallback ke default jika tidak ditemukan
+    safe_atmospheres = atmospheres.get(location_name, ["Kabut aneh menyelimuti jalanmu..."])
     return random.choice(safe_atmospheres)
 
 def get_random_narration(category):
@@ -62,8 +59,7 @@ def get_random_narration(category):
         nodes = list(result)
         if nodes:
             return nodes[0]['text']
-        else:
-            return "Kamu melangkah menembus kabut Archivus yang pekat..."
+        return "Kamu melangkah menembus lorong Archivus yang pekat..."
     except Exception as e:
         print(f"[ERROR] Gagal mengambil narasi: {e}")
         return "Langkahmu bergema di lorong yang sunyi."
@@ -90,7 +86,8 @@ def update_location_if_needed(player):
 def process_move(user_id):
     """
     Logika utama pergerakan (Exploration Engine).
-    Menentukan apakah pemain bertemu Monster, Bos, NPC, atau Jalan Aman.
+    Menentukan Encounter: Monster, Boss, NPC, Event Random, atau Jalan Aman.
+    Menerapkan efek pusing (dizzy) pada navigasi.
     """
     player = get_player(user_id)
     kills = player.get("kills", 0)
@@ -99,7 +96,7 @@ def process_move(user_id):
     # 1. CEK PERPINDAHAN LOKASI
     current_loc, just_moved = update_location_if_needed(player)
     
-    # 2. TRIGGER NPC MISI (Hanya di langkah pertama siklus pertama)
+    # 2. TRIGGER NPC MISI AWAL (Hanya di langkah pertama siklus pertama)
     if player.get("step_counter", 0) == 0 and kills == 0 and cycle == 1:
         update_player(user_id, {"step_counter": 1})
         npc_data = {
@@ -114,7 +111,7 @@ def process_move(user_id):
     steps_since = player.get("steps_since_event", 0) + 1
     new_steps_total = player.get("step_counter", 0) + 1
 
-    # 3. TRIGGER BOSS UTAMA (Kill-Based: Setelah 15-20 kill)
+    # 3. TRIGGER BOSS UTAMA (Setelah 15-20 kill)
     is_boss = False
     if kills > 20:
         is_boss = True 
@@ -125,53 +122,57 @@ def process_move(user_id):
 
     if is_boss:
         update_player(user_id, {"steps_since_event": 0})
-        # main.py mengharapkan string "boss"
         return ("boss", None, f"🌑 **UDARA MEMBEKU.**\nDi ujung {current_loc}, kabut membentuk siluet raksasa. Sang Penjaga telah tiba!")
 
-    # 4. TRIGGER MINI BOSS (Area Kill 7-9 atau monster_streak)
-    # Kita menggunakan kombinasi kill count ATAU monster streak (untuk memastikan mereka muncul di mid-game)
+    # 4. TRIGGER MINI BOSS (Kill 7-9 atau monster_streak tinggi)
     monster_streak = player.get('monster_streak', 0)
     has_slain_miniboss = player.get('miniboss_slain', False)
     
     if (kills in [7, 8, 9] or monster_streak >= 7) and not has_slain_miniboss:
         update_player(user_id, {"steps_since_event": 0, "miniboss_slain": True})
         miniboss_name = get_random_mini_boss()
-        
-        # main.py mengharapkan string "miniboss" (tanpa garis bawah)
         return ("miniboss", {"name": miniboss_name}, f"🚨 **AURA MENCEKAM.**\n{miniboss_name} menghalangi jalanmu di {current_loc}. Kalahkan elit ini untuk maju!")
 
-    # 5. REGULAR ENCOUNTER (Monster / NPC)
-    trigger_threshold = random.randint(3, 5) # Butuh 3-5 langkah sebelum ketemu sesuatu
+    # 5. REGULAR ENCOUNTER (Monster / NPC / Jebakan)
+    # Rata-rata butuh 2-4 langkah sebelum bertemu sesuatu
+    trigger_threshold = random.randint(2, 4) 
     
     if steps_since >= trigger_threshold:
         update_player(user_id, {"steps_since_event": 0, "step_counter": new_steps_total})
         
         event_roll = random.random()
         
-        # 60% Ketemu Monster Biasa, 40% Ketemu NPC
+        # 60% Monster, 25% NPC, 15% Random Event (Jebakan/Peti)
         if event_roll < 0.60:
-            # Tambah monster streak setiap kali ketemu monster biasa
             update_player(user_id, {"monster_streak": monster_streak + 1})
             return ("monster", None, get_random_narration("monster_event"))
-        else:
-            # Memanggil sistem NPC
+            
+        elif event_roll < 0.85:
             npc_encounter = get_npc_encounter(cycle)
-            
-            # Map tipe NPC untuk main.py
-            if npc_encounter['type'] == 'trickster':
-                event_type = "npc_jahat"
-            elif npc_encounter['type'] == 'scholar':
-                event_type = "npc_quiz"
-            else:
-                event_type = "npc_baik"
-            
+            event_type = "npc_jahat" if npc_encounter['type'] == 'trickster' else "npc_quiz" if npc_encounter['type'] == 'scholar' else "npc_baik"
             return (event_type, npc_encounter, get_random_narration("npc_event"))
             
+        else:
+            # Random Exploration Event: Temukan barang atau jebakan
+            if random.random() < 0.5:
+                # Jebakan Pusing (Dizzy Trap)
+                debuffs = player.get('debuffs', [])
+                if "dizzy" not in debuffs:
+                    debuffs.append("dizzy")
+                    update_player(user_id, {"debuffs": debuffs})
+                    return ("trap", None, "🌫️ **JEBAKAN ASAP!** Kamu menginjak ubin yang salah. Asap ungu menyemprot wajahmu, membuat pandanganmu berputar!")
+                else:
+                    return ("safe", None, "Kamu hampir menginjak jebakan, tapi berhasil menghindar berkat instingmu.")
+            else:
+                # Temu Koin Kecil
+                found_gold = random.randint(10, 30) * cycle
+                update_player(user_id, {"gold": player.get('gold', 0) + found_gold})
+                return ("safe", None, f"✨ Matamu menangkap kilauan di sudut gelap. Kamu menemukan **{found_gold} Gold** yang ditinggalkan Weaver terdahulu!")
+
     # 6. JALAN KOSONG / AMAN (Safe Travel)
     else:
         update_player(user_id, {"steps_since_event": steps_since, "step_counter": new_steps_total})
         
-        # Gabungkan narasi dari database dengan atmosfer dinamis
         narasi_aman = get_random_narration("safe_travel")
         atmosfer = get_atmosphere(current_loc)
         
