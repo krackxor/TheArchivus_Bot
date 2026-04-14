@@ -26,7 +26,7 @@ ELEMENT_CHART = {
     "Natural": {"strong": "Cahaya", "weak": "Kegelapan"}
 }
 
-# === DATABASE SKILL MUSUH (3 Variasi per Elemen) ===
+# === DATABASE SKILL MUSUH (3 Variasi per Elemen - Total 24 Skill) ===
 MONSTER_SKILLS_DB = {
     "Api": [
         {"name": "Semburan Api", "cost": 15, "type": "damage_boost", "multiplier": 1.5, "msg": "menyemburkan api panas!"},
@@ -86,10 +86,7 @@ def get_dynamic_bar(current, maximum, length=10, type_bar="hp"):
     return f"[{bar}] {int(current)}/{int(maximum)}"
 
 def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
-    """
-    Merakit teks tampilan UI Live Battle ganda. 
-    Menampilkan HP dan MP untuk pemain dan musuh.
-    """
+    """Merakit teks tampilan UI Live Battle ganda."""
     p_hp_view = get_dynamic_bar(player.get('hp', 0), player.get('max_hp', 100), type_bar="hp")
     p_mp_view = get_dynamic_bar(player.get('mp', 0), player.get('max_mp', 50), type_bar="mp")
     
@@ -119,7 +116,7 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
 
 # === SISTEM KALKULASI RPG ===
 def calculate_equipment_stats(player):
-    """Mengekstrak data equipment (mengabaikan item hancur & cek elemen Resin)."""
+    """Mengekstrak data equipment (Atk, Def, Weight, dll)."""
     inventory = player.get('inventory', [])
     stats = {
         "atk": player.get('base_atk', 10),
@@ -152,21 +149,16 @@ def calculate_equipment_stats(player):
     return stats
 
 def calculate_dodge_chance(stats):
-    """Kalkulasi peluang Dodge berdasarkan Weight, Speed, dan Elemen."""
     dodge_chance = 0.25 
-    
     if stats["speed"] in ["fast", "very_fast"]: dodge_chance += 0.12
     elif stats["speed"] == "medium": dodge_chance += 0.06
-        
     if stats["gloves_type"] == "speed": dodge_chance += 0.10
     if stats["element"] == "Angin": dodge_chance += 0.08
-        
     w = stats["weight"]
     if 16 <= w <= 30: dodge_chance -= 0.05
     elif 31 <= w <= 50: dodge_chance -= 0.12
     elif 51 <= w <= 70: dodge_chance -= 0.22
     elif w > 70: dodge_chance -= 0.35
-        
     return max(0.08, min(0.75, dodge_chance))
 
 def get_element_multiplier(atk_element, def_element):
@@ -175,174 +167,101 @@ def get_element_multiplier(atk_element, def_element):
         elif ELEMENT_CHART[atk_element]["weak"] == def_element: return 0.5
     return 1.0
 
+def process_staff_magic(element):
+    """MENGEMBALIKAN FUNGSI YANG HILANG UNTUK FIX IMPORT ERROR"""
+    effects = {
+        "Api": {"effect": "burn", "value": 0, "desc": "Membakar musuh"},
+        "Air": {"effect": "slow", "value": 0, "desc": "Mengurangi kecepatan musuh"},
+        "Petir": {"effect": "stun", "value": 0, "desc": "Peluang musuh terkena Stun"},
+        "Angin": {"effect": "dodge_up", "value": 0, "desc": "Meningkatkan Dodge Chance"},
+        "Tanah": {"effect": "def_up", "value": 0, "desc": "Meningkatkan Defense"},
+        "Cahaya": {"effect": "heal", "value": random.randint(25, 40), "desc": "Memulihkan HP secara instan"},
+        "Kegelapan": {"effect": "curse", "value": 0, "desc": "Mengurangi Defense musuh"},
+        "Natural": {"effect": "cleanse_mp", "value": 15, "desc": "Memulihkan 15 MP"}
+    }
+    return effects.get(element, {"effect": "none", "value": 0, "desc": "Tidak ada efek"})
+
 # === LOGIKA CERDAS AI MONSTER ===
 def select_smart_skill(m_element, tier_level, is_boss, p_hp_pct, m_hp_pct, m_current_mp):
-    """
-    Memilih skill dari database berdasarkan ketersediaan MP musuh dan kondisi pertarungan.
-    """
     available_skills = MONSTER_SKILLS_DB.get(m_element, [])
-    
-    # Filter skill yang MP-nya cukup
     valid_skills = [s for s in available_skills if s['cost'] <= m_current_mp]
-    
-    # Jika tidak ada skill yang MP-nya cukup, lakukan serangan biasa (return None)
-    if not valid_skills:
-        return None
+    if not valid_skills: return None
         
-    # Peluang menggunakan skill (semakin tinggi tier, semakin sering)
     skill_chance = 0.25 + (tier_level * 0.10)
     if is_boss: skill_chance += 0.20
-        
-    if random.random() > skill_chance:
-        return None 
+    if random.random() > skill_chance: return None 
 
-    # AI Prioritas (Pilih skill yang paling cocok)
     for skill in valid_skills:
-        # Jika darah pemain tipis (<30%), prioritaskan skill damage besar (Execution)
-        if p_hp_pct <= 0.30 and skill['type'] in ["heavy_damage", "damage_boost"]:
-            return skill
-        # Jika darah monster tipis (<40%), prioritaskan heal atau lifesteal (Survival)
-        if m_hp_pct <= 0.40 and skill['type'] in ["heal_self", "vampire"]:
-            return skill
+        if p_hp_pct <= 0.30 and skill['type'] in ["heavy_damage", "damage_boost"]: return skill
+        if m_hp_pct <= 0.40 and skill['type'] in ["heal_self", "vampire"]: return skill
             
-    # Jika tidak ada kondisi darurat, pilih acak dari skill yang MP-nya cukup
     return random.choice(valid_skills)
 
-
-# === MULTI-GENRE ENGINE & STAT GENERATION ===
+# === GENERATION ===
 def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False, existing_monster=None):
     p_stats = calculate_equipment_stats(player)
     
-    # 1. LOAD ATAU GENERATE STAT MUSUH
     if existing_monster:
-        m_name = existing_monster["monster_name"]
-        m_element = existing_monster["monster_element"]
-        m_hp = existing_monster["monster_hp"]
-        m_max_hp = existing_monster["monster_max_hp"]
-        m_mp = existing_monster["monster_mp"]
-        m_max_mp = existing_monster["monster_max_mp"]
-        m_atk = existing_monster["monster_atk"]
-        m_def = existing_monster["monster_def"]
-        tier_label = existing_monster["tier"]
+        m_name, m_element = existing_monster["monster_name"], existing_monster["monster_element"]
+        m_hp, m_max_hp = existing_monster["monster_hp"], existing_monster["monster_max_hp"]
+        m_mp, m_max_mp = existing_monster["monster_mp"], existing_monster["monster_max_mp"]
+        m_atk, m_def, tier_label = existing_monster["monster_atk"], existing_monster["monster_def"], existing_monster["tier"]
     else:
         m_element = random.choice(ELEMENTS)
         cycle_bonus = player.get('cycle', 1) - 1
-        
         if is_boss:
-            m_name = get_random_boss()
-            tier_label = "BOSS"
-            m_max_hp = 300 + (tier_level * 100) + (cycle_bonus * 100)
-            m_max_mp = 150 + (cycle_bonus * 50)
-            m_atk = 30 + (tier_level * 5) + (cycle_bonus * 5)
-            m_def = 15 + (tier_level * 3)
+            m_name, tier_label = get_random_boss(), "BOSS"
+            m_max_hp, m_max_mp = 300 + (tier_level * 100) + (cycle_bonus * 100), 150 + (cycle_bonus * 50)
+            m_atk, m_def = 30 + (tier_level * 5) + (cycle_bonus * 5), 15 + (tier_level * 3)
         elif is_miniboss:
-            m_name = get_random_mini_boss()
-            tier_label = "MINI BOSS"
-            m_max_hp = 150 + (cycle_bonus * 50)
-            m_max_mp = 80 + (cycle_bonus * 20)
-            m_atk = 20 + (cycle_bonus * 5)
-            m_def = 10 + (cycle_bonus * 2)
+            m_name, tier_label = get_random_mini_boss(), "MINI BOSS"
+            m_max_hp, m_max_mp = 150 + (cycle_bonus * 50), 80 + (cycle_bonus * 20)
+            m_atk, m_def = 20 + (cycle_bonus * 5), 10 + (cycle_bonus * 2)
         else:
-            m_name = get_random_monster(tier_level)
-            tier_label = tier_level
-            m_max_hp = 50 + (tier_level * 30) + (cycle_bonus * 10)
-            m_max_mp = 20 + (tier_level * 10)
-            m_atk = 10 + (tier_level * 4) + cycle_bonus
-            m_def = 2 + (tier_level * 2)
-            
-        m_hp = m_max_hp
-        m_mp = m_max_mp
+            m_name, tier_label = get_random_monster(tier_level), tier_level
+            m_max_hp, m_max_mp = 50 + (tier_level * 30) + (cycle_bonus * 10), 20 + (tier_level * 10)
+            m_atk, m_def = 10 + (tier_level * 4) + cycle_bonus, 2 + (tier_level * 2)
+        m_hp, m_mp = m_max_hp, m_max_mp
 
-    # Kalkulasi Persentase untuk AI
-    p_hp_pct = player.get('hp', 100) / max(1, player.get('max_hp', 100))
-    m_hp_pct = m_hp / max(1, m_max_hp)
-
-    # 2. ROLL MONSTER SKILL (AI Cerdas)
+    p_hp_pct, m_hp_pct = player.get('hp', 100) / max(1, player.get('max_hp', 100)), m_hp / max(1, m_max_hp)
     m_skill = select_smart_skill(m_element, tier_level, is_boss, p_hp_pct, m_hp_pct, m_mp)
     
-    raw_damage = m_atk
-    timer_penalty = 0
-    skill_msg = ""
-    
-    # 3. TERAPKAN EFEK SKILL (Jika digunakan)
+    raw_damage, timer_penalty, skill_msg = m_atk, 0, ""
     if m_skill:
-        # Kurangi MP Musuh karena pakai skill
         m_mp -= m_skill['cost']
         skill_msg = f"✨ *{m_name} {m_skill['msg']}*"
-        
-        if m_skill["type"] == "damage_boost":
+        if m_skill["type"] in ["damage_boost", "heavy_damage", "defense_pierce", "vampire"]:
             raw_damage = int(m_atk * m_skill["multiplier"])
-        elif m_skill["type"] == "heavy_damage":
-            raw_damage = int(m_atk * m_skill["multiplier"])
-        elif m_skill["type"] == "defense_pierce":
-            raw_damage = int(m_atk * m_skill["multiplier"])
-            p_stats["def"] = int(p_stats["def"] * 0.5) 
-        elif m_skill["type"] == "time_cut":
-            timer_penalty = 5 
+            if m_skill["type"] == "defense_pierce": p_stats["def"] = int(p_stats["def"] * 0.5)
+        elif m_skill["type"] == "time_cut": timer_penalty = 5 
         elif m_skill["type"] == "heal_self":
-            heal_amount = int(m_max_hp * 0.15) 
-            m_hp = min(m_max_hp, m_hp + heal_amount)
-            skill_msg += f" (+{heal_amount} HP)"
-        elif m_skill["type"] == "vampire":
-            raw_damage = int(m_atk * m_skill["multiplier"])
+            heal = int(m_max_hp * 0.15)
+            m_hp = min(m_max_hp, m_hp + heal)
+            skill_msg += f" (+{heal} HP)"
             
-    # Kalkulasi akhir damage monster yang akan masuk ke pemain
     final_monster_damage = max(1, raw_damage - p_stats["def"])
 
-    # 4. GENERATE PUZZLE
     if is_boss and random.random() > 0.6:
         target_word = random.choice(["PENJAGA GERBANG", "DUNIA HAMPA", "MEMORI HILANG", "ECLIPTIC EXPRESS", "SANG PENGKHIANAT"])
-        scrambled = list(target_word.replace(" ", ""))
-        random.shuffle(scrambled)
+        scrambled = list(target_word.replace(" ", "")); random.shuffle(scrambled)
         question = f"SANG PENJAGA MENGHADANGMU! Susun segel kutukan ini (Tanpa spasi): *{''.join(scrambled).upper()}*"
         answer = target_word.replace(" ", "").lower()
     else:
-        # Panggil puzzle manager (dengan bias elemen)
-        p_streak = player.get('monster_streak', 0) 
-        question, answer = get_random_puzzle(tier_level, monster_element=m_element, win_streak=p_streak)
+        question, answer = get_random_puzzle(tier_level, monster_element=m_element, win_streak=player.get('monster_streak', 0))
 
-    # 5. DYNAMIC TIMER
-    if is_boss: timer_limit = 25
-    elif is_miniboss: timer_limit = 35
-    else: timer_limit = max(15, 70 - (tier_level * 10))
-        
+    timer_limit = 25 if is_boss else (35 if is_miniboss else max(15, 70 - (tier_level * 10)))
     timer_limit = max(10, timer_limit - timer_penalty) 
 
     return {
-        "monster_name": m_name,
-        "monster_element": m_element,
-        "monster_hp": m_hp,
-        "monster_max_hp": m_max_hp,
-        "monster_mp": m_mp,
-        "monster_max_mp": m_max_mp,
-        "monster_atk": m_atk,
-        "monster_def": m_def,
-        "tier": tier_label,
-        "damage": final_monster_damage, 
-        "defense_applied": p_stats["def"],
-        "active_skill": m_skill,
-        "skill_message": skill_msg,
-        "question": question,
-        "answer": str(answer).lower(),
-        "timer": timer_limit,
-        "is_boss": is_boss,
-        "generated_time": time.time()
+        "monster_name": m_name, "monster_element": m_element, "monster_hp": m_hp, "monster_max_hp": m_max_hp,
+        "monster_mp": m_mp, "monster_max_mp": m_max_mp, "monster_atk": m_atk, "monster_def": m_def,
+        "tier": tier_label, "damage": final_monster_damage, "defense_applied": p_stats["def"],
+        "active_skill": m_skill, "skill_message": skill_msg, "question": question, "answer": str(answer).lower(),
+        "timer": timer_limit, "is_boss": is_boss, "generated_time": time.time()
     }
 
 def validate_answer(user_answer, correct_answer, generated_time, time_limit):
-    """
-    Validasi jawaban pemain.
-    Returns: (is_correct, is_timeout, time_taken)
-    """
     time_taken = time.time() - generated_time
-    
-    if time_taken > time_limit:
-        return (False, True, time_taken) 
-    
-    clean_user = str(user_answer).strip().lower()
-    clean_correct = str(correct_answer).strip().lower()
-    
-    if clean_user == clean_correct:
-        return (True, False, time_taken)
-        
+    if time_taken > time_limit: return (False, True, time_taken) 
+    if str(user_answer).strip().lower() == str(correct_answer).strip().lower(): return (True, False, time_taken)
     return (False, False, time_taken)
