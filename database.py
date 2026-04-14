@@ -45,7 +45,12 @@ def get_player(user_id, username="Weaver"):
             "kills": 0,
             "boss_kills": 0,
             
-            # Progression System (NEW)
+            # Survival Stats (NEW)
+            "energy": 100,
+            "max_energy": 100,
+            "debuffs": [], # Contoh: ["poisoned", "dizzy"]
+            
+            # Progression System
             "level": 1,
             "exp": 0,
             "exp_needed": 100,
@@ -62,32 +67,32 @@ def get_player(user_id, username="Weaver"):
             "steps_since_event": 0,
             "miniboss_slain": False,
             
-            # Combat System (NEW)
+            # Combat System
             "current_combo": 0,
             "max_combo_reached": 0,
             "flawless_boss_count": 0,
             
-            # Achievement & Quest System (NEW)
+            # Achievement & Quest System
             "achievements_unlocked": [],
             "daily_quests": [],
             "daily_stats": {},
             "last_login": None,
             
-            # Tracking untuk Easter Eggs (NEW)
+            # Tracking untuk Easter Eggs
             "recent_moves": [],
             "total_gold_earned": 0,
             "locations_visited": [LOCATIONS[0]],
             "trap_survived": 0,
             "quiz_correct_count": 0,
             
-            # Buffs & Debuffs (NEW) - TERMASUK RESIN/MANTRA
+            # Buffs & Debuffs - TERMASUK RESIN/MANTRA
             "active_buffs": [],
             "active_resin": None, # Menyimpan elemen mantra sementara (misal: "Api")
             "resin_duration": 0,  # Berapa turn lagi mantra aktif
             "has_companion": False,
             "companion_duration": 0,
             
-            # Leaderboard Stats (NEW)
+            # Leaderboard Stats
             "highest_cycle": 1,
             "highest_combo": 0,
             "total_playtime": 0,
@@ -111,6 +116,11 @@ def get_player(user_id, username="Weaver"):
     if "steps_since_event" not in player: updates["steps_since_event"] = 0
     if "miniboss_slain" not in player: updates["miniboss_slain"] = False
     if "boss_kills" not in player: updates["boss_kills"] = 0
+    
+    # NEW Survival fields
+    if "energy" not in player: updates["energy"] = 100
+    if "max_energy" not in player: updates["max_energy"] = 100
+    if "debuffs" not in player: updates["debuffs"] = []
     
     # NEW Progression fields
     if "level" not in player: updates["level"] = 1
@@ -213,6 +223,8 @@ def reset_player_death(user_id, cause):
     updates = {
         "hp": player.get("max_hp", 100),
         "mp": player.get("max_mp", 50),
+        "energy": player.get("max_energy", 100), # Energi kembali penuh saat mati
+        "debuffs": [], # Debuff hilang saat reinkarnasi
         "step_counter": 0,
         "gold": new_gold,
         "exp": new_exp,
