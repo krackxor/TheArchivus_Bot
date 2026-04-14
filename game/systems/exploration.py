@@ -2,6 +2,7 @@
 Sistem Eksplorasi (Exploration System)
 Menangani logika pergerakan pemain, transisi wilayah (Biomes), 
 sistem atmosfer/cuaca, dan pemicu kejadian (Encounter Triggers).
+Terintegrasi penuh dengan sistem Bos dan Mini-Bos.
 """
 
 import random
@@ -9,9 +10,9 @@ import random
 # Panggilan ke database
 from database import get_player, update_player, narratives_col, LOCATIONS, add_history
 
-# Panggilan ke sistem NPC
+# Panggilan ke sistem NPC & Entitas
 from game.entities.npcs import get_npc_encounter
-
+from game.entities.bosses import get_random_mini_boss
 
 def get_atmosphere(location_name):
     """
@@ -50,7 +51,6 @@ def get_atmosphere(location_name):
     safe_atmospheres = atmospheres.get(location_name, ["Kabut menyelimuti jalanmu..."])
     return random.choice(safe_atmospheres)
 
-
 def get_random_narration(category):
     """Mengambil satu naskah acak dari koleksi narasi MongoDB berdasarkan kategori."""
     result = narratives_col.aggregate([
@@ -67,7 +67,6 @@ def get_random_narration(category):
     except Exception as e:
         print(f"[ERROR] Gagal mengambil narasi: {e}")
         return "Langkahmu bergema di lorong yang sunyi."
-
 
 def update_location_if_needed(player):
     """Merotasi lokasi berdasarkan jumlah kill. Semakin tinggi, semakin dalam."""
@@ -87,7 +86,6 @@ def update_location_if_needed(player):
         return new_location, True # True berarti ada perpindahan lokasi
         
     return current_loc, False
-
 
 def process_move(user_id):
     """
@@ -116,7 +114,7 @@ def process_move(user_id):
     steps_since = player.get("steps_since_event", 0) + 1
     new_steps_total = player.get("step_counter", 0) + 1
 
-    # 3. TRIGGER BOSS (Kill-Based)
+    # 3. TRIGGER BOSS UTAMA (Kill-Based: Setelah 15-20 kill)
     is_boss = False
     if kills > 20:
         is_boss = True 
@@ -127,12 +125,20 @@ def process_move(user_id):
 
     if is_boss:
         update_player(user_id, {"steps_since_event": 0})
+        # main.py mengharapkan string "boss"
         return ("boss", None, f"🌑 **UDARA MEMBEKU.**\nDi ujung {current_loc}, kabut membentuk siluet raksasa. Sang Penjaga telah tiba!")
 
-    # 4. TRIGGER MINI BOSS (Area Kill 7-9)
-    if kills in [7, 8, 9] and not player.get('miniboss_slain', False):
+    # 4. TRIGGER MINI BOSS (Area Kill 7-9 atau monster_streak)
+    # Kita menggunakan kombinasi kill count ATAU monster streak (untuk memastikan mereka muncul di mid-game)
+    monster_streak = player.get('monster_streak', 0)
+    has_slain_miniboss = player.get('miniboss_slain', False)
+    
+    if (kills in [7, 8, 9] or monster_streak >= 7) and not has_slain_miniboss:
         update_player(user_id, {"steps_since_event": 0, "miniboss_slain": True})
-        return ("mini_boss", None, f"⚔️ **JALAN TERTUTUP.**\nSeekor letnan kegelapan menghalangimu di {current_loc}. Kalahkan dia untuk lanjut!")
+        miniboss_name = get_random_mini_boss()
+        
+        # main.py mengharapkan string "miniboss" (tanpa garis bawah)
+        return ("miniboss", {"name": miniboss_name}, f"🚨 **AURA MENCEKAM.**\n{miniboss_name} menghalangi jalanmu di {current_loc}. Kalahkan elit ini untuk maju!")
 
     # 5. REGULAR ENCOUNTER (Monster / NPC)
     trigger_threshold = random.randint(3, 5) # Butuh 3-5 langkah sebelum ketemu sesuatu
@@ -144,6 +150,8 @@ def process_move(user_id):
         
         # 60% Ketemu Monster Biasa, 40% Ketemu NPC
         if event_roll < 0.60:
+            # Tambah monster streak setiap kali ketemu monster biasa
+            update_player(user_id, {"monster_streak": monster_streak + 1})
             return ("monster", None, get_random_narration("monster_event"))
         else:
             # Memanggil sistem NPC
