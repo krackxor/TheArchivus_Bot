@@ -1,16 +1,16 @@
 """
-Achievement & Progression System
-Memberikan sense of progress dan reward untuk pemain
+Achievement & Progression System (The Archivus)
+Memberikan sense of progress dan reward untuk pemain.
+Terintegrasi dengan sistem Leveling dan Array Artifact khusus.
 """
 
 import math
 import random
 import datetime
 
-# Karena main.py dijalankan di luar, kita bisa langsung memanggil database
 from database import update_player
 
-# Database Achievement
+# Database Achievement (Terintegrasi dengan Lore & Artifact ID)
 ACHIEVEMENTS = {
     # Combat Achievements
     "first_blood": {
@@ -26,7 +26,7 @@ ACHIEVEMENTS = {
         "title": "Monster Hunter",
         "description": "Kalahkan 10 monster",
         "condition": {"type": "kills", "value": 10},
-        "reward": {"gold": 200, "exp": 500, "item": "hunter_badge"},
+        "reward": {"gold": 200, "exp": 500, "item": "lucky_charm"}, # Disesuaikan dengan loot id
         "icon": "🏹"
     },
     "slayer": {
@@ -44,7 +44,7 @@ ACHIEVEMENTS = {
         "title": "Keeper Slayer",
         "description": "Kalahkan Sang Penjaga pertama kali",
         "condition": {"type": "boss_kills", "value": 1},
-        "reward": {"gold": 500, "exp": 1000, "item": "keeper_fragment"},
+        "reward": {"gold": 500, "exp": 1000, "item": "keeper_heart"}, # Artefak Jantung Penjaga
         "icon": "👑"
     },
     
@@ -80,7 +80,7 @@ ACHIEVEMENTS = {
         "title": "Perfect Warrior",
         "description": "Kalahkan Boss tanpa terkena damage",
         "condition": {"type": "flawless_boss", "value": 1},
-        "reward": {"gold": 1000, "exp": 2000, "item": "perfect_seal"},
+        "reward": {"gold": 1000, "exp": 2000, "item": "phoenix_tear"}, # Artefak Air Mata Phoenix
         "icon": "✨"
     },
     
@@ -108,7 +108,7 @@ ACHIEVEMENTS = {
         "title": "Explorer",
         "description": "Kunjungi semua 5 lokasi Archivus",
         "condition": {"type": "locations_visited", "value": 5},
-        "reward": {"gold": 300, "exp": 600},
+        "reward": {"gold": 300, "exp": 600, "item": "weaver_diary"}, # Artefak Jurnal Weaver
         "icon": "🗺️"
     },
     
@@ -191,49 +191,36 @@ def check_achievement_unlock(player, achievement_id):
     value = condition['value']
     
     # Evaluasi kondisi
-    if ctype == "kills":
-        return player.get('kills', 0) >= value
-    elif ctype == "boss_kills":
-        return player.get('boss_kills', 0) >= value
-    elif ctype == "cycle":
-        return player.get('cycle', 1) >= value
-    elif ctype == "max_combo":
-        return player.get('max_combo_reached', 0) >= value
-    elif ctype == "flawless_boss":
-        return player.get('flawless_boss_count', 0) >= value
-    elif ctype == "total_gold_earned":
-        return player.get('total_gold_earned', 0) >= value
-    elif ctype == "locations_visited":
-        return len(player.get('locations_visited', [])) >= value
-    elif ctype == "trap_survived":
-        return player.get('trap_survived', 0) >= value
-    elif ctype == "quiz_correct":
-        return player.get('quiz_correct_count', 0) >= value
+    if ctype == "kills": return player.get('kills', 0) >= value
+    elif ctype == "boss_kills": return player.get('boss_kills', 0) >= value
+    elif ctype == "cycle": return player.get('cycle', 1) >= value
+    elif ctype == "max_combo": return player.get('max_combo_reached', 0) >= value
+    elif ctype == "flawless_boss": return player.get('flawless_boss_count', 0) >= value
+    elif ctype == "total_gold_earned": return player.get('total_gold_earned', 0) >= value
+    elif ctype == "locations_visited": return len(player.get('locations_visited', [])) >= value
+    elif ctype == "trap_survived": return player.get('trap_survived', 0) >= value
+    elif ctype == "quiz_correct": return player.get('quiz_correct_count', 0) >= value
     
     return False
 
 def get_all_unlockable_achievements(player):
-    """Dapatkan semua achievement yang baru tercapai"""
+    """Dapatkan semua achievement yang baru tercapai saat evaluasi"""
     newly_unlocked = []
-    
     for ach_id in ACHIEVEMENTS.keys():
         if check_achievement_unlock(player, ach_id):
             newly_unlocked.append(ach_id)
-    
     return newly_unlocked
 
 def calculate_level_from_exp(exp):
     """Hitung level berdasarkan exp (scaling formula)"""
-    # Formula: Level = floor(sqrt(exp / 100)) + 1
     return math.floor(math.sqrt(exp / 100)) + 1
 
 def calculate_exp_needed(level):
-    """Hitung exp yang dibutuhkan untuk level berikutnya"""
-    # Formula: Exp needed = (level^2) * 100
+    """Hitung exp yang dibutuhkan untuk naik ke level berikutnya"""
     return (level ** 2) * 100
 
 def award_achievement(player_data, achievement_id):
-    """Berikan reward dari achievement dan catat unlock"""
+    """Berikan reward dari achievement dan catat di database (termasuk Artefak)"""
     achievement = ACHIEVEMENTS.get(achievement_id)
     if not achievement:
         return None
@@ -242,18 +229,17 @@ def award_achievement(player_data, achievement_id):
     updates = {}
     reward_text = []
     
-    # Proses gold reward
+    # 1. Proses Gold
     if 'gold' in reward:
         updates['gold'] = player_data.get('gold', 0) + reward['gold']
         reward_text.append(f"💰 {reward['gold']} Gold")
     
-    # Proses exp reward
+    # 2. Proses EXP & Level Up
     if 'exp' in reward:
         current_exp = player_data.get('exp', 0) + reward['exp']
         current_level = player_data.get('level', 1)
         exp_needed = calculate_exp_needed(current_level)
         
-        # Level up check
         level_up = False
         while current_exp >= exp_needed:
             current_level += 1
@@ -269,7 +255,7 @@ def award_achievement(player_data, achievement_id):
         if level_up:
             reward_text.append(f"🎆 LEVEL UP! ({current_level})")
     
-    # Proses stat boost
+    # 3. Proses Stat Boost Permanen
     if 'max_hp' in reward:
         updates['max_hp'] = player_data.get('max_hp', 100) + reward['max_hp']
         reward_text.append(f"❤️ +{reward['max_hp']} Max HP")
@@ -278,24 +264,27 @@ def award_achievement(player_data, achievement_id):
         updates['max_mp'] = player_data.get('max_mp', 50) + reward['max_mp']
         reward_text.append(f"🔮 +{reward['max_mp']} Max MP")
     
-    # Proses item reward
+    # 4. Proses Item / Artefak Reward (MASUK KE ARRAY ARTIFACTS)
     if 'item' in reward:
-        inventory = player_data.get('inventory', [])
-        inventory.append({
+        artifacts = player_data.get('artifacts', [])
+        # Format nama agar rapi (contoh: "keeper_heart" -> "Keeper Heart")
+        clean_name = reward['item'].replace('_', ' ').title()
+        
+        artifacts.append({
             'id': reward['item'],
-            'name': reward['item'].replace('_', ' ').title(),
+            'name': f"✨ {clean_name}",
             'type': 'artifact',
             'source': 'achievement'
         })
-        updates['inventory'] = inventory
-        reward_text.append(f"🎁 {reward['item'].replace('_', ' ').title()}")
+        updates['artifacts'] = artifacts
+        reward_text.append(f"🎁 Artefak: {clean_name}")
     
-    # Catat achievement unlock
+    # 5. Catat Unlocked Achievement
     unlocked = player_data.get('achievements_unlocked', [])
     unlocked.append(achievement_id)
     updates['achievements_unlocked'] = unlocked
     
-    # Update database
+    # Update ke MongoDB
     update_player(player_data['user_id'], updates)
     
     return {
@@ -306,31 +295,21 @@ def award_achievement(player_data, achievement_id):
     }
 
 def generate_daily_quests():
-    """Generate 3 random daily quests"""
-    # Seed berdasarkan tanggal agar konsisten per hari
+    """Generate 3 daily quests acak berdasarkan seed tanggal hari ini"""
     today = datetime.datetime.now().date()
     random.seed(str(today))
-    
     selected = random.sample(DAILY_QUESTS_POOL, 3)
-    
-    # Reset seed
-    random.seed()
-    
+    random.seed() # Reset seed agar RNG fitur lain tidak rusak
     return selected
 
 def check_daily_quest_progress(player, quest_type):
-    """Cek progress daily quest"""
+    """Cek progress daily quest dari statistik harian pemain"""
     daily_stats = player.get('daily_stats', {})
     
-    if quest_type == "kills":
-        return daily_stats.get('kills_today', 0)
-    elif quest_type == "gold_earned":
-        return daily_stats.get('gold_earned_today', 0)
-    elif quest_type == "steps":
-        return daily_stats.get('steps_today', 0)
-    elif quest_type == "quiz_correct":
-        return daily_stats.get('quiz_correct_today', 0)
-    elif quest_type == "perfect_combat":
-        return daily_stats.get('perfect_combat_today', 0)
+    if quest_type == "kills": return daily_stats.get('kills_today', 0)
+    elif quest_type == "gold_earned": return daily_stats.get('gold_earned_today', 0)
+    elif quest_type == "steps": return daily_stats.get('steps_today', 0)
+    elif quest_type == "quiz_correct": return daily_stats.get('quiz_correct_today', 0)
+    elif quest_type == "perfect_combat": return daily_stats.get('perfect_combat_today', 0)
     
     return 0
