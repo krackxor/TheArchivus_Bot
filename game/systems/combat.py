@@ -249,7 +249,9 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
         question = f"SANG PENJAGA MENGHADANGMU! Susun segel kutukan ini (Tanpa spasi): *{''.join(scrambled).upper()}*"
         answer = target_word.replace(" ", "").lower()
     else:
-        question, answer = get_random_puzzle(tier_level)
+        # === TERHUBUNG DENGAN PUZZLE MANAGER YANG CERDAS ===
+        p_streak = player.get('monster_streak', 0) 
+        question, answer = get_random_puzzle(tier_level, monster_element=m_element, win_streak=p_streak)
 
     if is_boss: timer_limit = 25
     elif is_miniboss: timer_limit = 35
