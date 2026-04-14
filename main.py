@@ -1,6 +1,7 @@
 import asyncio
 import random
 import os
+import time
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.filters import CommandStart
@@ -27,7 +28,7 @@ from utils.helper_ui import (
     create_hp_bar, create_mp_bar, create_status_card, create_combat_header,
     create_achievement_notification, create_loot_drop, create_level_up_animation,
     create_combo_indicator, create_daily_quest_card, create_boss_warning,
-    create_death_screen, create_location_transition
+    create_death_screen, create_location_transition, create_monster_card
 )
 
 dp = Dispatcher()
@@ -66,55 +67,73 @@ def get_main_reply_keyboard(player=None):
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, input_field_placeholder="⚔️ Pilih aksimu, Weaver...")
 
-def get_enhanced_combat_keyboard(player, player_stats, is_boss=False):
-    """Combat keyboard Super Dinamis + QUICK ITEM + RUN!"""
+def get_stance_keyboard(is_boss=False):
+    """Menu Utama Pertarungan (Main Menu)"""
+    # Catatan: Jika library-mu mendukung parameter style, kamu bisa tambahkan style="success", dll.
+    row1 = [
+        InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
+        InlineKeyboardButton(text="🔮 Skill", callback_data="menu_skill")
+    ]
+    row2 = [
+        InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
+        InlineKeyboardButton(text="💨 Menghindar", callback_data="stance_dodge")
+    ]
+    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="menu_item")]
+    if not is_boss:
+        row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
+
+    return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
+
+def get_combat_skill_keyboard(player, player_stats):
+    """Sub-Menu Daftar Skill"""
     buttons = []
     player_mp = player.get('mp', 0)
     inventory = player.get('inventory', [])
     
-    # 1. QUICK ITEM
-    hp_potion = next((item for item in inventory if item.get('effect', '').startswith('heal_')), None)
-    mp_potion = next((item for item in inventory if item.get('effect', '').startswith('mp_')), None)
-    resin = next((item for item in inventory if item.get('effect', '').startswith('resin_')), None)
-    
-    item_row = []
-    if hp_potion: item_row.append(InlineKeyboardButton(text=f"🧪 {hp_potion['name']}", callback_data=f"combat_item_{hp_potion['id']}"))
-    if mp_potion: item_row.append(InlineKeyboardButton(text=f"🔮 {mp_potion['name']}", callback_data=f"combat_item_{mp_potion['id']}"))
-    if resin and len(item_row) < 2: item_row.append(InlineKeyboardButton(text=f"📜 Mantra", callback_data=f"combat_item_{resin['id']}"))
-    if item_row: buttons.append(item_row)
-
-    # 2. LOGIKA SKILL WEAPON
+    # 1. Skill Senjata
     weapon = next((i for i in inventory if i.get('type') == 'weapon' and i.get('durability', 0) > 0), None)
     if weapon and weapon.get('skill'):
         sk = weapon['skill']
-        if player_mp >= sk['cost']:
-            buttons.append([InlineKeyboardButton(text=f"⚔️ {sk['name']} ({sk['cost']} MP)", callback_data=f"skill_act_{sk['id']}")])
+        buttons.append([InlineKeyboardButton(text=f"⚔️ {sk['name']} ({sk['cost']} MP)", callback_data=f"combat_do_skill_{sk['id']}")])
 
-    # 3. LOGIKA TAMENG VS DODGE
-    stance_row = []
+    # 2. Skill Tameng
     if player_stats.get("has_shield", False):
         shield = next((i for i in inventory if i.get('type') == 'shield' and i.get('durability', 0) > 0), None)
-        if shield and shield.get('skill') and player_mp >= shield['skill']['cost']:
-            stance_row.append(InlineKeyboardButton(text=f"🛡️ {shield['skill']['name']} ({shield['skill']['cost']} MP)", callback_data=f"skill_act_{shield['skill']['id']}"))
-        elif player_mp >= 25: 
-            stance_row.append(InlineKeyboardButton(text="🛡️ Block (25 MP)", callback_data="skill_act_block_default"))
-    else:
-        if player_mp >= 15:
-            dodge_ch = int(calculate_dodge_chance(player_stats) * 100)
-            stance_row.append(InlineKeyboardButton(text=f"💨 Dodge ({dodge_ch}%) - 15 MP", callback_data="skill_act_dodge_default"))
-    
-    if stance_row: buttons.append(stance_row)
+        if shield and shield.get('skill'):
+            sk = shield['skill']
+            buttons.append([InlineKeyboardButton(text=f"🛡️ {sk['name']} ({sk['cost']} MP)", callback_data=f"combat_do_skill_{sk['id']}")])
 
-    # 4. SKILL UMUM & RUN
-    util_row = [InlineKeyboardButton(text="👁️ Revelatio (10 MP)", callback_data="skill_reveal")]
-    if player_mp >= 20: util_row.append(InlineKeyboardButton(text="⏳ Time Warp (20 MP)", callback_data="skill_timewarp"))
-    
-    if not is_boss:
-        run_ch = min(100, int((calculate_dodge_chance(player_stats) + 0.30) * 100))
-        util_row.append(InlineKeyboardButton(text=f"🏃 Kabur ({run_ch}%)", callback_data="skill_act_run_default"))
+    # 3. Skill Bawaan/Utilitas
+    buttons.append([InlineKeyboardButton(text="👁️ Revelatio (10 MP)", callback_data="combat_do_skill_reveal")])
+    if player_mp >= 20: 
+        buttons.append([InlineKeyboardButton(text="⏳ Time Warp (20 MP)", callback_data="combat_do_skill_timewarp")])
         
-    buttons.append(util_row)
+    buttons.append([InlineKeyboardButton(text="🔙 Kembali", callback_data="menu_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_combat_item_keyboard(player):
+    """Sub-Menu Daftar Item Darurat"""
+    inventory = player.get('inventory', [])
+    # Filter hanya item yang bisa dipakai di combat
+    usable_items = [i for i in inventory if i.get('effect', '').startswith(('heal_', 'mp_', 'resin_', 'repair_'))]
+    
+    buttons = []
+    # Kelompokkan item agar tidak duplicate (misal Potion x3)
+    item_counts = {}
+    for item in usable_items:
+        if item['id'] not in item_counts:
+            item_counts[item['id']] = {'name': item['name'], 'count': 0}
+        item_counts[item['id']]['count'] += 1
+
+    for item_id, data in item_counts.items():
+        buttons.append([InlineKeyboardButton(text=f"🎒 {data['name']} (x{data['count']})", callback_data=f"combat_do_item_{item_id}")])
+    
+    if not buttons:
+        buttons.append([InlineKeyboardButton(text="❌ Tas Kosong", callback_data="menu_back")])
+        
+    buttons.append([InlineKeyboardButton(text="🔙 Kembali", callback_data="menu_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 def get_event_keyboard(event):
     buttons = []
@@ -183,11 +202,13 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
             broken_txt = f"\n🛡️ *CRACK!* Armormu hancur: {', '.join(broken)}!" if broken else ""
             
             new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False))
-            await state.update_data(puzzle=new_puzzle, action_type="attack")
+            new_puzzle['generated_time'] = None # Hentikan timer sampai player pilih stance
+            await state.update_data(puzzle=new_puzzle, action_type=None)
             
-            next_msg = f"⏰ *WAKTU HABIS!*\n*{puzzle['monster_name']}* menyerangmu!{dmg_msg}{broken_txt}\n\n*Musuh masih mengejarmu!*\n🧩 `{new_puzzle['question']}`\n{create_hp_bar(new_hp, p['max_hp'])}"
-            msg = await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, puzzle.get('is_boss', False)))
-            asyncio.create_task(combat_timeout_task(msg, state, new_puzzle, user_id))
+            monster_ui = create_monster_card(new_puzzle['monster_name'], new_puzzle['monster_element'], new_puzzle['monster_hp'], new_puzzle['monster_max_hp'])
+            next_msg = f"⏰ *WAKTU HABIS!*\n*{puzzle['monster_name']}* menyerangmu!{dmg_msg}{broken_txt}\n\n*Musuh masih mengejarmu!*\n{monster_ui}\n\n_Pilih aksimu..._"
+            
+            await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(puzzle.get('is_boss', False)))
 
 
 # === CHEAT COMMANDS (DEV ONLY) ===
@@ -228,13 +249,15 @@ async def forceboss_handler(message: Message, state: FSMContext):
     p = get_player(user_id)
     p_stats = calculate_equipment_stats(p)
     puzzle = generate_battle_puzzle(p, 5, is_boss=True)
+    puzzle['generated_time'] = None # Hentikan timer sampai player pilih stance
     
     await state.set_state(GameState.in_combat)
-    await state.update_data(puzzle=puzzle, current_stage=1, target_stages=5, combat_start_hp=p['hp'], current_combo=0, action_type="attack")
-    combat_header = create_combat_header(puzzle['monster_name'], "BOSS", 1, 5)
-    combat_msg = f"⚠️ *DEVELOPER OVERRIDE: MEMANGGIL BOSS!* ⚠️\n\n{combat_header}\n\n🧩 *PUZZLE:*\n`{puzzle['question']}`\n\n{create_hp_bar(p['hp'], p['max_hp'])}"
-    msg = await message.answer(combat_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, is_boss=True))
-    asyncio.create_task(combat_timeout_task(msg, state, puzzle, user_id))
+    await state.update_data(puzzle=puzzle, current_stage=1, target_stages=5, combat_start_hp=p['hp'], current_combo=0, action_type=None)
+    
+    monster_ui = create_monster_card(puzzle['monster_name'], puzzle['monster_element'], puzzle['monster_hp'], puzzle['monster_max_hp'])
+    combat_msg = f"⚠️ *DEVELOPER OVERRIDE: MEMANGGIL BOSS!* ⚠️\n\n{monster_ui}\n\n_Pilih aksimu..._"
+    
+    await message.answer(combat_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss=True))
 
 
 # === COMMAND HANDLERS ===
@@ -249,7 +272,7 @@ async def start_handler(message: Message, state: FSMContext):
 
 @dp.message(F.text == "/help")
 async def help_handler(message: Message):
-    help_text = "📖 *PANDUAN THE ARCHIVUS*\n\n🎮 *Cara Bermain:*\n• Gunakan tombol arah untuk menjelajah\n• Jawab teka-teki kilat (< 10 detik) untuk CRITICAL HIT!\n• Gunakan Shield/Dodge dengan bijak."
+    help_text = "📖 *PANDUAN THE ARCHIVUS*\n\n🎮 *Cara Bermain:*\n• Gunakan tombol arah untuk menjelajah\n• Pilih aksi di pertempuran (Serang, Bertahan, dll)\n• Jawab teka-teki kilat sesudahnya untuk mengeksekusi aksimu!\n• Gunakan Shield/Dodge dengan bijak."
     await message.answer(help_text, parse_mode="Markdown")
 
 # === STATUS & MENU HANDLERS ===
@@ -279,44 +302,151 @@ async def inventory_handler(message: Message):
 async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
-    if current_state != GameState.exploring:
-        return await message.answer("Kamu sedang tidak bisa bergerak saat ini.")
+    
+    if current_state in [GameState.in_combat, GameState.in_event]:
+        return await message.answer("Selesaikan dulu urusanmu di depan sebelum bergerak!")
+        
+    await state.set_state(GameState.exploring)
     
     tick_buffs(user_id) 
     
     player = get_player(user_id)
     event_type, event_data, narration = process_move(user_id)
     
-    if event_type == "boss" or event_type == "monster":
+    if event_type in ["boss", "monster", "miniboss"]:
         p = get_player(user_id)
         p_stats = calculate_equipment_stats(p)
         
         is_boss = (event_type == "boss")
+        is_miniboss = (event_type == "miniboss")
         tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
-        puzzle = generate_battle_puzzle(p, tier_level, is_boss=is_boss)
+        
+        puzzle = generate_battle_puzzle(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         
         await state.set_state(GameState.in_combat)
+        
+        puzzle['generated_time'] = None 
+        
         await state.update_data(
             puzzle=puzzle, 
             current_stage=1, 
-            target_stages=5 if is_boss else 1,
+            target_stages=5 if is_boss else (3 if is_miniboss else 1),
             combat_start_hp=p['hp'], 
             current_combo=player.get('current_combo', 0),
-            action_type="attack",
-            pending_item=None,
-            active_skill_id=None
+            action_type=None
         )
         
-        combat_header = create_combat_header(puzzle['monster_name'], "BOSS" if is_boss else tier_level, 1, 5 if is_boss else 1)
+        monster_ui = create_monster_card(puzzle['monster_name'], puzzle['monster_element'], puzzle['monster_hp'], puzzle['monster_max_hp'])
+        
         combo_text = create_combo_indicator(player.get('current_combo', 0))
-        elem_txt = f"\nElemen Monster: *{puzzle['monster_element']}*"
+        combat_msg = f"{narration}\n\n{combo_text}\n{monster_ui}\n\n_Pilih aksimu..._"
         
-        combat_msg = f"{narration}\n\n{combat_header}\n{combo_text}{elem_txt}\n🧩 *PUZZLE:*\n`{puzzle['question']}`\n\n{create_hp_bar(p['hp'], p['max_hp'])}\n{create_mp_bar(p['mp'], p['max_mp'])}"
-        
-        msg = await message.answer(combat_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, is_boss))
-        asyncio.create_task(combat_timeout_task(msg, state, puzzle, user_id))
+        await message.answer(combat_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
     else:
         await message.answer(narration, reply_markup=get_main_reply_keyboard(player), parse_mode="Markdown")
+
+# === RANDOM EVENT HANDLERS ===
+@dp.callback_query(GameState.in_event, F.data.startswith("event_"))
+async def random_event_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    action = callback.data.replace("event_", "") 
+    
+    await state.set_state(GameState.exploring)
+    await callback.message.delete()
+    p = get_player(user_id)
+    
+    if action == "ignore":
+        await callback.message.answer("🚶 Kamu mengabaikan hal itu dan melangkah pergi.", reply_markup=get_main_reply_keyboard(p))
+    else:
+        await callback.message.answer("✨ Kamu bereaksi terhadap kejadian tersebut dan melanjutkan perjalanan.", reply_markup=get_main_reply_keyboard(p))
+        
+    await callback.answer()
+
+# === HANDLER NAVIGASI MENU COMBAT ===
+@dp.callback_query(GameState.in_combat, F.data.startswith("menu_"))
+async def combat_menu_nav_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    action = callback.data.replace("menu_", "")
+    p = get_player(user_id)
+    p_stats = calculate_equipment_stats(p)
+    
+    data = await state.get_data()
+    puzzle = data.get("puzzle", {})
+    is_boss = puzzle.get('is_boss', False)
+
+    if action == "skill":
+        await callback.message.edit_reply_markup(reply_markup=get_combat_skill_keyboard(p, p_stats))
+    elif action == "item":
+        await callback.message.edit_reply_markup(reply_markup=get_combat_item_keyboard(p))
+    elif action == "back":
+        await callback.message.edit_reply_markup(reply_markup=get_stance_keyboard(is_boss))
+        
+    await callback.answer()
+
+
+# === HANDLER AKSI UTAMA (MEMUNCULKAN PUZZLE & TIMER) ===
+@dp.callback_query(GameState.in_combat, F.data.startswith("stance_") | F.data.startswith("combat_do_"))
+async def combat_action_trigger(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    puzzle = data.get("puzzle")
+    p = get_player(user_id)
+    
+    if not puzzle: return await callback.answer("Error: Data pertempuran tidak ditemukan.", show_alert=True)
+    
+    raw_data = callback.data
+    action = ""
+    active_skill_id = None
+    pending_item_id = None
+    act_text = ""
+
+    if raw_data.startswith("stance_"):
+        action = raw_data.replace("stance_", "")
+        if action == "attack": act_text = "⚔️ *Menerjang maju!*"
+        elif action == "block": act_text = "🛡️ *Menahan posisi!*"
+        elif action == "dodge": act_text = "💨 *Membaca arah serangan!*"
+        elif action == "run": act_text = "🏃 *Mencari celah kabur!*"
+        
+    elif raw_data.startswith("combat_do_skill_"):
+        action = "skill"
+        active_skill_id = raw_data.replace("combat_do_skill_", "")
+        act_text = "🔮 *Mempersiapkan sihir/skill khusus!*"
+        
+    elif raw_data.startswith("combat_do_item_"):
+        action = "item"
+        pending_item_id = raw_data.replace("combat_do_item_", "")
+        act_text = "🎒 *Membongkar tas mencari item...*"
+
+    if action == "block" or action == "dodge":
+        if p['mp'] < 15: return await callback.answer("🔮 MP tidak cukup! (Butuh 15)", show_alert=True)
+        update_player(user_id, {"mp": p['mp'] - 15})
+        
+    elif action == "skill":
+        skill_cost = 0
+        if active_skill_id == "reveal": skill_cost = 10
+        elif active_skill_id == "timewarp": skill_cost = 20
+        else:
+            for item in p.get('inventory', []):
+                if item.get('skill', {}).get('id') == active_skill_id:
+                    skill_cost = item['skill']['cost']
+                    break
+                    
+        if p['mp'] < skill_cost: return await callback.answer(f"🔮 MP tidak cukup! (Butuh {skill_cost})", show_alert=True)
+        update_player(user_id, {"mp": p['mp'] - skill_cost})
+
+    await state.update_data(action_type=action, active_skill_id=active_skill_id, pending_item=pending_item_id)
+
+    puzzle['generated_time'] = time.time()
+    await state.update_data(puzzle=puzzle)
+
+    monster_ui = create_monster_card(puzzle['monster_name'], puzzle['monster_element'], puzzle['monster_hp'], puzzle['monster_max_hp'])
+    time_emoji = "🟢" if puzzle['timer'] > 40 else "🟡" if puzzle['timer'] > 25 else "🔴"
+    
+    puzzle_ui = f"{monster_ui}\n\n{act_text}\n\n🧩 *PUZZLE:*\n`{puzzle['question']}`\n\n{time_emoji} *Waktu Eksekusi: {puzzle['timer']} Detik!*"
+    
+    await callback.message.edit_text(puzzle_ui, parse_mode="Markdown", reply_markup=None)
+    asyncio.create_task(combat_timeout_task(callback.message, state, puzzle, user_id))
+
 
 # === COMBAT LOGIC ===
 @dp.message(GameState.in_combat)
@@ -338,7 +468,6 @@ async def combat_answer_handler(message: Message, state: FSMContext):
     current_combo = data.get("current_combo", 0)
     
     if is_correct:
-        # --- LOGIKA JAWABAN BENAR ---
         is_critical = time_taken < 10.0
         crit_msg = "\n💥 *CRITICAL HIT!*" if is_critical else ""
         
@@ -397,7 +526,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 return await message.answer("🏃💨 *BERHASIL KABUR!*\nKamu lolos dari maut dan kembali menjelajah.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
             else:
                 result_msg = "🧱 Jalanmu diblokir oleh musuh! Gagal kabur!"
-                action = "failed_run" # Force to failed state loop
+                action = "failed_run"
                 
         elif action == "skill":
             skill_id = data.get("active_skill_id")
@@ -407,20 +536,21 @@ async def combat_answer_handler(message: Message, state: FSMContext):
 
         update_player(user_id, {'current_combo': current_combo, 'max_combo_reached': max(p.get('max_combo_reached', 0), current_combo)})
         
-        # Transisi Next Stage / Menang
         if action in ["attack", "skill", "dodge"]:
             current_stage = data.get("current_stage", 1)
             target_stages = data.get("target_stages", 1)
             
             if current_stage < target_stages:
                 tier_level = min(5, max(1, (p['kills'] // 5) + 1))
-                new_puzzle = generate_battle_puzzle(p, tier_level, is_boss)
-                await state.update_data(puzzle=new_puzzle, current_stage=current_stage + 1, current_combo=current_combo, action_type="attack")
+                new_puzzle = generate_battle_puzzle(p, tier_level, is_boss, existing_monster=None)
+                new_puzzle['generated_time'] = None 
+                await state.update_data(puzzle=new_puzzle, current_stage=current_stage + 1, current_combo=current_combo, action_type=None)
                 
                 combo_ind = create_combo_indicator(current_combo)
-                next_msg = f"✅ *BENAR!*\n{result_msg}\n{combo_ind}\n\n{create_combat_header(new_puzzle['monster_name'], puzzle.get('tier', 1), current_stage + 1, target_stages)}\n🧩 `{new_puzzle['question']}`\n{create_hp_bar(p['hp'], p['max_hp'])}"
-                msg = await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, is_boss))
-                asyncio.create_task(combat_timeout_task(msg, state, new_puzzle, user_id))
+                monster_ui = create_monster_card(new_puzzle['monster_name'], new_puzzle['monster_element'], new_puzzle['monster_hp'], new_puzzle['monster_max_hp'])
+                next_msg = f"✅ *BENAR!*\n{result_msg}\n{combo_ind}\n\n{monster_ui}\n\n_Pilih aksimu..._"
+                
+                await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
             else:
                 tier = puzzle.get('tier', 1)
                 base_reward = 500 if is_boss else (tier * 25)
@@ -431,16 +561,15 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 await state.set_state(GameState.exploring)
                 await message.answer(f"🎉 *KEMENANGAN!*\n{result_msg}\n\n💰 Gold: +{total_gold}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
-            # Jika player cuma Heal/Block/Gagal Run, lanjut ronde
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss)
-            await state.update_data(puzzle=new_puzzle, action_type="attack")
+            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
+            new_puzzle['generated_time'] = None
+            await state.update_data(puzzle=new_puzzle, action_type=None)
             
-            next_msg = f"✅ *AMAN!*\n{result_msg}\n\nNamun *{puzzle['monster_name']}* masih menyerang!\n🧩 `{new_puzzle['question']}`\n{create_hp_bar(p['hp'], p['max_hp'])}"
-            msg = await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, is_boss))
-            asyncio.create_task(combat_timeout_task(msg, state, new_puzzle, user_id))
+            monster_ui = create_monster_card(new_puzzle['monster_name'], new_puzzle['monster_element'], new_puzzle['monster_hp'], new_puzzle['monster_max_hp'])
+            next_msg = f"✅ *AMAN!*\n{result_msg}\n\nNamun *{puzzle['monster_name']}* masih menyerang!\n{monster_ui}\n\n_Pilih aksimu..._"
+            await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
 
     else:
-        # --- LOGIKA JAWABAN SALAH ---
         raw_damage = puzzle.get('damage', 10)
         final_damage = raw_damage
         
@@ -477,78 +606,14 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             await state.set_state(GameState.exploring)
             await message.answer(f"💀 Dikalahkan oleh {puzzle['monster_name']}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(), parse_mode="Markdown")
         else:
-            # FIX BUG: TETAP DI COMBAT, GENERATE PUZZLE BARU
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss)
-            await state.update_data(puzzle=new_puzzle, action_type="attack")
+            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
+            new_puzzle['generated_time'] = None
+            await state.update_data(puzzle=new_puzzle, action_type=None)
             
-            next_msg = f"❌ *SALAH!*\n{dmg_msg}\n\n*Musuh tidak melepaskanmu!*\n🧩 `{new_puzzle['question']}`\n{create_hp_bar(new_hp, p['max_hp'])}"
-            msg = await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_enhanced_combat_keyboard(p, p_stats, is_boss))
-            asyncio.create_task(combat_timeout_task(msg, state, new_puzzle, user_id))
+            monster_ui = create_monster_card(new_puzzle['monster_name'], new_puzzle['monster_element'], new_puzzle['monster_hp'], new_puzzle['monster_max_hp'])
+            next_msg = f"❌ *SALAH!*\n{dmg_msg}\n\n*Musuh tidak melepaskanmu!*\n{monster_ui}\n\n_Pilih aksimu..._"
+            await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
 
-
-# === STANCE & SKILL HANDLERS (ACTION TURN) ===
-@dp.callback_query(GameState.in_combat, F.data.startswith("combat_item_"))
-async def combat_item_stance_handler(callback: CallbackQuery, state: FSMContext):
-    item_id = callback.data.replace("combat_item_", "")
-    await state.update_data(action_type="item", pending_item=item_id)
-    await callback.answer("🧪 Rencana: Gunakan Item.\nSelesaikan puzzle untuk meminumnya dengan aman!", show_alert=True)
-
-@dp.callback_query(GameState.in_combat, F.data.startswith("skill_act_"))
-async def combat_skill_stance_handler(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    p = get_player(user_id)
-    skill_id = callback.data.replace("skill_act_", "")
-    
-    if skill_id == "run_default":
-        await state.update_data(action_type="run")
-        return await callback.answer("🏃 Rencana: Melarikan diri!\nSelesaikan puzzle untuk mencari celah kabur!", show_alert=True)
-        
-    if skill_id == "dodge_default":
-        if p['mp'] < 15: return await callback.answer("🔮 MP tidak cukup! (Butuh 15)", show_alert=True)
-        update_player(user_id, {"mp": p['mp'] - 15})
-        await state.update_data(action_type="dodge")
-        return await callback.answer("💨 Rencana: Dodge.\nJawab puzzle untuk Perfect Dodge!", show_alert=True)
-        
-    if skill_id == "block_default":
-        if p['mp'] < 25: return await callback.answer("🔮 MP tidak cukup! (Butuh 25)", show_alert=True)
-        update_player(user_id, {"mp": p['mp'] - 25})
-        await state.update_data(action_type="block")
-        return await callback.answer("🛡️ Rencana: Block.\nMenahan 80% damage di turn ini.", show_alert=True)
-
-    skill_cost = 20 
-    for item in p.get('inventory', []):
-        if item.get('skill', {}).get('id') == skill_id:
-            skill_cost = item['skill']['cost']
-            break
-            
-    if p['mp'] < skill_cost: return await callback.answer(f"🔮 MP tidak cukup! (Butuh {skill_cost})", show_alert=True)
-    update_player(user_id, {"mp": p['mp'] - skill_cost})
-    
-    await state.update_data(action_type="skill", active_skill_id=skill_id)
-    await callback.answer(f"⚔️ Rencana: Gunakan Skill!\nSelesaikan puzzle untuk merapal!", show_alert=True)
-
-
-@dp.callback_query(GameState.in_combat, F.data == "skill_reveal")
-async def skill_reveal_handler(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    player = get_player(user_id)
-    data = await state.get_data()
-    puzzle = data.get("puzzle")
-    if not puzzle or player['mp'] < 10: return await callback.answer("🔮 MP tidak cukup!", show_alert=True)
-    update_player(user_id, {"mp": player['mp'] - 10})
-    await callback.answer(f"👁️ REVELATIO!\n\nJawaban: {puzzle['answer']}", show_alert=True)
-
-@dp.callback_query(GameState.in_combat, F.data == "skill_timewarp")
-async def skill_timewarp_handler(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    player = get_player(user_id)
-    data = await state.get_data()
-    puzzle = data.get("puzzle")
-    if not puzzle or player['mp'] < 20: return await callback.answer("🔮 MP tidak cukup!", show_alert=True)
-    update_player(user_id, {"mp": player['mp'] - 20})
-    puzzle['timer'] += 15
-    await state.update_data(puzzle=puzzle)
-    await callback.answer("⏳ TIME WARP AKTIF!\n\nWaktu diperpanjang 15 detik.", show_alert=True)
 
 # === INVENTORY OUT OF COMBAT ===
 @dp.callback_query(F.data.startswith("use_item_"))
