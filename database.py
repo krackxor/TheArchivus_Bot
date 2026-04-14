@@ -6,9 +6,12 @@ import os
 # Memuat variabel dari .env
 load_dotenv()
 
-# Koneksi ke MongoDB
-client = MongoClient("mongodb://localhost:27017/")
-db = client["the_archivus_db"]
+# Koneksi ke MongoDB (Aman untuk Production / Hosting)
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("DB_NAME", "the_archivus_db")
+
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
 
 # Koleksi (Tables)
 players_col = db["players"]
@@ -158,33 +161,34 @@ def get_player(user_id, username="Weaver"):
     return player
 
 def update_player(user_id, data):
-    """Memperbarui data spesifik pemain"""
-    # Auto-update highest stats untuk leaderboard
-    if 'cycle' in data:
-        player = players_col.find_one({"user_id": user_id})
-        if player and data['cycle'] > player.get('highest_cycle', 0):
-            data['highest_cycle'] = data['cycle']
+    """Memperbarui data spesifik pemain beserta optimasi Leaderboard"""
+    updates = data.copy() # Hindari modifikasi object asli
     
-    if 'current_combo' in data:
-        player = players_col.find_one({"user_id": user_id})
-        if player and data['current_combo'] > player.get('highest_combo', 0):
-            data['highest_combo'] = data['current_combo']
-    
-    players_col.update_one({"user_id": user_id}, {"$set": data})
+    # Ambil player hanya jika kita perlu membandingkan nilai untuk leaderboard
+    if 'cycle' in data or 'current_combo' in data:
+        player = players_col.find_one({"user_id": user_id}, {"highest_cycle": 1, "highest_combo": 1})
+        if player:
+            if 'cycle' in data and data['cycle'] > player.get('highest_cycle', 0):
+                updates['highest_cycle'] = data['cycle']
+            if 'current_combo' in data and data['current_combo'] > player.get('highest_combo', 0):
+                updates['highest_combo'] = data['current_combo']
+                
+    players_col.update_one({"user_id": user_id}, {"$set": updates})
 
 def add_history(user_id, event_text):
     """Mencatat sejarah epik pemain ke MongoDB"""
-    player = get_player(user_id)
-    log = f"[Siklus {player['cycle']} - {player['location']}] {event_text}"
+    player = players_col.find_one({"user_id": user_id}, {"cycle": 1, "location": 1, "history": 1})
+    if not player: return
     
+    log = f"[Siklus {player.get('cycle', 1)} - {player.get('location', 'Unknown')}] {event_text}"
     history = player.get("history", [])
     history.append(log)
     
-    # Simpan max 20 sejarah terakhir
+    # Simpan max 20 sejarah terakhir agar database tidak bengkak
     if len(history) > 20:
         history.pop(0)
         
-    update_player(user_id, {"history": history})
+    players_col.update_one({"user_id": user_id}, {"$set": {"history": history}})
 
 def reset_player_death(user_id, cause):
     """Logika Endless Roguelite: Penalti kematian tanpa menghapus sejarah (ENHANCED)"""
@@ -276,9 +280,8 @@ def update_leaderboard_death(user_id, username, cause):
     leaderboard_col.update_one(
         {"user_id": user_id},
         {
-            "$set": {"username": username},
-            "$inc": {"total_deaths": 1, f"deaths_by_{cause}": 1},
-            "$set": {"last_death": datetime.datetime.now()}
+            "$set": {"username": username, "last_death": datetime.datetime.now()},
+            "$inc": {"total_deaths": 1, f"deaths_by_{cause}": 1}
         },
         upsert=True
     )
@@ -336,15 +339,17 @@ def tick_buffs(user_id):
         buff['duration'] = buff.get('duration', 0) - 1
         if buff['duration'] > 0:
             active_buffs.append(buff)
-    updates['active_buffs'] = active_buffs
+            
+    # Update hanya jika ada perubahan pada array buff
+    if len(buffs) != len(active_buffs) or any(b['duration'] < 0 for b in buffs):
+        updates['active_buffs'] = active_buffs
     
-    # 2. Update Resin / Mantra Weapon (Berkurang per turn combat)
+    # 2. Update Resin / Mantra Weapon (Berkurang per turn combat/langkah)
     if player.get('active_resin') and player.get('resin_duration', 0) > 0:
         new_duration = player['resin_duration'] - 1
         if new_duration <= 0:
             updates['active_resin'] = None
             updates['resin_duration'] = 0
-            # Kita bisa nge-print notif ke user di main.py nanti "Efek Mantramu habis!"
         else:
             updates['resin_duration'] = new_duration
             
