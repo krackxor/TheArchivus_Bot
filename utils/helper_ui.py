@@ -60,6 +60,16 @@ def create_combat_header(monster_name, tier, stage, max_stage):
 ━━━━━━━━━━━━━━━━━━━━"""
     return header
 
+def create_monster_card(monster_name, element, hp, max_hp):
+    """UI Monster yang bersih dan minimalis sesuai request Weaver"""
+    # Kita berikan monster Mana statik untuk kebutuhan visual UI
+    monster_mana = max_hp // 2 
+    
+    return f"""🦇 *{monster_name}*
+✨ Elemen: {element}
+❤️ HP:   {create_hp_bar(hp, max_hp, 8)}
+💧 Mana: {create_mp_bar(monster_mana, monster_mana, 8)}"""
+
 def create_status_card(player):
     """Membuat status card yang komprehensif, membaca Durability & Element terbaru"""
     # Kalkulasi stat equipment (otomatis potong durability 0)
