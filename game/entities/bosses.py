@@ -1,6 +1,7 @@
 """
 Database Bos dan Mini-Bos Archivus
 Masing-masing kategori berisi 100 entitas unik.
+Dirancang khusus dengan tema Dark Fantasy, Cosmic Horror, dan Easter Egg Sci-Fi.
 """
 import random
 
