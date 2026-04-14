@@ -7,7 +7,7 @@ import random
 
 # Memanggil Entitas
 from game.entities.monsters import get_random_monster
-from game.entities.bosses import get_random_boss
+from game.entities.bosses import get_random_boss, get_random_mini_boss
 
 # Memanggil Puzzle Manager
 from game.puzzles.manager import get_random_puzzle
@@ -154,7 +154,7 @@ def roll_monster_skill(m_element, tier_level, is_boss):
     
     return monster_skills.get(m_element)
 
-def generate_battle_puzzle(player, tier_level=1, is_boss=False, existing_monster=None):
+def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False, existing_monster=None):
     """
     Sistem Multi-Genre Engine yang digabungkan dengan stat Monster RPG.
     Menerima parameter 'existing_monster' agar HP tidak keriset saat lanjut ronde.
@@ -178,6 +178,11 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, existing_monster
             tier_label = "BOSS"
             base_damage = random.randint(25, 40) + (tier_level * 5)
             m_max_hp = 300 + (tier_level * 100)
+        elif is_miniboss:
+            m_name = get_random_mini_boss()
+            tier_label = "MINI BOSS"
+            base_damage = 25 + (player.get('cycle', 1) * 5)
+            m_max_hp = 150 + (player.get('cycle', 1) * 50)
         else:
             m_name = get_random_monster(tier_level)
             tier_label = tier_level
@@ -223,9 +228,16 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, existing_monster
     else:
         question, answer = get_random_puzzle(tier_level)
 
-    # 6. Dynamic Timer
-    timer_limit = max(25, 60 - (tier_level * 5)) if not is_boss else 45
-    timer_limit = max(15, timer_limit - timer_penalty) # Terapkan penalti waktu jika ada skill petir
+    # 6. Dynamic Timer (Skala Waktu yang Menyusut)
+    if is_boss:
+        timer_limit = 25
+    elif is_miniboss:
+        timer_limit = 35
+    else:
+        # Tier 1 = 60s, Tier 2 = 50s, Tier 3 = 40s, Tier 4 = 30s, Tier 5 = 20s
+        timer_limit = max(15, 70 - (tier_level * 10))
+        
+    timer_limit = max(10, timer_limit - timer_penalty) # Terapkan penalti waktu jika ada skill petir
 
     return {
         "monster_name": m_name,
