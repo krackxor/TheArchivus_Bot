@@ -78,7 +78,7 @@ def get_dynamic_bar(current, maximum, length=10, type_bar="hp"):
     filled = int(length * percent)
     
     if type_bar == "hp":
-        emoji = "🟢" if percent > 0.5 else "🟡" if percent > 0.2 else "🔴"
+        emoji = "🟢" if percent > 0.6 else "🟡" if percent > 0.3 else "🔴"
     else:
         emoji = "🔵"
         
@@ -93,6 +93,10 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
     m_hp_view = get_dynamic_bar(monster.get('monster_hp', 0), monster.get('monster_max_hp', 100), type_bar="hp")
     m_mp_view = get_dynamic_bar(monster.get('monster_mp', 0), monster.get('monster_max_mp', 50), type_bar="mp")
     
+    # Deteksi jika puzzle sedang disembunyikan (fase stance)
+    puzzle_text = f"`{monster['question']}`" if monster.get('question') else "_Pilih aksimu..._"
+    timer_text = f"{monster['timer']}s" if monster.get('timer') and str(monster.get('timer')) != "--" else "--"
+
     text = (
         f"⚔️ **PERTEMPURAN AKTIF** ⚔️\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -109,8 +113,8 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
         f"_{log_msg}_\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"❓ **TEKA-TEKI:**\n"
-        f"`{monster['question']}`\n\n"
-        f"⏳ Sisa Waktu: {monster['timer']}s"
+        f"{puzzle_text}\n\n"
+        f"⏳ Sisa Waktu: {timer_text}"
     )
     return text
 
@@ -149,17 +153,37 @@ def calculate_equipment_stats(player):
     return stats
 
 def calculate_dodge_chance(stats):
-    dodge_chance = 0.25 
-    if stats["speed"] in ["fast", "very_fast"]: dodge_chance += 0.12
-    elif stats["speed"] == "medium": dodge_chance += 0.06
-    if stats["gloves_type"] == "speed": dodge_chance += 0.10
-    if stats["element"] == "Angin": dodge_chance += 0.08
-    w = stats["weight"]
-    if 16 <= w <= 30: dodge_chance -= 0.05
-    elif 31 <= w <= 50: dodge_chance -= 0.12
-    elif 51 <= w <= 70: dodge_chance -= 0.22
-    elif w > 70: dodge_chance -= 0.35
-    return max(0.08, min(0.75, dodge_chance))
+    """
+    Kalkulasi peluang Dodge berdasarkan Weight (Murni Strategis).
+    Semakin ringan beratmu, peluang menghindar semakin tinggi.
+    """
+    weight = stats.get('weight', 0)
+    # Base 80% peluang untuk berat 0. 
+    # Pengurangan 0.7% per poin berat.
+    chance = 0.80 - (weight * 0.007)
+    
+    # Bonus/Penalti spesifik (jika ada dari equip lain seperti speed)
+    if stats.get("speed") in ["fast", "very_fast"]: chance += 0.05
+    if stats.get("gloves_type") == "speed": chance += 0.05
+    
+    return max(0.10, min(0.75, chance)) # Cap Max 75%, Min 10%
+
+def calculate_block_reduction(stats):
+    """
+    Kalkulasi reduksi damage saat bertahan berdasarkan Defense dan Weight.
+    Semakin berat/kokoh, damage yang diredam semakin besar.
+    """
+    defense = stats.get('def', 0)
+    weight = stats.get('weight', 0)
+    
+    # Defense memberikan base reduction, Weight memberikan bonus kemantapan menahan.
+    # Contoh: Def 50, Weight 50 -> (50/150) + (50/300) = 0.33 + 0.16 = 0.49 (49% reduksi)
+    reduction = (defense / 150) + (weight / 300)
+    
+    # Bonus spesifik tameng
+    if stats.get("has_shield"): reduction += 0.10
+        
+    return max(0.15, min(0.85, reduction)) # Meredam 15% s/d 85% damage
 
 def get_element_multiplier(atk_element, def_element):
     if atk_element in ELEMENT_CHART:
@@ -239,7 +263,8 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
             m_hp = min(m_max_hp, m_hp + heal)
             skill_msg += f" (+{heal} HP)"
             
-    final_monster_damage = max(1, raw_damage - p_stats["def"])
+    # RAW Damage yang dipersiapkan untuk serangan jika musuh mengenai player (belum dipotong def player, pemotongan dilakukan di main.py)
+    final_monster_damage = raw_damage
 
     if is_boss and random.random() > 0.6:
         target_word = random.choice(["PENJAGA GERBANG", "DUNIA HAMPA", "MEMORI HILANG", "ECLIPTIC EXPRESS", "SANG PENGKHIANAT"])
