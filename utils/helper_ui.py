@@ -1,11 +1,12 @@
 """
 Helper UI untuk membuat tampilan visual yang lebih menarik di Telegram (Mobile Friendly)
-Terintegrasi penuh dengan GDD Final (Durability, Element, Skill)
+Terintegrasi penuh dengan GDD Final (Durability, Element, Skill, Artifacts, Energy, dan Debuffs)
 """
 from game.systems.combat import calculate_equipment_stats
 
 def create_hp_bar(current, maximum, length=10):
     """Membuat HP bar visual seperti game"""
+    if maximum <= 0: maximum = 1
     filled = int((current / maximum) * length)
     empty = length - filled
     
@@ -16,25 +17,36 @@ def create_hp_bar(current, maximum, length=10):
         bar_char = "🟨"
     else:
         bar_char = "🟥"
-    
+        
     bar = bar_char * filled + "⬜" * empty
     percentage = int((current / maximum) * 100)
-    return f"{bar} {current}/{maximum} ({percentage}%)"
+    return f"{bar} {int(current)}/{int(maximum)} ({percentage}%)"
 
 def create_mp_bar(current, maximum, length=10):
     """Membuat MP bar visual"""
+    if maximum <= 0: maximum = 1
     filled = int((current / maximum) * length)
     empty = length - filled
     bar = "🟦" * filled + "⬜" * empty
     percentage = int((current / maximum) * 100)
-    return f"{bar} {current}/{maximum} ({percentage}%)"
+    return f"{bar} {int(current)}/{int(maximum)} ({percentage}%)"
+
+def create_energy_bar(current, maximum, length=10):
+    """Membuat Energy bar visual untuk status survival"""
+    if maximum <= 0: maximum = 1
+    filled = int((current / maximum) * length)
+    empty = length - filled
+    bar = "🟧" * filled + "⬜" * empty
+    percentage = int((current / maximum) * 100)
+    return f"{bar} {int(current)}/{int(maximum)} ({percentage}%)"
 
 def create_exp_bar(current, needed, length=10):
     """Membuat EXP bar untuk progression"""
+    if needed <= 0: needed = 1
     filled = int((current / needed) * length)
     empty = length - filled
     bar = "🟪" * filled + "⬜" * empty
-    return f"{bar} {current}/{needed}"
+    return f"{bar} {int(current)}/{int(needed)}"
 
 def format_gold(amount):
     """Format gold dengan separator"""
@@ -61,8 +73,7 @@ def create_combat_header(monster_name, tier, stage, max_stage):
     return header
 
 def create_monster_card(monster_name, element, hp, max_hp):
-    """UI Monster yang bersih dan minimalis sesuai request Weaver"""
-    # Kita berikan monster Mana statik untuk kebutuhan visual UI
+    """UI Monster yang bersih dan minimalis"""
     monster_mana = max_hp // 2 
     
     return f"""🦇 *{monster_name}*
@@ -71,8 +82,7 @@ def create_monster_card(monster_name, element, hp, max_hp):
 💧 Mana: {create_mp_bar(monster_mana, monster_mana, 8)}"""
 
 def create_status_card(player):
-    """Membuat status card yang komprehensif, membaca Durability & Element terbaru"""
-    # Kalkulasi stat equipment (otomatis potong durability 0)
+    """Membuat status card komprehensif, membaca Durability, Artifact, Energy & Debuffs"""
     stats = calculate_equipment_stats(player)
     
     base_atk = player.get('base_atk', 10)
@@ -80,10 +90,14 @@ def create_status_card(player):
     bonus_atk = stats['atk'] - base_atk
     bonus_def = stats['def'] - base_def
     
-    # Cek apakah ada buff Resin aktif
     resin_txt = ""
     if player.get('active_resin') and player.get('resin_duration', 0) > 0:
-        resin_txt = f"\n📜 *Mantra Aktif:* {player['active_resin']} ({player['resin_duration']} Turn)"
+        resin_txt = f"\n📜 *Mantra:* {player['active_resin']} ({player['resin_duration']} Turn)"
+        
+    debuff_txt = ""
+    debuffs = player.get('debuffs', [])
+    if debuffs:
+        debuff_txt = f"\n⚠️ *STATUS BURUK:* {', '.join([d.upper() for d in debuffs])}"
 
     card = f"""━━━━━━━━━━━━━━━━━━━━
 👤 *{player.get('username', 'Weaver')}*
@@ -92,10 +106,11 @@ def create_status_card(player):
 ⚔️ *Atk:* {base_atk} (+{bonus_atk}) = {stats['atk']}
 🛡️ *Def:* {base_def} (+{bonus_def}) = {stats['def']}
 ⚖️ *Berat:* {stats['weight']} | 💨 *Speed:* {stats['speed'].capitalize()}
-✨ *Elemen:* {stats['element']}{resin_txt}
+✨ *Elemen:* {stats['element']}{resin_txt}{debuff_txt}
 
-❤️ HP: {create_hp_bar(player['hp'], player['max_hp'], 8)}
-🔮 MP: {create_mp_bar(player['mp'], player['max_mp'], 8)}
+❤️ HP:  {create_hp_bar(player.get('hp', 0), player.get('max_hp', 100), 8)}
+🔮 MP:  {create_mp_bar(player.get('mp', 0), player.get('max_mp', 50), 8)}
+⚡ EN:  {create_energy_bar(player.get('energy', 100), player.get('max_energy', 100), 8)}
 ⭐ EXP: {create_exp_bar(player.get('exp', 0), player.get('exp_needed', 100), 8)}
 ━━━━━━━━━━━━━━━━━━━━
 💰 Gold: {player.get('gold', 0):,}
@@ -114,7 +129,11 @@ def create_loot_drop(items):
     
     loot_text = "✨ *LOOT DROP!* ✨\n"
     for item in items:
-        loot_text += f"🎁 {item['name']}\n"
+        # Jika gold
+        if item.get("type") == "gold":
+            loot_text += f"💰 {item['value']} Gold\n"
+        else:
+            loot_text += f"🎁 {item.get('name', 'Unknown Item')}\n"
     
     return loot_text
 
@@ -123,7 +142,7 @@ def create_level_up_animation(old_level, new_level):
 🎆 *LEVEL UP!* 🎆
 {old_level} ➜ *{new_level}*
 
-📈 Stats meningkat!
+📈 Kekuatanmu bertambah!
 ✨✨✨✨✨✨✨✨✨✨"""
 
 def create_boss_warning(boss_name):
@@ -172,16 +191,19 @@ def create_daily_quest_card(quests):
     card += "━━━━━━━━━━━━━━━━━━━━"
     return card
 
-def create_inventory_display(inventory):
-    """Tampilan inventory yang membaca Durability dan tipe Equip"""
-    if not inventory:
-        return "🎒 *INVENTORY KOSONG*\nKumpulkan item untuk bertahan hidup."
+def create_inventory_display(player):
+    """Tampilan inventory yang membaca Durability, Item Utility/Food, dan Artifacts"""
+    inventory = player.get('inventory', [])
+    artifacts = player.get('artifacts', [])
+    
+    if not inventory and not artifacts:
+        return "🎒 *INVENTORY & ARTEFAK KOSONG*\nKumpulkan item untuk bertahan hidup."
     
     display = "🎒 *INVENTORY*\n━━━━━━━━━━━━━━━━━━━━\n"
     
     equip_types = ['weapon', 'shield', 'chest', 'head', 'gloves', 'boots']
     equips = [i for i in inventory if i.get('type') in equip_types]
-    consumables = [i for i in inventory if i.get('type') == 'potion']
+    consumables = [i for i in inventory if i.get('type') in ['potion', 'food', 'utility', 'material']]
     
     if equips:
         display += "🛡️ *EQUIPMENT*\n"
@@ -189,7 +211,6 @@ def create_inventory_display(inventory):
             dur = e.get('durability', 0)
             max_dur = e.get('max_durability', 50)
             
-            # Cek status barang
             if dur <= 0:
                 status_icon = "❌ (RUSAK)"
             elif dur <= 10:
@@ -204,8 +225,7 @@ def create_inventory_display(inventory):
         display += "\n"
         
     if consumables:
-        display += "🧪 *CONSUMABLES*\n"
-        # Hitung kuantitas item yang sama
+        display += "🧪 *CONSUMABLES & UTILITY*\n"
         item_counts = {}
         for c in consumables:
             name = c['name']
@@ -213,6 +233,12 @@ def create_inventory_display(inventory):
             
         for name, count in item_counts.items():
             display += f"• {name} (x{count})\n"
+        display += "\n"
+            
+    if artifacts:
+        display += "✨ *ARTEFAK AKTIF (PERMANEN)*\n"
+        for art in artifacts:
+            display += f"• {art['name']}\n"
             
     display += "━━━━━━━━━━━━━━━━━━━━\n_Gunakan Repair Kit untuk memperbaiki Equip._"
     return display
