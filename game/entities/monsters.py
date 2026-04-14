@@ -1,6 +1,7 @@
 """
 Database Monster Archivus (Tier 1-5)
 Berisi lebih dari 500 monster unik untuk eksplorasi tanpa batas.
+Dikurasi khusus untuk tema Dark Fantasy & Cosmic Horror.
 """
 import random
 
@@ -87,6 +88,6 @@ MONSTER_NAMES = {
 }
 
 def get_random_monster(tier):
-    """Mengambil nama monster acak berdasarkan tier"""
-    safe_tier = min(tier, 5)
+    """Mengambil nama monster acak berdasarkan tier (Melindungi dari input di luar batas 1-5)"""
+    safe_tier = max(1, min(tier, 5))
     return random.choice(MONSTER_NAMES[safe_tier])
