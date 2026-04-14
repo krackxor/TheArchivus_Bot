@@ -181,11 +181,11 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
             broken = reduce_equipment_durability(user_id, 'armor')
             broken_txt = f"\n🛡️ *CRACK!* Armormu hancur: {', '.join(broken)}!" if broken else ""
             
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False))
+            # Musuh masih hidup, panggil musuh yang sama dengan sisa HP nya
+            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False), existing_monster=puzzle)
             new_puzzle['generated_time'] = None 
             await state.update_data(puzzle=new_puzzle, action_type=None)
             
-            # Sembunyikan puzzle untuk ronde berikutnya
             safe_puzzle = new_puzzle.copy()
             safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
             safe_puzzle['timer'] = "--"
@@ -260,7 +260,6 @@ async def move_handler(message: Message, state: FSMContext):
         await state.set_state(GameState.in_combat)
         puzzle['generated_time'] = None 
         
-        # Sembunyikan pertanyaan sampai player memilih stance
         safe_puzzle = puzzle.copy()
         safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
         safe_puzzle['timer'] = "--"
@@ -268,11 +267,10 @@ async def move_handler(message: Message, state: FSMContext):
         combat_ui = render_live_battle(p, safe_puzzle, f"⚠️ {narration}")
         sent_msg = await message.answer(combat_ui, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
         
+        # NOTE: current_stage & target_stages dihapus, kita pakai sistem HP monster
         await state.update_data(
             battle_msg_id=sent_msg.message_id,
             puzzle=puzzle, 
-            current_stage=1, 
-            target_stages=5 if is_boss else (3 if is_miniboss else 1),
             combat_start_hp=p['hp'], 
             current_combo=player.get('current_combo', 0),
             action_type=None
@@ -365,16 +363,16 @@ async def combat_action_trigger(callback: CallbackQuery, state: FSMContext):
     asyncio.create_task(combat_timeout_task(callback.message, state, puzzle, user_id))
 
 
-# === LIVE COMBAT LOGIC (EDIT MESSAGE & DELETE ANSWER) ===
+# === PUSAT LOGIKA: KALKULASI DAMAGE & HP (LIVE CHAT) ===
 @dp.message(GameState.in_combat)
 async def combat_answer_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # 💥 HAPUS JAWABAN PEMAIN AGAR CHAT BERSIH (Live Chat Feature) 💥
+    # 💥 HAPUS JAWABAN PEMAIN AGAR CHAT BERSIH 💥
     try:
         await message.delete()
     except TelegramBadRequest:
-        pass # Handle jika bot tidak punya hak akses admin di grup
+        pass 
 
     data = await state.get_data()
     puzzle = data.get("puzzle")
@@ -397,11 +395,34 @@ async def combat_answer_handler(message: Message, state: FSMContext):
         is_critical = time_taken < 10.0
         crit_msg = "\n💥 *CRITICAL HIT!*" if is_critical else ""
         
+        # 1. PENGURANGAN HP MUSUH (ATTACK / SKILL)
         if action == "attack":
             current_combo += 1
+            p_dmg = max(1, p_stats['atk'] - puzzle.get('monster_def', 0))
+            if is_critical: p_dmg = int(p_dmg * 1.5)
+            
+            puzzle['monster_hp'] -= p_dmg  # Musuh menerima damage
+            
             broken = reduce_equipment_durability(user_id, 'weapon')
             broken_txt = f"\n⚠️ *PERINGATAN!* Senjatamu hancur: {', '.join(broken)}!" if broken else ""
-            result_msg = f"⚔️ Serangan telak!{crit_msg}{broken_txt}"
+            result_msg = f"⚔️ Serangan telak! Musuh -{p_dmg} HP.{crit_msg}{broken_txt}"
+            
+        elif action == "skill":
+            current_combo += 1
+            p_dmg = max(1, int(p_stats['atk'] * 1.8) - puzzle.get('monster_def', 0))
+            if is_critical: p_dmg = int(p_dmg * 1.5)
+            
+            puzzle['monster_hp'] -= p_dmg  # Musuh menerima damage skill
+            
+            broken = reduce_equipment_durability(user_id, 'weapon')
+            if broken: broken_txt = f"\n⚠️ Senjatamu hancur: {', '.join(broken)}!"
+            result_msg = f"🔥 *SKILL ACTIVATED!* Musuh -{p_dmg} HP.{crit_msg}{broken_txt}"
+
+        elif action == "dodge":
+            current_combo += 1
+            counter_dmg = max(1, int(p_stats['atk'] * 0.5))
+            puzzle['monster_hp'] -= counter_dmg # Counter-attack kecil
+            result_msg = f"💨 *PERFECT DODGE!* Kamu menghindar dan membalas! (-{counter_dmg} HP) (+1 Combo)"
             
         elif action == "item":
             item_id = data.get("pending_item")
@@ -421,26 +442,12 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                     amount = int(effect.split("_")[1])
                     updates['mp'] = min(p.get('max_mp', 50), p.get('mp', 0) + amount)
                     result_msg = f"🔮 MP Pulih dengan aman! (+{amount} MP)"
-                elif effect.startswith("resin_"):
-                    elemen = effect.split("_")[1]
-                    updates['active_resin'] = elemen
-                    updates['resin_duration'] = 3
-                    result_msg = f"📜 Senjatamu memancarkan sihir {elemen}."
-                elif effect == "repair_all":
-                    for equip in updates['inventory']:
-                        if equip.get('type') in ['weapon', 'shield', 'chest', 'head', 'gloves', 'boots']:
-                            equip['durability'] = equip.get('max_durability', 50)
-                    result_msg = "⚒️ Semua equip-mu kembali mulus 100%!"
                     
                 update_player(user_id, updates)
-                p = get_player(user_id) # Reload Player Data
+                p = get_player(user_id)
             else:
                 result_msg = "❌ Gagal menggunakan item (Tidak ditemukan)."
 
-        elif action == "dodge":
-            current_combo += 1
-            result_msg = f"💨 *PERFECT DODGE!* Kamu menghindar dan membalas! (+1 Combo)"
-            
         elif action == "block":
             result_msg = f"🛡️ Kamu menangkis, lalu mendorong musuh mundur!"
             
@@ -457,25 +464,32 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             else:
                 result_msg = "🧱 Jalanmu diblokir oleh musuh! Gagal kabur!"
                 action = "failed_run"
-                
-        elif action == "skill":
-            skill_id = data.get("active_skill_id")
-            result_msg = f"🔥 *SKILL ACTIVATED!* Serangan sukses!"
-            broken = reduce_equipment_durability(user_id, 'weapon')
-            if broken: result_msg += f"\n⚠️ Senjatamu hancur: {', '.join(broken)}!"
 
         update_player(user_id, {'current_combo': current_combo, 'max_combo_reached': max(p.get('max_combo_reached', 0), current_combo)})
         
-        # JIKA COMBAT LANJUT KE RONDE BERIKUTNYA
+        # 2. CEK KEMATIAN MUSUH (HP BATTLE SYSTEM)
         if action in ["attack", "skill", "dodge"]:
-            current_stage = data.get("current_stage", 1)
-            target_stages = data.get("target_stages", 1)
+            if puzzle['monster_hp'] <= 0:
+                # KEMENANGAN! Musuh Mati!
+                tier = puzzle.get('tier', 1)
+                base_reward = 500 if is_boss else (int(tier) * 25 if isinstance(tier, int) else 100)
+                total_gold = base_reward + int(base_reward * (current_combo * 0.1))
+                new_cycle = p['cycle'] + 1 if is_boss else p['cycle']
+                update_player(user_id, {'kills': p['kills']+1, 'gold': p['gold']+total_gold, 'current_combo': current_combo, 'cycle': new_cycle})
+                
+                await state.set_state(GameState.exploring)
+                if battle_msg_id:
+                    try:
+                        await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"🎉 **PERTARUNGAN SELESAI** 🎉\nMusuh telah hancur lebur.", parse_mode="Markdown")
+                    except: pass
+                await message.answer(f"🎉 *KEMENANGAN!*\n{result_msg}\n\n💰 Gold: +{total_gold}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
             
-            if current_stage < target_stages:
+            else:
+                # MUSUH MASIH HIDUP, LANJUT RONDE DENGAN HP YANG TERSISA
                 tier_level = min(5, max(1, (p['kills'] // 5) + 1))
-                new_puzzle = generate_battle_puzzle(p, tier_level, is_boss, existing_monster=None)
+                new_puzzle = generate_battle_puzzle(p, tier_level, is_boss, existing_monster=puzzle)
                 new_puzzle['generated_time'] = None 
-                await state.update_data(puzzle=new_puzzle, current_stage=current_stage + 1, current_combo=current_combo, action_type=None)
+                await state.update_data(puzzle=new_puzzle, current_combo=current_combo, action_type=None)
                 
                 safe_puzzle = new_puzzle.copy()
                 safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
@@ -489,22 +503,8 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                     except:
                         sent = await message.answer(next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
                         await state.update_data(battle_msg_id=sent.message_id)
-            else:
-                # KEMENANGAN!
-                tier = puzzle.get('tier', 1)
-                base_reward = 500 if is_boss else (tier * 25)
-                total_gold = base_reward + int(base_reward * (current_combo * 0.1))
-                new_cycle = p['cycle'] + 1 if is_boss else p['cycle']
-                update_player(user_id, {'kills': p['kills']+1, 'gold': p['gold']+total_gold, 'current_combo': current_combo, 'cycle': new_cycle})
-                
-                await state.set_state(GameState.exploring)
-                if battle_msg_id:
-                    try:
-                        await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"🎉 **PERTARUNGAN SELESAI** 🎉\nMusuh telah lenyap.", parse_mode="Markdown")
-                    except: pass
-                await message.answer(f"🎉 *KEMENANGAN!*\n{result_msg}\n\n💰 Gold: +{total_gold}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
-            # JIKA AMAN DARI SERANGAN TAPI BELUM MENANG
+            # JIKA BLOCK / ITEM BERHASIL (BELUM MENYERANG)
             new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
             new_puzzle['generated_time'] = None
             await state.update_data(puzzle=new_puzzle, action_type=None)
