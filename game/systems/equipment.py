@@ -4,13 +4,13 @@ Menyimpan semua statistik dasar untuk kalkulasi combat, shop, durability, dan So
 """
 
 # --- TIER MULTIPLIERS ---
-# Digunakan untuk menghitung harga dan stat final
+# Digunakan untuk menghitung harga, stat final, dan durabilitas
 TIER_MULTIPLIERS = {
-    1: {"name": "Basic", "stat_mult": 1.0, "cost_mult": 1.0},
-    2: {"name": "Advanced", "stat_mult": 1.3, "cost_mult": 2.5},
-    3: {"name": "Elite", "stat_mult": 1.6, "cost_mult": 5.0},
-    4: {"name": "Master", "stat_mult": 2.0, "cost_mult": 10.0},
-    5: {"name": "Mythic", "stat_mult": 2.5, "cost_mult": 25.0}
+    1: {"name": "Basic", "stat_mult": 1.0, "cost_mult": 1.0, "dur_mult": 1.0},
+    2: {"name": "Advanced", "stat_mult": 1.3, "cost_mult": 2.5, "dur_mult": 1.2},
+    3: {"name": "Elite", "stat_mult": 1.6, "cost_mult": 5.0, "dur_mult": 1.5},
+    4: {"name": "Master", "stat_mult": 2.0, "cost_mult": 10.0, "dur_mult": 1.7},
+    5: {"name": "Mythic", "stat_mult": 2.5, "cost_mult": 25.0, "dur_mult": 2.0}
 }
 
 # --- WEAPONS MASTER DATA ---
@@ -49,6 +49,10 @@ WEAPONS = {
     "wpn_great_axe": {
         "name": "Great Axe", "type": "2H", "base_atk": 44, "weight": 24, "speed": "slow", "base_cost": 220, "durability": 50,
         "skill": {"id": "skl_sunder", "name": "Sunder Armor", "cost": 25, "effect": "break_def"}
+    },
+    "wpn_scythe": {
+        "name": "Reaper Scythe", "type": "2H", "base_atk": 48, "weight": 22, "speed": "medium", "base_cost": 350, "durability": 50,
+        "skill": {"id": "skl_harvest", "name": "Soul Harvest", "cost": 30, "effect": "lifesteal_dmg"}
     },
     "wpn_rifle": {
         "name": "Rifle", "type": "2H", "base_atk": 62, "weight": 29, "speed": "slow", "base_cost": 400, "durability": 50,
@@ -139,8 +143,10 @@ def get_equipment_stat(equip_id, category, tier=1):
     final_data["full_name"] = f"[{multiplier['name']}] {data['name']}"
     final_data["cost"] = int(data["base_cost"] * multiplier["cost_mult"])
     
-    # Memastikan Max Durability terkunci di 50 (Bisa disesuaikan nanti jika butuh)
-    final_data["max_durability"] = 50
+    # Kalkulasi Durability berdasarkan Tier
+    base_dur = data.get("durability", 50)
+    final_data["max_durability"] = int(base_dur * multiplier["dur_mult"])
+    final_data["durability"] = final_data["max_durability"] # Full saat baru beli
     
     # Kalikan stat utama dengan tier
     if "base_atk" in final_data:
