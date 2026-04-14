@@ -1,7 +1,7 @@
 """
 Sistem Pertarungan, Engine Genre, Kalkulasi RPG (Dodge, Element, Weight), dan Validasi Waktu.
 Sudah di-balance penuh sesuai GDD Final (Mage Heal, Weight Penalties, Durability, dan Resin Mantra).
-Dilengkapi dengan AI Cerdas (MP Musuh, Multiple Skills) dan UI Visual Ganda.
+Terintegrasi dengan AI Cerdas, Visual UI Ganda, dan Pasif Artefak.
 """
 import time
 import random
@@ -26,7 +26,7 @@ ELEMENT_CHART = {
     "Natural": {"strong": "Cahaya", "weak": "Kegelapan"}
 }
 
-# === DATABASE SKILL MUSUH (3 Variasi per Elemen - Total 24 Skill) ===
+# === DATABASE SKILL MUSUH (Total 24 Skill) ===
 MONSTER_SKILLS_DB = {
     "Api": [
         {"name": "Semburan Api", "cost": 15, "type": "damage_boost", "multiplier": 1.5, "msg": "menyemburkan api panas!"},
@@ -54,7 +54,7 @@ MONSTER_SKILLS_DB = {
         {"name": "Vacuum Slash", "cost": 20, "type": "defense_pierce", "multiplier": 1.2, "msg": "menebas udara hampa hingga menembus zirahmu!"}
     ],
     "Cahaya": [
-        {"name": "Holy Ray", "cost": 20, "type": "heal_self", "multiplier": 1.0, "msg": "memulihkan dirinya sendiri dengan pilar cahaya!"},
+        {"name": "Holy Ray", "cost": 20, "type": "heal_self", "multiplier": 1.0, "msg": "memulihkan dirinya dengan pilar cahaya!"},
         {"name": "Blinding Flash", "cost": 15, "type": "time_cut", "multiplier": 1.0, "msg": "menyilaukan pandanganmu, membuatmu panik!"},
         {"name": "Judgement", "cost": 30, "type": "heavy_damage", "multiplier": 1.9, "msg": "menjatuhkan pedang cahaya dari langit!"}
     ],
@@ -72,7 +72,7 @@ MONSTER_SKILLS_DB = {
 
 # === SISTEM UI & VISUAL ===
 def get_dynamic_bar(current, maximum, length=10, type_bar="hp"):
-    """Menghasilkan bar visual untuk HP (Merah/Hijau) atau MP (Biru)"""
+    """Menghasilkan bar visual untuk HP (Merah/Hijau/Kuning) atau MP (Biru)"""
     if maximum <= 0: return " [Empty] "
     percent = max(0, min(1, current / maximum))
     filled = int(length * percent)
@@ -93,7 +93,6 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
     m_hp_view = get_dynamic_bar(monster.get('monster_hp', 0), monster.get('monster_max_hp', 100), type_bar="hp")
     m_mp_view = get_dynamic_bar(monster.get('monster_mp', 0), monster.get('monster_max_mp', 50), type_bar="mp")
     
-    # Deteksi jika puzzle sedang disembunyikan (fase stance)
     puzzle_text = f"`{monster['question']}`" if monster.get('question') else "_Pilih aksimu..._"
     timer_text = f"{monster['timer']}s" if monster.get('timer') and str(monster.get('timer')) != "--" else "--"
 
@@ -104,7 +103,6 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
         f"❤️ HP: {m_hp_view}\n"
         f"🔵 MP: {m_mp_view}\n"
         f"✨ Elemen: {monster['monster_element']}\n\n"
-        
         f"👤 **W E A V E R**\n"
         f"❤️ HP: {p_hp_view}\n"
         f"🔵 MP: {p_mp_view}\n"
@@ -120,8 +118,10 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
 
 # === SISTEM KALKULASI RPG ===
 def calculate_equipment_stats(player):
-    """Mengekstrak data equipment (Atk, Def, Weight, dll)."""
+    """Mengekstrak data equipment (Atk, Def, Weight) dan BUFF ARTIFACT."""
     inventory = player.get('inventory', [])
+    artifacts = player.get('artifacts', [])
+    
     stats = {
         "atk": player.get('base_atk', 10),
         "def": player.get('base_def', 0),
@@ -133,8 +133,10 @@ def calculate_equipment_stats(player):
         "element": player.get('active_resin') or player.get('element', "Netral") 
     }
     
+    # 1. Kalkulasi Item Fisik (Equipment)
     for item in inventory:
         if item.get('type') in ['weapon', 'shield', 'chest', 'head', 'gloves', 'boots']:
+            # Skip jika barang hancur/rusak
             if item.get('durability', 1) <= 0:
                 continue
                 
@@ -150,49 +152,44 @@ def calculate_equipment_stats(player):
         elif item.get('type') == 'shield':
             stats["has_shield"] = True
             
+    # 2. Kalkulasi Pasif Artefak (Integrasi Baru)
+    for art in artifacts:
+        if art.get('id') == 'combat_manual':
+            stats["atk"] += 15 # Buff damage dari kitab
+        elif art.get('id') == 'lucky_charm':
+            stats["speed"] = "fast" # Meningkatkan kecepatan/dodge
+            
     return stats
 
 def calculate_dodge_chance(stats):
-    """
-    Kalkulasi peluang Dodge berdasarkan Weight (Murni Strategis).
-    Semakin ringan beratmu, peluang menghindar semakin tinggi.
-    """
+    """Peluang Dodge berdasarkan Weight. Semakin ringan, semakin lincah."""
     weight = stats.get('weight', 0)
-    # Base 80% peluang untuk berat 0. 
-    # Pengurangan 0.7% per poin berat.
     chance = 0.80 - (weight * 0.007)
     
-    # Bonus/Penalti spesifik (jika ada dari equip lain seperti speed)
     if stats.get("speed") in ["fast", "very_fast"]: chance += 0.05
     if stats.get("gloves_type") == "speed": chance += 0.05
     
     return max(0.10, min(0.75, chance)) # Cap Max 75%, Min 10%
 
 def calculate_block_reduction(stats):
-    """
-    Kalkulasi reduksi damage saat bertahan berdasarkan Defense dan Weight.
-    Semakin berat/kokoh, damage yang diredam semakin besar.
-    """
+    """Reduksi damage berdasarkan Defense dan Weight."""
     defense = stats.get('def', 0)
     weight = stats.get('weight', 0)
-    
-    # Defense memberikan base reduction, Weight memberikan bonus kemantapan menahan.
-    # Contoh: Def 50, Weight 50 -> (50/150) + (50/300) = 0.33 + 0.16 = 0.49 (49% reduksi)
     reduction = (defense / 150) + (weight / 300)
     
-    # Bonus spesifik tameng
     if stats.get("has_shield"): reduction += 0.10
         
     return max(0.15, min(0.85, reduction)) # Meredam 15% s/d 85% damage
 
 def get_element_multiplier(atk_element, def_element):
+    """Menghitung kelemahan dan ketahanan elemen."""
     if atk_element in ELEMENT_CHART:
         if ELEMENT_CHART[atk_element]["strong"] == def_element: return 1.5
         elif ELEMENT_CHART[atk_element]["weak"] == def_element: return 0.5
     return 1.0
 
 def process_staff_magic(element):
-    """MENGEMBALIKAN FUNGSI YANG HILANG UNTUK FIX IMPORT ERROR"""
+    """Efek tambahan khusus jika menggunakan Magic Staff."""
     effects = {
         "Api": {"effect": "burn", "value": 0, "desc": "Membakar musuh"},
         "Air": {"effect": "slow", "value": 0, "desc": "Mengurangi kecepatan musuh"},
@@ -207,8 +204,10 @@ def process_staff_magic(element):
 
 # === LOGIKA CERDAS AI MONSTER ===
 def select_smart_skill(m_element, tier_level, is_boss, p_hp_pct, m_hp_pct, m_current_mp):
+    """AI Monster akan memilih skill sesuai kondisi HP pemain dan HP dirinya sendiri."""
     available_skills = MONSTER_SKILLS_DB.get(m_element, [])
     valid_skills = [s for s in available_skills if s['cost'] <= m_current_mp]
+    
     if not valid_skills: return None
         
     skill_chance = 0.25 + (tier_level * 0.10)
@@ -221,8 +220,9 @@ def select_smart_skill(m_element, tier_level, is_boss, p_hp_pct, m_hp_pct, m_cur
             
     return random.choice(valid_skills)
 
-# === GENERATION ===
+# === GENERATION & VALIDATION ===
 def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False, existing_monster=None):
+    """Membuat monster dan mengikatnya dengan Puzzle."""
     p_stats = calculate_equipment_stats(player)
     
     if existing_monster:
@@ -233,6 +233,7 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
     else:
         m_element = random.choice(ELEMENTS)
         cycle_bonus = player.get('cycle', 1) - 1
+        
         if is_boss:
             m_name, tier_label = get_random_boss(), "BOSS"
             m_max_hp, m_max_mp = 300 + (tier_level * 100) + (cycle_bonus * 100), 150 + (cycle_bonus * 50)
@@ -245,9 +246,11 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
             m_name, tier_label = get_random_monster(tier_level), tier_level
             m_max_hp, m_max_mp = 50 + (tier_level * 30) + (cycle_bonus * 10), 20 + (tier_level * 10)
             m_atk, m_def = 10 + (tier_level * 4) + cycle_bonus, 2 + (tier_level * 2)
+            
         m_hp, m_mp = m_max_hp, m_max_mp
 
-    p_hp_pct, m_hp_pct = player.get('hp', 100) / max(1, player.get('max_hp', 100)), m_hp / max(1, m_max_hp)
+    p_hp_pct = player.get('hp', 100) / max(1, player.get('max_hp', 100))
+    m_hp_pct = m_hp / max(1, m_max_hp)
     m_skill = select_smart_skill(m_element, tier_level, is_boss, p_hp_pct, m_hp_pct, m_mp)
     
     raw_damage, timer_penalty, skill_msg = m_atk, 0, ""
@@ -263,13 +266,12 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
             m_hp = min(m_max_hp, m_hp + heal)
             skill_msg += f" (+{heal} HP)"
             
-    # RAW Damage yang dipersiapkan untuk serangan jika musuh mengenai player (belum dipotong def player, pemotongan dilakukan di main.py)
     final_monster_damage = raw_damage
 
     if is_boss and random.random() > 0.6:
         target_word = random.choice(["PENJAGA GERBANG", "DUNIA HAMPA", "MEMORI HILANG", "ECLIPTIC EXPRESS", "SANG PENGKHIANAT"])
         scrambled = list(target_word.replace(" ", "")); random.shuffle(scrambled)
-        question = f"SANG PENJAGA MENGHADANGMU! Susun segel kutukan ini (Tanpa spasi): *{''.join(scrambled).upper()}*"
+        question = f"SANG PENJAGA MENGHADANGMU! Susun segel ini (Tanpa spasi): *{''.join(scrambled).upper()}*"
         answer = target_word.replace(" ", "").lower()
     else:
         question, answer = get_random_puzzle(tier_level, monster_element=m_element, win_streak=player.get('monster_streak', 0))
@@ -286,6 +288,7 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
     }
 
 def validate_answer(user_answer, correct_answer, generated_time, time_limit):
+    """Mengecek apakah jawaban benar dan waktu belum habis."""
     time_taken = time.time() - generated_time
     if time_taken > time_limit: return (False, True, time_taken) 
     if str(user_answer).strip().lower() == str(correct_answer).strip().lower(): return (True, False, time_taken)
