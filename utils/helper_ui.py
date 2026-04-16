@@ -1,8 +1,11 @@
+# utils/helper_ui.py
+
 """
 Helper UI untuk membuat tampilan visual yang lebih menarik di Telegram (Mobile Friendly)
 Terintegrasi penuh dengan GDD Final (Durability, Element, Skill, Artifacts, Energy, dan Debuffs)
 """
-from game.systems.combat import calculate_equipment_stats
+from game.logic.stats import calculate_total_stats
+from game.items import get_item # Tambahkan ini untuk membaca item dari database
 
 def create_hp_bar(current, maximum, length=10):
     """Membuat HP bar visual seperti game"""
@@ -77,18 +80,19 @@ def create_monster_card(monster_name, element, hp, max_hp):
     monster_mana = max_hp // 2 
     
     return f"""🦇 *{monster_name}*
-✨ Elemen: {element}
+✨ Elemen: {element.capitalize()}
 ❤️ HP:   {create_hp_bar(hp, max_hp, 8)}
 💧 Mana: {create_mp_bar(monster_mana, monster_mana, 8)}"""
 
 def create_status_card(player):
-    """Membuat status card komprehensif, membaca Durability, Artifact, Energy & Debuffs"""
-    stats = calculate_equipment_stats(player)
+    """Membuat status card komprehensif (Sudah menggunakan logic stat yang baru)"""
+    stats = calculate_total_stats(player)
     
-    base_atk = player.get('base_atk', 10)
-    base_def = player.get('base_def', 0)
-    bonus_atk = stats['atk'] - base_atk
-    bonus_def = stats['def'] - base_def
+    base_p_atk = player.get('base_p_atk', 10)
+    base_p_def = player.get('base_p_def', 5)
+    
+    bonus_atk = stats['p_atk'] - base_p_atk
+    bonus_def = stats['p_def'] - base_p_def
     
     resin_txt = ""
     if player.get('active_resin') and player.get('resin_duration', 0) > 0:
@@ -101,12 +105,13 @@ def create_status_card(player):
 
     card = f"""━━━━━━━━━━━━━━━━━━━━
 👤 *{player.get('username', 'Weaver')}*
+🎖️ Class: {player.get('current_job', 'Novice Weaver')}
 🔄 Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}
 ━━━━━━━━━━━━━━━━━━━━
-⚔️ *Atk:* {base_atk} (+{bonus_atk}) = {stats['atk']}
-🛡️ *Def:* {base_def} (+{bonus_def}) = {stats['def']}
-⚖️ *Berat:* {stats['weight']} | 💨 *Speed:* {stats['speed'].capitalize()}
-✨ *Elemen:* {stats['element']}{resin_txt}{debuff_txt}
+⚔️ *Atk:* {base_p_atk} (+{bonus_atk}) = {stats['p_atk']}
+🛡️ *Def:* {base_p_def} (+{bonus_def}) = {stats['p_def']}
+⚖️ *Berat:* {stats['total_weight']} | 💨 *Speed:* {stats['speed']}
+✨ *Elemen:* {stats['element'].capitalize()}{resin_txt}{debuff_txt}
 
 ❤️ HP:  {create_hp_bar(player.get('hp', 0), player.get('max_hp', 100), 8)}
 🔮 MP:  {create_mp_bar(player.get('mp', 0), player.get('max_mp', 50), 8)}
@@ -129,12 +134,17 @@ def create_loot_drop(items):
     
     loot_text = "✨ *LOOT DROP!* ✨\n"
     for item in items:
-        # Jika gold
-        if item.get("type") == "gold":
+        # Pengecekan cerdas untuk format dictionary atau string list
+        if isinstance(item, dict) and item.get("type") == "gold":
             loot_text += f"💰 {item['value']} Gold\n"
-        else:
+        elif isinstance(item, dict):
             loot_text += f"🎁 {item.get('name', 'Unknown Item')}\n"
-    
+        elif isinstance(item, str):
+            # Tarik nama asli dari item DB jika berupa string ID
+            item_data = get_item(item)
+            name = item_data['name'] if item_data else item.replace("_", " ").title()
+            loot_text += f"🎁 {name}\n"
+            
     return loot_text
 
 def create_level_up_animation(old_level, new_level):
@@ -192,34 +202,40 @@ def create_daily_quest_card(quests):
     return card
 
 def create_inventory_display(player):
-    """Tampilan inventory yang membaca Durability, Item Utility/Food, dan Artifacts"""
+    """Tampilan inventory yang mendukung sistem 8-slot dan format item string ID"""
     inventory = player.get('inventory', [])
-    artifacts = player.get('artifacts', [])
+    artifacts = player.get('artifacts', []) # Artefak yang didapat secara naratif
     
     if not inventory and not artifacts:
         return "🎒 *INVENTORY & ARTEFAK KOSONG*\nKumpulkan item untuk bertahan hidup."
     
     display = "🎒 *INVENTORY*\n━━━━━━━━━━━━━━━━━━━━\n"
     
-    equip_types = ['weapon', 'shield', 'chest', 'head', 'gloves', 'boots']
-    equips = [i for i in inventory if i.get('type') in equip_types]
-    consumables = [i for i in inventory if i.get('type') in ['potion', 'food', 'utility', 'material']]
+    equip_types = ['weapon', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
+    
+    # Pisahkan item berdasarkan tipenya
+    equips = []
+    consumables = []
+    
+    for item_data in inventory:
+        if isinstance(item_data, dict):
+            consumables.append(item_data)
+        elif isinstance(item_data, str):
+            eq = get_item(item_data)
+            if eq: equips.append(eq)
     
     if equips:
-        display += "🛡️ *EQUIPMENT*\n"
+        display += "🛡️ *EQUIPMENT TERSIMPAN*\n"
         for e in equips:
-            dur = e.get('durability', 0)
+            dur = e.get('durability', 50)
             max_dur = e.get('max_durability', 50)
             
-            if dur <= 0:
-                status_icon = "❌ (RUSAK)"
-            elif dur <= 10:
-                status_icon = "⚠️ (Retak)"
-            else:
-                status_icon = "✅"
+            if dur <= 0: status_icon = "❌ (RUSAK)"
+            elif dur <= 10: status_icon = "⚠️ (Retak)"
+            else: status_icon = "✅"
                 
             skill_info = f" | ⚡ Skill: {e['skill']['name']}" if e.get('skill') else ""
-            stat_info = f"+{e.get('bonus_atk')} Atk" if e.get('type') == 'weapon' else f"+{e.get('bonus_def')} Def"
+            stat_info = f"+{e.get('p_atk', 0)} Atk" if e.get('type') == 'weapon' else f"+{e.get('p_def', 0)} Def"
             
             display += f"• *{e['name']}* ({stat_info})\n  └ {status_icon} Durability: {dur}/{max_dur}{skill_info}\n"
         display += "\n"
@@ -228,7 +244,7 @@ def create_inventory_display(player):
         display += "🧪 *CONSUMABLES & UTILITY*\n"
         item_counts = {}
         for c in consumables:
-            name = c['name']
+            name = c.get('name', 'Unknown Item')
             item_counts[name] = item_counts.get(name, 0) + 1
             
         for name, count in item_counts.items():
@@ -238,7 +254,8 @@ def create_inventory_display(player):
     if artifacts:
         display += "✨ *ARTEFAK AKTIF (PERMANEN)*\n"
         for art in artifacts:
-            display += f"• {art['name']}\n"
+            art_name = art.get('name') if isinstance(art, dict) else art
+            display += f"• {art_name}\n"
             
     display += "━━━━━━━━━━━━━━━━━━━━\n_Gunakan Repair Kit untuk memperbaiki Equip._"
     return display
