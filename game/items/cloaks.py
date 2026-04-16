@@ -1,6 +1,6 @@
 # game/items/cloaks.py
 
-CLOAK_DB = {
+CLOAKS = {
     "frost_cloak": {
         "id": "frost_cloak", "name": "Frost-Woven Cloak", "tier": 4,
         "m_def": 25, "ice_res": 0.5, "weight": 4,
