@@ -1,6 +1,6 @@
 # game/items/gloves.py
 
-GLOVES_DB = {
+GLOVES = {
     "archers_cold_grip": {
         "id": "archers_cold_grip", "name": "Archer's Cold Grip", "tier": 4,
         "speed": 8, "accuracy": 10, "weight": 2,
