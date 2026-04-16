@@ -33,6 +33,18 @@ def calculate_level_from_exp(exp):
         
     return level
 
+def calculate_exp_needed(level):
+    """
+    FUNGSI PENTING: Menghitung total EXP yang dibutuhkan untuk naik ke level berikutnya.
+    Dibutuhkan oleh main.py untuk menampilkan progress bar level.
+    """
+    if level <= 1: return 100
+    
+    requirement = 100
+    for _ in range(1, level):
+        requirement = int(requirement * 1.5)
+    return requirement
+
 # Database Achievement
 ACHIEVEMENTS = {
     "first_blood": {
@@ -116,6 +128,7 @@ def check_achievement_unlock(player, achievement_id):
     if ctype == "kills": return player.get('kills', 0) >= value
     elif ctype == "boss_kills": return player.get('boss_kills', 0) >= value
     elif ctype == "cycle": return player.get('cycle', 1) >= value
+    elif ctype == "max_combo": return player.get('max_combo_reached', 0) >= value
     elif ctype == "total_gold_earned": return player.get('total_gold_earned', 0) >= value
     elif ctype == "quiz_correct": return player.get('quiz_correct_count', 0) >= value
     
