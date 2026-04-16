@@ -1,29 +1,36 @@
-
 # game/items/__init__.py
 
-from .weapons import WEAPON_DB
-from .armors import ARMOR_DB
-from .heads import HEAD_DB
-from .masks import MASK_DB
-from .gloves import GLOVES_DB
-from .boots import BOOTS_DB
-from .cloaks import CLOAK_DB
-from .artifacts import ARTIFACT_DB
+"""
+MASTER ITEM DATABASE - The Archivus
+Menggabungkan semua kategori perlengkapan ke dalam satu kamus pusat.
+"""
 
-# Master Database gabungan
+from .weapons import WEAPONS
+from .armors import ARMORS
+from .heads import HEADS
+from .masks import MASKS
+from .gloves import GLOVES
+from .boots import BOOTS
+from .cloaks import CLOAKS
+from .artifacts import ARTIFACTS
+
+# Master Database gabungan (Menyatukan semua dictionary)
 MASTER_ITEM_DB = {
-    **WEAPON_DB,
-    **ARMOR_DB,
-    **HEAD_DB,
-    **MASK_DB,
-    **GLOVES_DB,
-    **BOOTS_DB,
-    **CLOAK_DB,
-    **ARTIFACT_DB
+    **WEAPONS,
+    **ARMORS,
+    **HEADS,
+    **MASKS,
+    **GLOVES,
+    **BOOTS,
+    **CLOAKS,
+    **ARTIFACTS
 }
 
 def get_item(item_id):
-    """Fungsi helper untuk mengambil data item dengan aman."""
+    """
+    Fungsi helper untuk mengambil data item dengan aman.
+    Digunakan oleh main.py dan inventory_manager.py.
+    """
     return MASTER_ITEM_DB.get(item_id)
 
 # Kategori untuk keperluan UI/Bot
