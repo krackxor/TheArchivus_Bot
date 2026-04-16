@@ -1,87 +1,77 @@
-# game/logic/stats.py
+# game/puzzles/manager.py
 
-from game.items import get_item
-from game.logic.job_manager import get_job_bonus
+"""
+Manager Puzzle (Smart Puzzle Engine)
+Bertugas mengatur probabilitas dan mendistribusikan permintaan puzzle 
+ke modul yang tepat (math, words, lore).
+Dilengkapi dengan DDA (Dynamic Difficulty) dan Elemental Bias.
+"""
 
-def calculate_total_stats(player):
+import random
+
+# Import semua fungsi pembuat puzzle dari file-file kategori 
+# (Asumsi fungsi-fungsi ini mengembalikan Tuple: (pertanyaan, jawaban))
+from .math import generate_math_puzzle, generate_sequence_puzzle
+from .words import generate_linguistic_puzzle, generate_cipher_puzzle
+from .lore import generate_lore_puzzle
+
+def get_random_puzzle(tier, monster_element="none", win_streak=0):
     """
-    Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
-    Memperhitungkan Grip 2H, Durability, Weight Penalty, dan Job Bonus.
+    Mengambil satu puzzle secara cerdas (Smart Selection).
+    Mengembalikan format dictionary yang sinkron dengan combat.py: 
+    {"question": "...", "answer": "..."}
     """
-    # 1. Inisialisasi Stat Dasar (dari level/base player)
-    stats = {
-        "p_atk": player.get('base_p_atk', 10),
-        "m_atk": player.get('base_m_atk', 10),
-        "p_def": player.get('base_p_def', 5),
-        "m_def": player.get('base_m_def', 5),
-        "speed": player.get('base_speed', 10),
-        "dodge": 0.50, # Base 50%
-        "total_weight": 0
-    }
-
-    equipped = player.get('equipped', {})
-    weapon = get_item(equipped.get('weapon'))
-    artifact = get_item(equipped.get('artifact'))
-
-    # 2. Cek Aturan Grip Senjata
-    is_two_handed = weapon.get('grip') == '2H' if weapon else False
-
-    # 3. Iterasi Semua Slot untuk Menghitung Stat & Berat
-    for slot, item_id in equipped.items():
-        item = get_item(item_id)
-        if not item:
-            continue
-
-        # LOGIKA KHUSUS ARTIFACT: Diabaikan statnya jika senjata 2H
-        # Kecuali item tersebut adalah "Cursed" atau "Passive Bone" yang tidak butuh tangan
-        if slot == 'artifact' and is_two_handed:
-            continue 
-
-        # PENALTI DURABILITY: Jika barang rusak (0), bonus stat hilang 80%
-        durability_mult = 1.0
-        if item.get('durability', 1) <= 0:
-            durability_mult = 0.2
-            # Senjata rusak sangat berat karena tumpul/patah
-            stats['total_weight'] += item.get('weight', 0) * 1.5 
-        else:
-            stats['total_weight'] += item.get('weight', 0)
-
-        # Tambahkan Stat ke Total (Dikali durability multiplier)
-        stats['p_atk'] += item.get('p_atk', 0) * durability_mult
-        stats['m_atk'] += item.get('m_atk', 0) * durability_mult
-        stats['p_def'] += item.get('p_def', 0) * durability_mult
-        stats['m_def'] += item.get('m_def', 0) * durability_mult
-        stats['speed'] += item.get('speed', 0) * durability_mult
-
-    # 4. LOGIKA BALANCE: Weight vs Dodge/Speed
-    # Rumus: Setiap 5 unit berat mengurangi 2% Dodge dan 1 poin Speed
-    weight_penalty = stats['total_weight'] // 5
     
-    stats['dodge'] = max(0.05, stats['dodge'] - (weight_penalty * 0.02))
-    stats['speed'] = max(1, stats['speed'] - weight_penalty)
-
-    # 5. BONUS SET JOB (Menggunakan job_manager.py)
-    job_name = player.get('current_job', 'Novice Weaver')
-    job_bonuses = get_job_bonus(job_name)
+    # 1. DYNAMIC DIFFICULTY ADJUSTMENT (DDA)
+    # Jika pemain menang 3x berturut-turut, tingkat kesulitan puzzle naik 1 tier!
+    effective_tier = min(5, tier + (win_streak // 3))
     
-    # Terapkan multiplier stat
-    stats['p_atk'] = int(stats['p_atk'] * job_bonuses['p_atk_mult'])
-    stats['m_atk'] = int(stats['m_atk'] * job_bonuses['m_atk_mult'])
-    stats['p_def'] = int(stats['p_def'] * job_bonuses['p_def_mult'])
-    
-    # Tambahkan bonus flat untuk speed dan dodge
-    stats['speed'] += job_bonuses['speed_bonus']
-    stats['dodge'] += job_bonuses['dodge_bonus']
-    
-    # Cap maksimal untuk dodge agar tidak bisa 100% menghindar (maksimal 90%)
-    stats['dodge'] = min(0.90, stats['dodge'])
-
-    # Elemen utama player diambil dari senjata (jika ada)
-    if weapon:
-        stats['element'] = weapon.get('element', 'none')
-        stats['attack_type'] = 'magic' if weapon.get('m_atk', 0) > weapon.get('p_atk', 0) else 'physical'
+    # 2. TENTUKAN BOBOT DASAR BERDASARKAN TIER EFEKTIF
+    # Urutan Index: [0: math, 1: sequence, 2: linguistic, 3: cipher, 4: lore]
+    if effective_tier <= 2:
+        # Tier rendah: Fokus ke matematika dasar dan anagram
+        weights = [0.35, 0.15, 0.30, 0.10, 0.10] 
+    elif effective_tier <= 4:
+        # Tier menengah: Cipher dan deret angka mulai seimbang
+        weights = [0.25, 0.25, 0.20, 0.20, 0.10]
     else:
-        stats['element'] = 'none'
-        stats['attack_type'] = 'physical'
+        # Tier tinggi: Fokus ke Lore, Cipher sulit, dan Deret kompleks
+        weights = [0.15, 0.15, 0.15, 0.30, 0.25]
+        
+    # 3. ELEMENTAL AFFINITY (BIAS ELEMEN)
+    # Menyesuaikan dengan format elemen di database The Archivus
+    elem = monster_element.lower()
+    
+    if elem in ["fire", "blood"]:
+        weights[0] += 0.30  # Math (Agresif, butuh hitungan cepat/di bawah tekanan)
+    elif elem in ["earth", "ice"]:
+        weights[1] += 0.30  # Sequence (Pondasi kokoh, urutan logis, sistematis)
+    elif elem in ["water", "poison", "wind"]:
+        weights[2] += 0.30  # Linguistic/Anagram (Fleksibel, meracik atau membalik kata)
+    elif elem in ["lightning"]:
+        weights[3] += 0.30  # Cipher (Cepat, sandi tersembunyi, sangat menguras fokus)
+    elif elem in ["dark", "light", "void"]:
+        weights[4] += 0.35  # Lore (Misteri kosmis, sejarah dunia The Archivus)
 
-    return stats
+    # 4. PILIH GENRE DENGAN BOBOT YANG SUDAH DIKALIBRASI
+    genres = ["math", "sequence", "linguistic", "cipher", "lore"]
+    chosen_genre = random.choices(genres, weights=weights, k=1)[0]
+    
+    # 5. PANGGIL MODUL PUZZLE DENGAN TIER EFEKTIF
+    # Tangkap balikan Tuple (q, a) dari masing-masing generator
+    if chosen_genre == "math":
+        q, a = generate_math_puzzle(effective_tier)
+    elif chosen_genre == "sequence":
+        q, a = generate_sequence_puzzle(effective_tier)
+    elif chosen_genre == "linguistic":
+        q, a = generate_linguistic_puzzle(effective_tier)
+    elif chosen_genre == "cipher":
+        q, a = generate_cipher_puzzle(effective_tier)
+    else:
+        q, a = generate_lore_puzzle()
+        
+    # 6. KEMBALIKAN DALAM FORMAT DICTIONARY UNTUK COMBAT.PY
+    return {
+        "question": str(q),
+        "answer": str(a).strip().lower()
+    }
