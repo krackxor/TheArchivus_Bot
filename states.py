@@ -1,9 +1,31 @@
+# game/logic/states.py
+
 from aiogram.fsm.state import State, StatesGroup
 
 class GameState(StatesGroup):
-    exploring = State()       # State saat pemain sedang menjelajah jalan normal
-    traveling = State()       # State untuk misi manual (misal: disuruh NPC jalan 5 langkah)
-    in_combat = State()       # State saat pemain melawan monster/bos
-    in_quiz = State()         # State saat ditanya oleh NPC Quiz/Scholar
-    in_event = State()        # State untuk interaksi objek (peti harta, kuburan, patung, NPC judi)
-    in_rest_area = State()    # State saat pemain sedang beristirahat di kemah / berbelanja
+    """
+    Sistem State Terpusat (Finite State Machine)
+    Mengatur alur kontrol agar input user diproses oleh handler yang tepat.
+    """
+    
+    # --- EKSPLORASI & PERJALANAN ---
+    exploring = State()        # State utama saat menjelajah jalan normal
+    traveling = State()        # State transisi atau misi manual (NPC Quest)
+    
+    # --- COMBAT & SKILL ---
+    in_combat = State()        # State saat bertarung melawan monster/bos
+    casting_skill = State()    # State saat pemain sedang memilih/menggunakan skill aktif
+    
+    # --- INTERAKSI & EVENT ---
+    in_event = State()         # State interaksi objek (peti, kuburan, patung)
+    in_gamble = State()        # State khusus saat berurusan dengan The Void Gambler (Judi)
+    in_quiz = State()          # State saat menjawab tantangan Scholar/Lore
+    in_npc_talk = State()      # State saat berdialog dengan NPC (Misi/Cerita)
+    
+    # --- AREA AMAN & MENU ---
+    in_rest_area = State()     # State saat di kemah/api unggun
+    in_shop = State()          # State khusus saat sedang bertransaksi dengan Merchant
+    
+    # --- PENGELOLAAN KARAKTER ---
+    in_inventory = State()     # State saat sedang mengatur tas/peralatan (Equip/Unequip)
+    allocating_stats = State() # State saat sedang membelanjakan Stat Points (SP)
