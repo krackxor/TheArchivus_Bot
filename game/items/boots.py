@@ -1,6 +1,6 @@
 # game/items/boots.py
 
-BOOTS_DB = {
+BOOTS = {
     "permafrost_treads": {
         "id": "permafrost_treads", "name": "Permafrost Treads", "tier": 4,
         "speed": 12, "dodge": 0.05, "weight": 4,
