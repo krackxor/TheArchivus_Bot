@@ -1,7 +1,9 @@
+# game/systems/achievements.py
+
 """
 Achievement & Progression System (The Archivus)
 Memberikan sense of progress dan reward untuk pemain.
-Terintegrasi dengan sistem Leveling dan Array Artifact khusus.
+Terintegrasi dengan sistem Leveling, Stat Points, dan Inventory 8-Slot.
 """
 
 import math
@@ -9,8 +11,9 @@ import random
 import datetime
 
 from database import update_player
+from game.systems.progression import add_exp
 
-# Database Achievement (Terintegrasi dengan Lore & Artifact ID)
+# Database Achievement
 ACHIEVEMENTS = {
     # Combat Achievements
     "first_blood": {
@@ -26,7 +29,7 @@ ACHIEVEMENTS = {
         "title": "Monster Hunter",
         "description": "Kalahkan 10 monster",
         "condition": {"type": "kills", "value": 10},
-        "reward": {"gold": 200, "exp": 500, "item": "lucky_charm"}, # Disesuaikan dengan loot id
+        "reward": {"gold": 200, "exp": 500, "item": "lucky_charm"}, # Pastikan lucky_charm ada di MASTER_ITEM_DB
         "icon": "🏹"
     },
     "slayer": {
@@ -44,7 +47,7 @@ ACHIEVEMENTS = {
         "title": "Keeper Slayer",
         "description": "Kalahkan Sang Penjaga pertama kali",
         "condition": {"type": "boss_kills", "value": 1},
-        "reward": {"gold": 500, "exp": 1000, "item": "keeper_heart"}, # Artefak Jantung Penjaga
+        "reward": {"gold": 500, "exp": 1000, "item": "void_orb"}, # Void Orb (Artifact)
         "icon": "👑"
     },
     
@@ -80,7 +83,7 @@ ACHIEVEMENTS = {
         "title": "Perfect Warrior",
         "description": "Kalahkan Boss tanpa terkena damage",
         "condition": {"type": "flawless_boss", "value": 1},
-        "reward": {"gold": 1000, "exp": 2000, "item": "phoenix_tear"}, # Artefak Air Mata Phoenix
+        "reward": {"gold": 1000, "exp": 2000, "item": "everfrost_shard"}, # Artifact
         "icon": "✨"
     },
     
@@ -108,7 +111,7 @@ ACHIEVEMENTS = {
         "title": "Explorer",
         "description": "Kunjungi semua 5 lokasi Archivus",
         "condition": {"type": "locations_visited", "value": 5},
-        "reward": {"gold": 300, "exp": 600, "item": "weaver_diary"}, # Artefak Jurnal Weaver
+        "reward": {"gold": 300, "exp": 600},
         "icon": "🗺️"
     },
     
@@ -131,7 +134,7 @@ ACHIEVEMENTS = {
     }
 }
 
-# Daily Quests Pool
+# Daily Quests Pool (Tetap sama)
 DAILY_QUESTS_POOL = [
     {
         "id": "daily_kills",
@@ -211,16 +214,14 @@ def get_all_unlockable_achievements(player):
             newly_unlocked.append(ach_id)
     return newly_unlocked
 
-def calculate_level_from_exp(exp):
-    """Hitung level berdasarkan exp (scaling formula)"""
-    return math.floor(math.sqrt(exp / 100)) + 1
-
-def calculate_exp_needed(level):
-    """Hitung exp yang dibutuhkan untuk naik ke level berikutnya"""
-    return (level ** 2) * 100
-
-def award_achievement(player_data, achievement_id):
-    """Berikan reward dari achievement dan catat di database (termasuk Artefak)"""
+def award_achievement(user_id, achievement_id):
+    """Berikan reward dari achievement dan catat di database.
+    Terintegrasi dengan progression.py untuk logika EXP."""
+    
+    # Mengambil ulang player karena bisa saja add_exp merubah data
+    from database import get_player 
+    player_data = get_player(user_id)
+    
     achievement = ACHIEVEMENTS.get(achievement_id)
     if not achievement:
         return None
@@ -234,26 +235,15 @@ def award_achievement(player_data, achievement_id):
         updates['gold'] = player_data.get('gold', 0) + reward['gold']
         reward_text.append(f"💰 {reward['gold']} Gold")
     
-    # 2. Proses EXP & Level Up
+    # 2. Proses EXP & Level Up (Menggunakan sistem sentral di progression.py)
     if 'exp' in reward:
-        current_exp = player_data.get('exp', 0) + reward['exp']
-        current_level = player_data.get('level', 1)
-        exp_needed = calculate_exp_needed(current_level)
-        
-        level_up = False
-        while current_exp >= exp_needed:
-            current_level += 1
-            current_exp -= exp_needed
-            exp_needed = calculate_exp_needed(current_level)
-            level_up = True
-        
-        updates['exp'] = current_exp
-        updates['level'] = current_level
-        updates['exp_needed'] = exp_needed
+        leveled_up, new_level, lvl_msg = add_exp(user_id, reward['exp'])
         reward_text.append(f"⭐ {reward['exp']} EXP")
-        
-        if level_up:
-            reward_text.append(f"🎆 LEVEL UP! ({current_level})")
+        if leveled_up:
+            reward_text.append(f"🎆 LEVEL UP! ({new_level})")
+            
+        # Panggil get_player lagi karena add_exp telah mengubah nilai di database
+        player_data = get_player(user_id) 
     
     # 3. Proses Stat Boost Permanen
     if 'max_hp' in reward:
@@ -264,28 +254,26 @@ def award_achievement(player_data, achievement_id):
         updates['max_mp'] = player_data.get('max_mp', 50) + reward['max_mp']
         reward_text.append(f"🔮 +{reward['max_mp']} Max MP")
     
-    # 4. Proses Item / Artefak Reward (MASUK KE ARRAY ARTIFACTS)
+    # 4. Proses Item / Artefak Reward (MASUK KE INVENTORY)
     if 'item' in reward:
-        artifacts = player_data.get('artifacts', [])
-        # Format nama agar rapi (contoh: "keeper_heart" -> "Keeper Heart")
-        clean_name = reward['item'].replace('_', ' ').title()
+        inventory = player_data.get('inventory', [])
+        # Masukkan String ID item ke dalam tas
+        item_id = reward['item']
+        inventory.append(item_id)
+        updates['inventory'] = inventory
         
-        artifacts.append({
-            'id': reward['item'],
-            'name': f"✨ {clean_name}",
-            'type': 'artifact',
-            'source': 'achievement'
-        })
-        updates['artifacts'] = artifacts
-        reward_text.append(f"🎁 Artefak: {clean_name}")
+        # Bersihkan nama untuk teks
+        clean_name = item_id.replace('_', ' ').title()
+        reward_text.append(f"🎁 {clean_name}")
     
     # 5. Catat Unlocked Achievement
     unlocked = player_data.get('achievements_unlocked', [])
     unlocked.append(achievement_id)
     updates['achievements_unlocked'] = unlocked
     
-    # Update ke MongoDB
-    update_player(player_data['user_id'], updates)
+    # Update ke MongoDB (Hanya update data yang belum ditangani oleh add_exp)
+    if updates:
+        update_player(user_id, updates)
     
     return {
         'title': achievement['title'],
