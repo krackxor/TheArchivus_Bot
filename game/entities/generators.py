@@ -1,7 +1,8 @@
 """
 Sistem Generator Entitas (Entity Generators)
 Berisi fungsi-fungsi untuk merakit data dasar entitas, seperti nama acak NPC dan dialog dasar.
-Fungsi dipertahankan sebagai [Legacy Support] untuk kompatibilitas modul lama.
+[DEPRECATED / LEGACY SUPPORT] - Sangat disarankan untuk menggunakan game.entities.npcs mulai sekarang.
+Fungsi ini dipertahankan dan disesuaikan strukturnya agar modul lama yang memanggilnya tidak crash.
 """
 
 import random
@@ -28,7 +29,7 @@ def generate_npc_name():
 def generate_npc(player_gold=0, is_liar=False):
     """
     Menghasilkan data dasar NPC (Identitas, Dialog, dan Syarat/Cost).
-    (Fungsi ini tetap dipertahankan agar modul lama yang memanggilnya tidak error).
+    Struktur telah diperbarui dengan 'choices' untuk mencegah KeyError jika dipanggil oleh UI baru.
     """
     identity = generate_npc_name()
     
@@ -58,9 +59,15 @@ def generate_npc(player_gold=0, is_liar=False):
     elif player_gold > 200:
         cost += random.randint(10, 40)
 
+    # --- PERBAIKAN BENTROK MINOR ---
+    # Menambahkan array 'choices' agar UI di main.py tetap bisa memproses tombol (Inline Keyboard)
     return {
         "identity": identity,
         "dialog": random.choice(dialogs),
         "requirement": {"type": "gold", "amount": cost},
-        "is_liar": is_liar
+        "is_liar": is_liar,
+        "choices": [
+            {"text": f"Bayar {cost} Gold", "action": "pay_gold", "value": cost},
+            {"text": "Abaikan", "action": "ignore", "value": 0}
+        ]
     }
