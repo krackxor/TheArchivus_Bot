@@ -1,3 +1,5 @@
+# game/systems/events.py
+
 """
 Sistem Random Events & Loot (The Archivus)
 Terintegrasi dengan Shop, Equipment, dan Exploration Driver.
@@ -81,35 +83,37 @@ RANDOM_EVENTS = {
     }
 }
 
-# === LOOT TABLES (Terintegrasi dengan shop.py item_id) ===
+# === LOOT TABLES (Terintegrasi format Inventory & UI kita) ===
+# Consumables berbentuk Dictionary, Artefak/Equipment berbentuk String ID
 LOOT_TABLE_COMMON = [
-    {"id": "buy_food_bread", "name": "🍞 Roti Kering", "type": "food", "effect": "energy_30", "rarity": "common"},
-    {"id": "buy_heal_30", "name": "🧪 Minor HP Potion", "type": "potion", "effect": "heal_30", "rarity": "common"},
-    {"id": "rusty_coin", "name": "Koin Berkarat", "type": "material", "value": 25, "rarity": "common"}
+    {"id": "food_ration", "name": "🍞 Roti Kering", "type": "food", "effect": "energy_30", "rarity": "common"},
+    {"id": "potion_heal", "name": "🧪 Minor HP Potion", "type": "potion", "effect": "heal_30", "rarity": "common"},
+    {"type": "gold", "value": 25}
 ]
 
 LOOT_TABLE_UNCOMMON = [
-    {"id": "buy_heal_80", "name": "🧪 Major HP Potion", "type": "potion", "effect": "heal_80", "rarity": "uncommon"},
-    {"id": "buy_mp_40", "name": "🔮 Tetesan Memori", "type": "potion", "effect": "mp_40", "rarity": "uncommon"},
+    {"id": "potion_heal_major", "name": "🧪 Major HP Potion", "type": "potion", "effect": "heal_80", "rarity": "uncommon"},
+    {"id": "potion_mana", "name": "🔮 Tetesan Memori", "type": "potion", "effect": "mp_40", "rarity": "uncommon"},
     {"id": "buy_key_iron", "name": "🔑 Iron Key", "type": "utility", "effect": "key_iron", "rarity": "uncommon"},
-    {"id": "buy_cure_poison", "name": "🌿 Antidote", "type": "potion", "effect": "cure_poisoned", "rarity": "uncommon"}
+    {"id": "cure_poison", "name": "🌿 Antidote", "type": "potion", "effect": "cure_poisoned", "rarity": "uncommon"}
 ]
 
 LOOT_TABLE_RARE = [
     {"id": "buy_key_magic", "name": "🔮 Mana Crystal", "type": "utility", "effect": "key_magic", "rarity": "rare"},
-    {"id": "buy_repair_kit", "name": "⚒️ Repair Kit", "type": "potion", "effect": "repair_all", "rarity": "rare"},
-    {"id": "gold_ingot", "name": "Batangan Emas Tua", "type": "material", "value": 150, "rarity": "rare"}
+    {"id": "repair_all_kit", "name": "⚒️ Repair Kit", "type": "utility", "effect": "repair_all", "rarity": "rare"},
+    {"type": "gold", "value": 150}
 ]
 
+# Artefak & Unique Equipment (Disimpan sebagai String ID untuk dicocokkan ke MASTER_ITEM_DB)
 LOOT_TABLE_EPIC = [
-    {"id": "phoenix_tear", "name": "🔥 Air Mata Phoenix", "type": "artifact", "effect": "revive_once", "rarity": "epic"},
-    {"id": "weaver_diary", "name": "📖 Jurnal Weaver", "type": "artifact", "effect": "reveal_map", "rarity": "epic"},
-    {"id": "lucky_charm", "name": "🍀 Jimat Keberuntungan", "type": "artifact", "effect": "better_loot", "rarity": "epic"}
+    "phoenix_tear", 
+    "weaver_diary", 
+    "lucky_charm"
 ]
 
 LOOT_TABLE_LEGENDARY = [
-    {"id": "keeper_heart", "name": "❤️ Jantung Penjaga", "type": "artifact", "effect": "max_hp_50", "rarity": "legendary"},
-    {"id": "void_crystal", "name": "🌌 Kristal Kehampaan", "type": "artifact", "effect": "max_mp_50", "rarity": "legendary"}
+    "keeper_heart", 
+    "void_orb"
 ]
 
 def roll_loot_drop(tier_level=1, is_boss=False):
@@ -121,7 +125,7 @@ def roll_loot_drop(tier_level=1, is_boss=False):
         drops.append(random.choice(LOOT_TABLE_RARE))
         drops.append({"type": "gold", "value": random.randint(300, 500)})
         
-        # Peluang tambahan
+        # Peluang tambahan (Artefak)
         if random.random() < 0.50: drops.append(random.choice(LOOT_TABLE_EPIC))
         if random.random() < 0.10: drops.append(random.choice(LOOT_TABLE_LEGENDARY))
         
