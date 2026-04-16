@@ -1,6 +1,6 @@
 # game/items/heads.py
 
-HEAD_DB = {
+HEADS = {
     "circlet_of_north": {
         "id": "circlet_of_north", "name": "Circlet of the North", "tier": 4,
         "m_atk": 15, "bonus_mp": 100, "weight": 2,
