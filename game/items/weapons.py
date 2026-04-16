@@ -1,6 +1,6 @@
 # game/items/weapons.py
 
-WEAPON_DB = {
+WEAPONS = {
     # --- MAGIC & ELEMENTAL (ICE FOCUS) ---
     "ice_staff": {
         "id": "ice_staff",
