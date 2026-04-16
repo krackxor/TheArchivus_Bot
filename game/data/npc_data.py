@@ -7,13 +7,7 @@ Tema: Psychological Horror & Despair
 """
 
 NPC_POOL = {
-    # =========================================================================
-    # 1. HEALER (Pemulih)
-    # Tugas/Mekanik : Memulihkan HP pemain.
-    # Cost          : Gold (base_cost + scaling cycle).
-    # Reward        : Heal HP (base_heal + scaling cycle).
-    # Vibe          : Dokter bedah gila, makhluk parasit, atau perawat mengerikan.
-    # =========================================================================
+    # 1. HEALER (Pemulih HP)
     "healer": [
         {"name": "The Blind Surgeon", "narration": "'Matamu terlihat lelah. Biarkan aku menjahitnya, dan kau akan merasa lebih baik...'", "base_cost": 15, "base_heal": 30},
         {"name": "The Leech Mother", "narration": "Ratusan lintah merayap di tubuhnya. 'Mereka haus, Weaver. Biarkan mereka menghisap rasa sakitmu.'", "base_cost": 20, "base_heal": 35},
@@ -27,13 +21,7 @@ NPC_POOL = {
         {"name": "The Blood Drinker", "narration": "'Beri aku emasmu, dan aku akan memuntahkan kembali darah yang hilang dari tubuhmu.'", "base_cost": 25, "base_heal": 40}
     ],
 
-    # =========================================================================
-    # 2. TRICKSTER (Penipu/Penjudi)
-    # Tugas/Mekanik : Mengajak pemain bertaruh (Gacha).
-    # Cost          : Gold (base_bet + scaling cycle).
-    # Reward        : 45% Kalah (-HP), 40% Menang (+Gold 3x lipat), 15% Artefak Langka.
-    # Vibe          : Penjudi iblis, pencuri jiwa, makhluk licik.
-    # =========================================================================
+    # 2. TRICKSTER (Penjudi / Gacha)
     "trickster": [
         {"name": "The Coin Swallower", "narration": "'Masukkan koin ke dalam mulutku. Jika aku tersedak, kau menang. Jika tidak... kau milikku.'", "base_bet": 40},
         {"name": "The Fate Dealer", "narration": "Ia mengocok kartu yang terbuat dari kulit manusia. 'Pilih kartumu. Hidup, atau mati?'", "base_bet": 50},
@@ -47,12 +35,7 @@ NPC_POOL = {
         {"name": "The Faceless Dealer", "narration": "Wajahnya memantulkan wajahmu sendiri yang sedang menangis. 'Pasang taruhanmu, pengecut.'", "base_bet": 40}
     ],
 
-    # =========================================================================
-    # 3. SCHOLAR (Pemberi Kuis)
-    # Tugas/Mekanik : Menguji pengetahuan pemain tentang game ini.
-    # Interaksi     : Memicu state Kuis Lore.
-    # Vibe          : Pustakawan gila, pembaca pikiran, buku yang hidup.
-    # =========================================================================
+    # 3. SCHOLAR (Kuis Lore)
     "scholar": [
         {"name": "The Mad Scribe", "narration": "Ia menulis menggunakan kukunya yang berdarah. 'Jawab pertanyaanku, atau kujadikan kau tinta!'"},
         {"name": "The Blind Reader", "narration": "Matanya dijahit, tapi ia membaca pikiranmu. 'Pengetahuan adalah kutukan. Uji kutukanmu.'"},
@@ -66,13 +49,7 @@ NPC_POOL = {
         {"name": "The Observer", "narration": "'Aku telah melihat ribuan Weaver mati. Tunjukkan padaku mengapa kau berbeda.'"}
     ],
 
-    # =========================================================================
-    # 4. MERCENARY (Mentor Tempur)
-    # Tugas/Mekanik : Memberikan Buff Permanen (Base ATK).
-    # Cost          : Sangat mahal (base_cost + scaling besar).
-    # Reward        : Base ATK +2 secara permanen.
-    # Vibe          : Prajurit yang disiksa, algojo, monster brutal.
-    # =========================================================================
+    # 4. MERCENARY (Buff ATK Permanen)
     "mercenary": [
         {"name": "The Broken Sword", "narration": "Pedangnya patah, tubuhnya penuh tombak. 'Bayar aku, kuajarkan cara mati dengan lambat.'", "base_cost": 100},
         {"name": "The Headless Knight", "narration": "Ia memegang kepalanya di tangan kiri. 'Pukulan yang baik adalah pukulan yang tak kau lihat.'", "base_cost": 120},
@@ -86,13 +63,7 @@ NPC_POOL = {
         {"name": "The Cowardly Vet", "narration": "'Aku selamat karena aku tahu cara lari. Tapi aku bisa mengajarimu cara memukul dari belakang.'", "base_cost": 100}
     ],
 
-    # =========================================================================
-    # 5. CURSE EATER (Tukar Darah)
-    # Tugas/Mekanik : Menukar HP pemain menjadi MP.
-    # Cost          : -20 HP.
-    # Reward        : +30 MP.
-    # Vibe          : Pemakan dosa, makhluk menjijikkan penuh penyakit.
-    # =========================================================================
+    # 5. CURSE EATER (Tukar HP ke MP)
     "curse_eater": [
         {"name": "The Sin Swallower", "narration": "Perutnya bengkak dan berdenyut. 'Beri aku darah kotormu, aku akan memuntahkan sihir untukmu.'"},
         {"name": "The Vomiter", "narration": "Ia terus memuntahkan miasma hitam. 'Tukar... tukar nyawamu dengan manaku...'"},
@@ -106,13 +77,7 @@ NPC_POOL = {
         {"name": "The Sufferer", "narration": "Ia menangis tanpa henti. 'Sakit sekali... tolong bagi rasa sakitmu denganku.'"}
     ],
 
-    # =========================================================================
-    # 6. COLLECTOR (Pembeli Rongsok)
-    # Tugas/Mekanik : Membeli item (Potion/Food) dari inventory pemain.
-    # Cost          : Item konsumsi dari tas pemain.
-    # Reward        : Gold dalam jumlah besar (40-90 Gold).
-    # Vibe          : Pengumpul sampah, pemulung mayat, monster obsesif.
-    # =========================================================================
+    # 6. COLLECTOR (Beli Rongsokan)
     "collector": [
         {"name": "The Bone Hoarder", "narration": "Tasnya bergemerincing. 'Punya tulang ekstra? Tidak? Potion saja kalau begitu. Aku bayar mahal.'"},
         {"name": "The Nail Plucker", "narration": "Kukunya terbuat dari koin emas. 'Berikan barang rongsokanmu kepadaku.'"},
@@ -126,13 +91,7 @@ NPC_POOL = {
         {"name": "The Corpse Looter", "narration": "Ia baru saja menggeledah tubuh Weaver lain. 'Hei, mau jual barang sebelum kau juga mati?'"}
     ],
 
-    # =========================================================================
     # 7. GUIDE (Pemandu Arah)
-    # Tugas/Mekanik : Memberi petunjuk mengenai jalan di depan.
-    # Cost          : Gratis.
-    # Reward        : 60% Petunjuk Benar, 40% Petunjuk Menyesatkan (Gaslighting).
-    # Vibe          : Nabi palsu, orang gila, atau sosok yang tenggelam.
-    # =========================================================================
     "guide": [
         {"name": "The Blind Point", "narration": "Jari telunjuknya terpotong, tapi ia menunjuk ke Utara. 'Ikuti bau darahnya, Weaver.'"},
         {"name": "The Weeping Compass", "narration": "Gadis kecil memegang kompas yang jarumnya berputar liar. 'Jalannya... jalannya membingungkan.'"},
@@ -146,13 +105,7 @@ NPC_POOL = {
         {"name": "The Drowning Guide", "narration": "Air hitam terus keluar dari mulutnya. 'Tenggelamlah bersamaku, itu jalan pintas.'"}
     ],
 
-    # =========================================================================
-    # 8. BEGGAR (Pengemis)
-    # Tugas/Mekanik : Meminta sedekah item dari pemain.
-    # Cost          : 1 Item Potion/Food dari tas pemain.
-    # Reward        : 70% Dapat +100 Gold, 30% Kerampokan (Kehilangan Gold).
-    # Vibe          : Makhluk kelaparan, anak terlantar, jiwa yang menyedihkan.
-    # =========================================================================
+    # 8. BEGGAR (Pengemis Item)
     "beggar": [
         {"name": "The Starving Husk", "narration": "Perutnya tembus pandang, kosong. 'Lapar... tolong... aku memakan lidahku sendiri kemarin.'"},
         {"name": "The Cold One", "narration": "Tubuhnya membeku. 'Ramuan... tolong... untuk menghangatkan jantungku yang mati.'"},
@@ -166,13 +119,7 @@ NPC_POOL = {
         {"name": "The Wretch", "narration": "Berlumuran lumpur tinta. 'Jangan tatap aku. Beri aku makan saja, lalu pergilah.'"}
     ],
 
-    # =========================================================================
-    # 9. LORE KEEPER (Pencerita Sejarah)
-    # Tugas/Mekanik : Membuka Lore (Cerita) game.
-    # Cost          : Gratis.
-    # Reward        : Buka Cerita Baru -> +100 EXP & +2 Max MP. Cerita Lama -> +15 MP.
-    # Vibe          : Tengkorak yang bicara, arwah raja masa lalu, nabi yang gila.
-    # =========================================================================
+    # 9. LORE KEEPER (Pembuka Cerita)
     "lore_keeper": [
         {"name": "The Stone Mouth", "narration": "Patung batu yang bibirnya tiba-tiba bergerak lambat. 'Dengarkan kisah sebelum kau hancur.'"},
         {"name": "The Echoing Skull", "narration": "Tengkorak yang melayang pelan. 'Rahasianya ada di dinding. Mau kudongengkan?'"},
@@ -186,13 +133,7 @@ NPC_POOL = {
         {"name": "The Weeping Historian", "narration": "Menangis darah sambil memegang perkamen kosong. 'Buku ini tidak mau menceritakannya. Biar aku saja.'"}
     ],
 
-    # =========================================================================
-    # 10. WANDERER (Pengembara Misterius)
-    # Tugas/Mekanik : Memberikan hadiah secara cuma-cuma.
-    # Cost          : Gratis.
-    # Reward        : 50% Dapat Gold, 50% Dapat HP Potion.
-    # Vibe          : Bayangan yang lewat, doppelganger (kembaran), penguntit baik hati.
-    # =========================================================================
+    # 10. WANDERER (Pemberi Hadiah Gratis)
     "wanderer": [
         {"name": "The Passing Shadow", "narration": "Bayangan gelap lewat tanpa suara, menjatuhkan sesuatu di dekat kakimu."},
         {"name": "The Silent Walker", "narration": "Ia berjalan melewati dan menembus tubuhmu. Meninggalkan rasa dingin dan sebuah benda."},
@@ -207,16 +148,12 @@ NPC_POOL = {
     ]
 }
 
-# =========================================================================
-# LORE STORIES
-# Kumpulan sejarah yang akan diceritakan oleh kategori "lore_keeper"
-# =========================================================================
 LORE_STORIES = [
     "Dimensi ini dulunya adalah perpustakaan para Dewa. *The Archivus* dirancang untuk menyimpan rahasia semesta yang terlalu berbahaya untuk diingat oleh manusia. Namun, seseorang merobek pintunya.",
     "Kau bertanya apa itu 'Weaver'? Kita adalah penjahit realitas yang ditarik dari kematian kita sendiri. Kuburan yang kau temui? Itu adalah saudara-saudaramu.",
     "Koin emas yang kau gunakan bukanlah logam. Itu adalah pecahan waktu dari jiwa-jiwa yang membusuk di sini. Saat kau berbelanja, kau menukar kenangan seseorang.",
     "Sang Penjaga yang kau buru dulunya adalah Orion, Weaver Pertama. Ia mencoba membaca 'Kitab Akhir Zaman' sendirian. Pengetahuan itu meledakkan akalnya.",
     "Rawa tinta hijau beracun di distrik bawah dulunya adalah ruang arsip puisi. Kebohongan manusia menetes ke bawah, membusuk menjadi Miasma beracun.",
-    "Jika kau merobek dada Sang Penjaga, kau akan menemukan jantung yang membatu. Barang siapa yang memegangnya tidak akan bisa mati, tapi akan mati karena kesepian.",
+    "Jika kau merobek dada Sang Penjaga, kau akan menemukan jantung yang membatu. Barang siapa yang memegangnya tidak akan bisa mati, namun akan mati karena kesepian.",
     "Terkadang aku berpikir, apakah kita benar-benar hidup, atau kita hanyalah karakter dari sebuah game yang sedang dimainkan seseorang di luar sana lewat layar kaca?"
 ]
