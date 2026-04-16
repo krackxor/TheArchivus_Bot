@@ -1,6 +1,6 @@
 # game/items/artifacts.py
 
-ARTIFACT_DB = {
+ARTIFACTS = {
     # --- DEFENSIVE / SHIELDS (Untuk Job Melee/Tank) ---
     "shield_of_light": {
         "id": "shield_of_light",
