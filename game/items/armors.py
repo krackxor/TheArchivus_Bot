@@ -1,6 +1,6 @@
 # game/items/armors.py
 
-ARMOR_DB = {
+ARMORS = {
     "glacier_plate": {
         "id": "glacier_plate", "name": "Glacier Plate Mail", "tier": 4,
         "p_def": 50, "m_def": 10, "weight": 25, "element": "ice",
