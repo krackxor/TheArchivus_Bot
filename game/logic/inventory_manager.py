@@ -2,7 +2,7 @@
 
 from game.items import get_item
 from game.logic.stats import calculate_total_stats
-from game.items.manager import detect_player_job
+from game.logic.job_manager import detect_player_job # Diperbarui ke jalur yang benar
 
 def equip_item(player, item_id):
     """
@@ -11,13 +11,15 @@ def equip_item(player, item_id):
     """
     item = get_item(item_id)
     if not item:
-        return False, "Item tidak ditemukan di database."
+        return False, "❌ Item tidak ditemukan di database."
 
     if item_id not in player.get('inventory', []):
-        return False, "Kau tidak memiliki item ini di tasmu."
+        return False, "❌ Kau tidak memiliki item ini di tasmu."
 
     slot = item.get('type') # 'weapon', 'armor', 'artifact', dll.
     equipped = player.get('equipped', {})
+    
+    warning_msg = ""
 
     # --- LOGIKA CERDAS 1: KONFLIK 2-HANDED (2H) ---
     if slot == 'weapon':
@@ -25,7 +27,7 @@ def equip_item(player, item_id):
         if item.get('grip') == '2H':
             if equipped.get('artifact'):
                 unequip_item(player, 'artifact')
-                print(f"⚠️ {item['name']} membutuhkan dua tangan. Artifact dilepas.")
+                warning_msg = f"⚠️ **{item['name']}** terlalu berat dan butuh dua tangan. Artifact milikmu otomatis dilepas.\n"
     
     elif slot == 'artifact':
         # Jika mencoba pasang Artifact tapi senjata saat ini adalah 2H
@@ -33,7 +35,7 @@ def equip_item(player, item_id):
         if weapon_id:
             weapon = get_item(weapon_id)
             if weapon and weapon.get('grip') == '2H':
-                return False, f"Tanganmu penuh! Lepas {weapon['name']} terlebih dahulu."
+                return False, f"❌ Tanganmu penuh! Lepas **{weapon['name']}** terlebih dahulu jika ingin memakai Artifact."
 
     # --- LOGIKA CERDAS 2: PROSES EQUIP ---
     # Jika slot sudah terisi, pindahkan item lama kembali ke inventory
@@ -54,6 +56,11 @@ def equip_item(player, item_id):
     player['stats'] = calculate_total_stats(player)
 
     status_msg = f"✅ **{item['name']}** berhasil dipasang!"
+    
+    # Gabungkan semua pesan notifikasi (Warning -> Status -> Achievement)
+    if warning_msg:
+        status_msg = warning_msg + status_msg
+        
     if achievement_msg:
         status_msg += f"\n\n{achievement_msg}"
     
@@ -65,7 +72,10 @@ def unequip_item(player, slot):
     item_id = equipped.get(slot)
 
     if not item_id:
-        return False, f"Slot {slot} memang sudah kosong."
+        return False, f"❌ Slot {slot} memang sudah kosong."
+
+    item = get_item(item_id)
+    item_name = item['name'] if item else slot
 
     # Pindahkan ke inventory
     player['inventory'].append(item_id)
@@ -76,16 +86,4 @@ def unequip_item(player, slot):
     detect_player_job(player)
     player['stats'] = calculate_total_stats(player)
 
-    return True, f"📦 Item pada slot {slot} telah dilepas."
-
-def repair_all_items(player):
-    """Memperbaiki semua item yang dipakai jika player punya cukup Gold."""
-    equipped = player.get('equipped', {})
-    total_cost = 0
-    repaired_count = 0
-
-    for slot, item_id in equipped.items():
-        item = get_item(item_id) # Ini harus mengambil instance item player, bukan DB mentah
-        # (Dalam sistem nyata, durability disimpan di data player, bukan master DB)
-        # Logika repair di sini...
-        pass
+    return True, f"📦 **{item_name}** telah dilepas dan dimasukkan ke dalam tas."
