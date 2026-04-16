@@ -1,6 +1,6 @@
 # game/items/masks.py
 
-MASK_DB = {
+MASKS = {
     "frozen_visage": {
         "id": "frozen_visage", "name": "Frozen Visage", "tier": 4,
         "m_atk": 10, "resist": ["burn"], "weight": 2,
