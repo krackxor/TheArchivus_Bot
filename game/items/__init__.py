@@ -31,6 +31,8 @@ def get_item(item_id):
     Fungsi helper untuk mengambil data item dengan aman.
     Digunakan oleh main.py dan inventory_manager.py.
     """
+    if not item_id:
+        return None
     return MASTER_ITEM_DB.get(item_id)
 
 # Kategori untuk keperluan UI/Bot
