@@ -27,6 +27,46 @@ LOCATIONS = [
     "The Final Archive"
 ]
 
+def validate_player_data(player_doc, user_id):
+    """
+    Memastikan dokumen pemain lama mendapatkan field-field baru jika ada pembaruan kode.
+    Ini mencegah KeyError / Crash saat fitur baru ditambahkan.
+    """
+    updates = {}
+    
+    # Check field-field krusial dan field baru
+    default_fields = {
+        "artifacts": [],
+        "unlocked_lores": [],
+        "step_in_cycle": 0,
+        "miniboss_slain_cycle": False,
+        "energy": 100,
+        "max_energy": 100,
+        "debuffs": [],
+        "level": 1,
+        "exp": 0,
+        "exp_needed": 100,
+        "achievements_unlocked": [],
+        "inventory": [],
+        "active_buffs": [],
+        "active_resin": None,
+        "resin_duration": 0,
+        "has_companion": False,
+        "companion_duration": 0
+    }
+
+    for field, default_value in default_fields.items():
+        if field not in player_doc:
+            updates[field] = default_value
+
+    # Jika ada field yang harus diupdate, push ke MongoDB dan update object dictionary lokal
+    if updates:
+        players_col.update_one({"user_id": user_id}, {"$set": updates})
+        player_doc.update(updates)
+
+    return player_doc
+
+
 def get_player(user_id, username="Weaver"):
     """Mengambil data pemain atau membuat baru jika belum ada (ENHANCED)"""
     player = players_col.find_one({"user_id": user_id})
@@ -107,26 +147,8 @@ def get_player(user_id, username="Weaver"):
         players_col.insert_one(new_player)
         return new_player
     
-    # --- LOGIKA MIGRASI OTOMATIS (Mencegah Crash di Skema Baru) ---
-    updates = {}
-    
-    # Check kolom-kolom baru
-    if "artifacts" not in player: updates["artifacts"] = []
-    if "unlocked_lores" not in player: updates["unlocked_lores"] = []
-    if "step_in_cycle" not in player: updates["step_in_cycle"] = 0
-    if "miniboss_slain_cycle" not in player: updates["miniboss_slain_cycle"] = False
-    if "energy" not in player: updates["energy"] = 100
-    if "max_energy" not in player: updates["max_energy"] = 100
-    if "debuffs" not in player: updates["debuffs"] = []
-    if "level" not in player: updates["level"] = 1
-    if "exp" not in player: updates["exp"] = 0
-    if "exp_needed" not in player: updates["exp_needed"] = 100
-    if "achievements_unlocked" not in player: updates["achievements_unlocked"] = []
-    
-    # Jika ada field yang harus diupdate, push ke MongoDB
-    if updates:
-        players_col.update_one({"user_id": user_id}, {"$set": updates})
-        player.update(updates)
+    # --- LOGIKA MIGRASI OTOMATIS & VALIDASI ---
+    player = validate_player_data(player, user_id)
     
     # Update last seen
     players_col.update_one(
@@ -135,6 +157,7 @@ def get_player(user_id, username="Weaver"):
     )
         
     return player
+
 
 def update_player(user_id, data):
     """Memperbarui data spesifik pemain beserta optimasi Leaderboard"""
@@ -167,7 +190,7 @@ def add_history(user_id, event_text):
     players_col.update_one({"user_id": user_id}, {"$set": {"history": history}})
 
 def reset_player_death(user_id, cause):
-    """Logika Endless Roguelite: Penalti kematian tanpa menghapus sejarah (ENHANCED)"""
+    """Logika Endless Roguelite: Penalti kematian tanpa menghapus sejarah & ARTEFAK (ENHANCED)"""
     player = get_player(user_id)
     
     # Catat kematian di sejarah
@@ -178,12 +201,15 @@ def reset_player_death(user_id, cause):
     
     # Gold loss: 30% di cycle 1, turun ke 10% di cycle 5+
     gold_loss_percent = max(0.10, 0.30 - (cycle * 0.04))
-    gold_lost = int(player['gold'] * gold_loss_percent)
-    new_gold = player['gold'] - gold_lost
+    gold_lost = int(player.get('gold', 0) * gold_loss_percent)
+    new_gold = max(0, player.get('gold', 0) - gold_lost)
     
     # Level drop: Kehilangan 20% exp (tapi level tidak turun)
     exp_penalty = int(player.get('exp', 0) * 0.20)
     new_exp = max(0, player.get('exp', 0) - exp_penalty)
+    
+    # --- PERBAIKAN BENTROK: SELAMATKAN ARTIFACTS ---
+    saved_artifacts = player.get('artifacts', [])
     
     # Reset stats tapi pertahankan progression (Artefak & Lore AMAN)
     updates = {
@@ -198,6 +224,7 @@ def reset_player_death(user_id, cause):
         "exp": new_exp,
         "kills": 0,
         "inventory": [],  # ITEM & EQUIP HILANG (Sangat Hardcore)
+        "artifacts": saved_artifacts, # TETAP AMAN!
         "monster_streak": 0,
         "steps_since_event": 0,
         "current_combo": 0,
@@ -225,7 +252,7 @@ Jiwa Weaver hancur berkeping-keping...
 • 🔥 Combo reset.
 
 **Sisa Kekuatan yang Terjaga:**
-• ✨ Artefak / Relik
+• ✨ Artefak / Relik (Terselamatkan)
 • 📖 Jurnal Sejarah
 • 🔄 Cycle: {cycle}
 • 📊 Level: {player.get('level', 1)}
