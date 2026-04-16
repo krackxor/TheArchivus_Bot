@@ -1,5 +1,10 @@
 # game/data/script.py
 
+"""
+DATABASE SCRIPT & NARRATIVE - The Archivus (ADVANCED HORROR)
+Menyimpan narasi psikologis, peringatan stalking, dan pesan ambush.
+"""
+
 # --- LINEAR DREAD STEPS (Fase Paranoid 1-100) ---
 # Narasi yang memaksa user meragukan ruang di sekitarnya.
 DESPAIR_STEPS = {
@@ -22,12 +27,31 @@ DESPAIR_STEPS = {
     17: "Bateraimu berkurang selaras dengan umurmu di sini.",
     18: "Jangan bernapas terlalu keras. Ia bisa mendengarmu.",
     19: "Ada sidik jari di layar yang bukan milikmu. Dari dalam.",
-    20: "Dunia luar sudah berhenti. Hanya tersisa teks ini.",
-    # Tambahkan sampai 1000 dengan eskalasi kengerian
+    20: "Dunia luar sudah berhenti. Hanya tersisa teks ini."
+}
+
+# --- NARRATIVES (Eksplorasi Umum) ---
+# Digunakan oleh exploration.py untuk mengisi celah antar langkah.
+NARRATIVES = {
+    "safe": [
+        "Langkahmu bergema di lorong sepi. Dinding di sini tampak seperti sedang bernapas pelan.",
+        "Kau menemukan sisa makanan Weaver lain. Dingin, berjamur, dan penuh ulat.",
+        "Lantai marmer ini retak, memperlihatkan kegelapan yang tak berdasar di bawahnya.",
+        "Terdengar suara langkah kaki di atas plafon, mengikuti ke mana pun kau pergi."
+    ],
+    "transition": [
+        "Hawa dingin mulai menusuk tulang. Sesuatu sedang mengamatimu dari celah ventilasi.",
+        "Bau amis darah segar tercium sangat kuat. Sepertinya kau tidak sendirian.",
+        "Lenteramu berkedip. Cahayanya seolah ditelan oleh kegelapan yang kian padat."
+    ],
+    "danger_start": {
+        "GELAP": "Lentera milikmu meredup. Kegelapan ini seolah memiliki massa yang menindihmu.",
+        "RACUN": "Kabut hijau keluar dari celah lantai. Paru-parumu mulai terasa terbakar.",
+        "DINGIN": "Es mulai menutupi dinding zirahmu. Napasmu membeku menjadi kristal tajam."
+    }
 }
 
 # --- STALKING MODE (Paranoid Trigger) ---
-# Pesan yang dikirim saat 'is_stalked' aktif. Menyerang psikis secara frontal.
 STALKING_MESSAGES = [
     "Ia sedang menghitung berapa kali kau bernapas. Jangan salah hitung.",
     "Jangan matikan layar ini. Jika gelap, ia akan keluar.",
@@ -39,7 +63,6 @@ STALKING_MESSAGES = [
 ]
 
 # --- ENCOUNTER TRIGGER (Ambush) ---
-# Kalimat eksekusi saat monster akhirnya menyerang.
 MONSTER_WARNINGS = [
     "KAU TERLAMBAT MENOLIH!",
     "IA SUDAH BOSAN BERSEMBUNYI.",
