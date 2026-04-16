@@ -1,7 +1,12 @@
+# game/logic/stats.py
+
+from game.items import get_item
+from game.logic.job_manager import get_job_bonus
+
 def calculate_total_stats(player):
     """
     Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
-    Memperhitungkan Grip 2H, Durability, dan Weight Penalty.
+    Memperhitungkan Grip 2H, Durability, Weight Penalty, dan Job Bonus.
     """
     # 1. Inisialisasi Stat Dasar (dari level/base player)
     stats = {
@@ -55,19 +60,28 @@ def calculate_total_stats(player):
     stats['dodge'] = max(0.05, stats['dodge'] - (weight_penalty * 0.02))
     stats['speed'] = max(1, stats['speed'] - weight_penalty)
 
-    # 5. BONUS SET JOB (Jika 8 slot terpenuhi & Akurat)
-    # Ini fungsi yang kita buat sebelumnya untuk mendeteksi Job
-    from game.items.manager import detect_player_job
-    job_name, _ = detect_player_job(player)
+    # 5. BONUS SET JOB (Menggunakan job_manager.py)
+    job_name = player.get('current_job', 'Novice Weaver')
+    job_bonuses = get_job_bonus(job_name)
     
-    if job_name != "Novice Weaver":
-        # Memberikan bonus 10% pada stat utama Job
-        if "Archer" in job_name or "Assassin" in job_name:
-            stats['speed'] += 5
-            stats['dodge'] += 0.05
-        elif "Knight" in job_name or "Warden" in job_name:
-            stats['p_def'] = int(stats['p_def'] * 1.15)
-        elif "Sage" in job_name or "Sovereign" in job_name:
-            stats['m_atk'] = int(stats['m_atk'] * 1.15)
+    # Terapkan multiplier stat
+    stats['p_atk'] = int(stats['p_atk'] * job_bonuses['p_atk_mult'])
+    stats['m_atk'] = int(stats['m_atk'] * job_bonuses['m_atk_mult'])
+    stats['p_def'] = int(stats['p_def'] * job_bonuses['p_def_mult'])
+    
+    # Tambahkan bonus flat untuk speed dan dodge
+    stats['speed'] += job_bonuses['speed_bonus']
+    stats['dodge'] += job_bonuses['dodge_bonus']
+    
+    # Cap maksimal untuk dodge agar tidak bisa 100% menghindar (maksimal 90%)
+    stats['dodge'] = min(0.90, stats['dodge'])
+
+    # Elemen utama player diambil dari senjata (jika ada)
+    if weapon:
+        stats['element'] = weapon.get('element', 'none')
+        stats['attack_type'] = 'magic' if weapon.get('m_atk', 0) > weapon.get('p_atk', 0) else 'physical'
+    else:
+        stats['element'] = 'none'
+        stats['attack_type'] = 'physical'
 
     return stats
