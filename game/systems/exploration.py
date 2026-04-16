@@ -3,16 +3,21 @@
 """
 Sistem Eksplorasi (Exploration System) - ALUR DINAMIS & PSYCHO DREAD
 Menangani logika pergerakan pemain dengan The Journey Driver.
+Struktur: Satu pintu untuk Monster & Boss.
 """
 
 import random
+import time
 
-# Panggilan ke database
+# Panggilan ke database (Pastikan file database.py ada di root atau folder yang benar)
 from database import get_player, update_player, add_history
 
-# Panggilan ke sistem Entitas & Data
-from game.entities.bosses import get_random_mini_boss
-from game.data.script import NARRATIVES, MONSTER_WARNINGS  # <--- SEKARANG KITA IMPORT DARI SINI
+# Panggilan ke sistem Entitas (Sesuai struktur baru: Satu Pintu)
+from game.entities.monsters import get_random_monster, get_random_mini_boss
+from game.entities.npcs import get_random_npc_event, get_random_lore
+
+# Ambil data narasi dari pusat data
+from game.data import NARRATIVES, MONSTER_WARNINGS
 
 try:
     from database import LOCATIONS
@@ -69,18 +74,12 @@ def process_move(user_id):
     steps = player.get('step_in_cycle', 0) + 1
     current_loc, just_moved = update_location_if_needed(player)
     
-    # 1. TRIGGER MISI AWAL
+    # 1. TRIGGER MISI AWAL (Tutorial/Lore Start)
     if player.get("step_counter", 0) == 0 and kills == 0 and cycle == 1:
         update_player(user_id, {"step_counter": 1, "step_in_cycle": 1})
-        npc_data = {
-            "identity": "The Last Chronicler",
-            "dialog": f"Sejarah di {current_loc} tidak untuk dibaca. Kumpulkan jiwa mereka yang gagal.",
-            "requirement": None,
-            "is_liar": False
-        }
-        return ("npc_mission", npc_data, "✨ Teks di dinding perlahan membentuk wajah yang hancur...")
+        return ("npc_mission", {"identity": "The Last Chronicler"}, "✨ Teks di dinding perlahan membentuk wajah yang hancur...")
 
-    # 2. TRIGGER BOSS UTAMA
+    # 2. TRIGGER BOSS UTAMA (Main Boss)
     is_boss = False
     if kills > 20: is_boss = True 
     elif kills >= 15 and random.randint(1, 100) <= (kills - 14) * 15: is_boss = True
@@ -89,25 +88,31 @@ def process_move(user_id):
         update_player(user_id, {"step_in_cycle": 0})
         return ("boss", None, f"🌑 **SELAMAT DATANG DI NERAKA YANG KAU CIPTAKAN.**\nSang Penjaga telah tiba!")
 
+    # Update step counter pemain
     update_player(user_id, {"step_in_cycle": steps, "step_counter": player.get("step_counter", 0) + 1})
     
-    # FASE 1: PARANOIA (1 - 15)
+    # FASE 1: PARANOIA (Langkah 1 - 15)
     if steps <= 15:
         roll = random.random()
-        if roll < 0.10: return ("grave", None, "🪦 **NISAN KOSONG.** Liang lahat ini pas dengan tubuhmu.")
-        elif roll < 0.15: return ("npc_lore", None, "👤 **GEMA KETAKUTAN.** Bayangan yang menyerupai dirimu menangis.")
-        elif roll < 0.35: return ("monster", None, f"👾 {random.choice(MONSTER_WARNINGS)}")
+        if roll < 0.10: 
+            return ("grave", None, "🪦 **NISAN KOSONG.** Liang lahat ini pas dengan tubuhmu.")
+        elif roll < 0.15: 
+            npc = get_random_npc_event()
+            return ("npc", npc, f"👤 **KONTAK.** {npc['name']} muncul dari kegelapan.")
+        elif roll < 0.35: 
+            return ("monster", None, f"👾 {random.choice(MONSTER_WARNINGS)}")
         else: 
             teks = random.choice(NARRATIVES["safe"])
             if just_moved: teks = f"🗺️ **KAU TERJEBAK DI: {current_loc}**\n\n" + teks
             return ("safe", None, teks)
 
-    # FASE 2: STALKING (16 - 18)
+    # FASE 2: STALKING (Langkah 16 - 18)
     elif 16 <= steps <= 18:
-        if random.random() < 0.30: return ("monster", None, f"⚔️ {random.choice(MONSTER_WARNINGS)}")
+        if random.random() < 0.30: 
+            return ("monster", None, f"⚔️ {random.choice(MONSTER_WARNINGS)}")
         return ("safe", None, random.choice(NARRATIVES["transition"]))
 
-    # FASE 3: DESPAIR / BAHAYA (19 - 30)
+    # FASE 3: DESPAIR / BAHAYA (Langkah 19 - 30)
     elif 19 <= steps <= 30:
         roll = random.random()
         hazard_type = "GELAP" if "Abyss" in current_loc else "RACUN" if "Mire" in current_loc else "DINGIN"
@@ -122,17 +127,20 @@ def process_move(user_id):
         elif roll < 0.35:
             chest = random.choices(["wood", "iron", "sealed"], weights=[60, 30, 10])[0]
             return ("treasure_chest", {"type": chest}, f"📦 **HARAPAN PALSU.** Sebuah peti {chest} tergeletak.")
-        elif roll < 0.45: return ("idol", None, "🗿 **BERHALA MATI.** Patung ini sedang menghitung kedipan matamu.")
-        elif roll < 0.75: return ("monster", None, f"⚔️ **PENYERGAPAN.** {random.choice(MONSTER_WARNINGS)}")
-        else: return ("safe", None, "Jalanan kosong. Tapi layar ini berdenyut. Ia tahu kau ketakutan.")
+        elif roll < 0.45: 
+            return ("idol", None, "🗿 **BERHALA MATI.** Patung ini sedang menghitung kedipan matamu.")
+        elif roll < 0.75: 
+            return ("monster", None, f"⚔️ **PENYERGAPAN.** {random.choice(MONSTER_WARNINGS)}")
+        else: 
+            return ("safe", None, "Jalanan kosong. Tapi layar ini berdenyut. Ia tahu kau ketakutan.")
 
-    # FASE 4: KLIMAKS (31 - 35)
+    # FASE 4: KLIMAKS (Langkah 31 - 35)
     elif 31 <= steps <= 35:
         if steps == 34 and not player.get('miniboss_slain_cycle', False):
-            update_player(user_id, {"miniboss_slain_cycle": True})
+            # Penting: Mengambil dari monsters.py bukan bosses/ folder
             mb = get_random_mini_boss()
-            mb_name = mb.get("name", "Elite") if isinstance(mb, dict) else mb
-            return ("miniboss", {"name": mb_name}, f"🚨 **PINTU TERTUTUP.**\n{mb_name} menghalangimu!")
+            mb_name = mb.get("name", "Elite Enemy") if isinstance(mb, dict) else "Mini Boss"
+            return ("miniboss", {"data": mb}, f"🚨 **PINTU TERTUTUP.**\n{mb_name} menghalangimu!")
             
         if random.random() < 0.40:
             apply_trap_or_hazard(player, "trap")
