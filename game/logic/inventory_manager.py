@@ -23,41 +23,33 @@ def equip_item(player, item_id):
 
     # --- LOGIKA CERDAS 1: KONFLIK 2-HANDED (2H) ---
     if slot == 'weapon':
-        # Jika memasang senjata 2H, otomatis lepas Artifact
         if item.get('grip') == '2H':
             if equipped.get('artifact'):
                 unequip_item(player, 'artifact')
-                warning_msg = f"⚠️ **{item['name']}** terlalu berat dan butuh dua tangan. Artifact milikmu otomatis dilepas.\n"
+                warning_msg = f"⚠️ **{item['name']}** butuh dua tangan. Artifact otomatis dilepas.\n"
     
     elif slot == 'artifact':
-        # Jika mencoba pasang Artifact tapi senjata saat ini adalah 2H
         weapon_id = equipped.get('weapon')
         if weapon_id:
             weapon = get_item(weapon_id)
             if weapon and weapon.get('grip') == '2H':
-                return False, f"❌ Tanganmu penuh! Lepas **{weapon['name']}** terlebih dahulu jika ingin memakai Artifact."
+                return False, f"❌ Tanganmu penuh! Lepas **{weapon['name']}** terlebih dahulu."
 
     # --- LOGIKA CERDAS 2: PROSES EQUIP ---
-    # Jika slot sudah terisi, pindahkan item lama kembali ke inventory
     old_item_id = equipped.get(slot)
     if old_item_id:
         player['inventory'].append(old_item_id)
 
-    # Pasang item baru
     equipped[slot] = item_id
     player['inventory'].remove(item_id)
     player['equipped'] = equipped
 
     # --- LOGIKA CERDAS 3: SINERGI & JOB CHECK ---
     detect_player_job(player)
-    
-    # Recalculate stats agar perubahan langsung terasa
     player['stats'] = calculate_total_stats(player)
 
     status_msg = f"✅ **{item['name']}** berhasil dipasang!"
-    
-    if warning_msg:
-        status_msg = warning_msg + status_msg
+    if warning_msg: status_msg = warning_msg + status_msg
     
     return True, status_msg
 
@@ -72,42 +64,77 @@ def unequip_item(player, slot):
     item = get_item(item_id)
     item_name = item['name'] if item else slot
 
-    # Pindahkan ke inventory
     player['inventory'].append(item_id)
     del equipped[slot]
     player['equipped'] = equipped
 
-    # Reset Job & Stats
     detect_player_job(player)
     player['stats'] = calculate_total_stats(player)
 
-    return True, f"📦 **{item_name}** telah dilepas dan dimasukkan ke dalam tas."
+    return True, f"📦 **{item_name}** telah dilepas."
 
 # === SISTEM PANDAI BESI (REPAIR) ===
 
 def process_repair_all(player):
     """
-    Menghitung biaya dan memperbaiki semua item yang terpasang ke 100%.
+    Memperbaiki semua item yang terpasang ke 100%.
     Biaya: 10 Gold per 1 poin durabilitas yang hilang.
-    Maksimal durabilitas: 50
     """
     equipped = player.get('equipped', {})
     durability_data = player.get('equipment_durability', {})
     total_cost = 0
     items_repaired = 0
     
-    # Iterasi setiap item yang sedang dipakai
     for slot, item_id in equipped.items():
-        # Dapatkan durabilitas saat ini (default 50 jika baru)
         current_dur = durability_data.get(slot, 50)
-        
         if current_dur < 50:
             missing_dur = 50 - current_dur
-            # Hitung biaya per poin perbaikan (10 Gold)
             total_cost += missing_dur * 10 
-            
-            # Pulihkan ke maksimal
             durability_data[slot] = 50
             items_repaired += 1
             
     return durability_data, total_cost, items_repaired
+
+# === SISTEM CONSUMABLES (PENGGUNAAN ITEM) ===
+
+def use_consumable_item(player, item_id):
+    """
+    Logika penggunaan item habis pakai (Potion, Antidote, dll).
+    Mengembalikan: (success, message, updated_player)
+    """
+    item = get_item(item_id)
+    if not item or item.get('type') != 'consumable':
+        return False, "❌ Ini bukan item yang bisa dikonsumsi.", player
+
+    inventory = player.get('inventory', [])
+    if item_id not in inventory:
+        return False, "❌ Item tidak ada di tas.", player
+
+    msg = ""
+    eff_type = item.get('effect_type')
+    val = item.get('value', 0)
+
+    # 1. Efek Pemulihan HP
+    if eff_type == 'heal_hp':
+        old_hp = player['hp']
+        player['hp'] = min(player.get('max_hp', 100), player['hp'] + val)
+        msg = f"💖 Meminum {item['name']}! (+{player['hp'] - old_hp} HP)"
+    
+    # 2. Efek Pemulihan MP
+    elif eff_type == 'restore_mp':
+        old_mp = player.get('mp', 0)
+        player['mp'] = min(player.get('max_mp', 50), player.get('mp', 0) + val)
+        msg = f"🔵 Meminum {item['name']}! (+{player['mp'] - old_mp} MP)"
+
+    # 3. Efek Menetralkan Racun (Poison)
+    elif eff_type == 'clear_poison':
+        # Filter active_effects untuk membuang status poison
+        active_effects = player.get('active_effects', [])
+        player['active_effects'] = [e for e in active_effects if e['type'] != 'poison']
+        msg = f"🧪 {item['name']} telah menetralkan racun dalam darahmu!"
+
+    # Kurangi 1 jumlah item dari tas
+    inventory.remove(item_id)
+    player['inventory'] = inventory
+    
+    return True, msg, player
