@@ -45,6 +45,15 @@ from utils.helper_ui import (
 dp = Dispatcher()
 ADMIN_ID = 123456789  # GANTI DENGAN ID TELEGRAM-MU
 
+# === DICTIONARY TRACKING TASK TIMEOUT ===
+active_timers = {}
+
+def cancel_active_timer(user_id):
+    """Membatalkan timer asinkron jika ada, untuk mencegah memory leak & double attack."""
+    task = active_timers.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+
 # === HELPER DURABILITY (ADAPTED FOR 8-SLOT SYSTEM) ===
 def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1):
     """
@@ -130,59 +139,71 @@ def get_stance_keyboard(is_boss=False):
 
 # === BACKGROUND TIMERS ===
 async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict, user_id: int):
-    timer = puzzle['timer']
-    if str(timer) == "--": return # Time Warp diaktifkan
+    try:
+        timer = puzzle['timer']
+        if str(timer) == "--": return # Time Warp diaktifkan
 
-    for warning in [30, 15, 5]:
-        if timer > warning:
-            await asyncio.sleep(timer - warning)
-            timer = warning
-            
-    await asyncio.sleep(timer)
-    
-    current_state = await state.get_state()
-    data = await state.get_data()
-    active_puzzle = data.get("puzzle", {})
-    battle_msg_id = data.get("battle_msg_id")
-    
-    if current_state == GameState.in_combat and active_puzzle.get("generated_time") == puzzle["generated_time"]:
-        p = get_player(user_id)
-        p['stats'] = calculate_total_stats(p)
+        for warning in [30, 15, 5]:
+            if timer > warning:
+                await asyncio.sleep(timer - warning)
+                timer = warning
+                
+        await asyncio.sleep(timer)
         
-        # Monster Menyerang karena Timeout
-        raw_dmg, atk_log = calculate_damage(puzzle, p, is_attacker_player=False)
+        current_state = await state.get_state()
+        data = await state.get_data()
+        active_puzzle = data.get("puzzle", {})
+        battle_msg_id = data.get("battle_msg_id")
         
-        # --- PENGURANGAN DURABILITAS ARMOR KARENA DISERANG ---
-        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
-        if broken_armors:
-            atk_log += f"\n⚠️ *Peringatan! Pelindungmu hancur:* {', '.join(broken_armors)}"
+        if current_state == GameState.in_combat and active_puzzle.get("generated_time") == puzzle["generated_time"]:
+            p = get_player(user_id)
+            p['stats'] = calculate_total_stats(p)
             
-        new_hp = p['hp'] - raw_dmg
-        update_player(user_id, {"hp": new_hp, "current_combo": 0})
-        p['hp'] = new_hp 
-        
-        if new_hp <= 0:
-            await state.set_state(GameState.exploring)
-            stats = {'cycle': p.get('cycle', 1), 'kills': p['kills'], 'gold_lost': p['gold']}
-            death_msg = create_death_screen("Waktu habis di pertarungan", stats)
-            msg_text = reset_player_death(user_id, "death_combat")
-            try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text="💀 **KAU TELAH GUGUR...**", parse_mode="Markdown")
-            except: pass
-            await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
-        else:
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False), existing_monster=puzzle)
-            new_puzzle['generated_time'] = None 
-            await state.update_data(puzzle=new_puzzle, action_type=None)
+            # Monster Menyerang karena Timeout
+            raw_dmg, atk_log = calculate_damage(puzzle, p, is_attacker_player=False)
             
-            safe_puzzle = new_puzzle.copy()
-            safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
-            safe_puzzle['timer'] = "--"
+            # --- PENGURANGAN DURABILITAS ARMOR KARENA DISERANG ---
+            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
+            if broken_armors:
+                atk_log += f"\n⚠️ *Peringatan! Pelindungmu hancur:* {', '.join(broken_armors)}"
+                
+            new_hp = p['hp'] - raw_dmg
+            update_player(user_id, {"hp": new_hp, "current_combo": 0})
+            p['hp'] = new_hp 
             
-            log_msg = f"⏰ WAKTU HABIS! Kamu terlalu lambat!\n{atk_log} (-{raw_dmg} HP)"
-            next_msg = render_live_battle(p, safe_puzzle, log_msg)
-            
-            try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(puzzle.get('is_boss', False)))
-            except TelegramBadRequest: pass
+            if new_hp <= 0:
+                await state.set_state(GameState.exploring)
+                stats = {'cycle': p.get('cycle', 1), 'kills': p['kills'], 'gold_lost': p['gold']}
+                death_msg = create_death_screen("Waktu habis di pertarungan", stats)
+                msg_text = reset_player_death(user_id, "death_combat")
+                try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text="💀 **KAU TELAH GUGUR...**", parse_mode="Markdown")
+                except: pass
+                await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+            else:
+                new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False), existing_monster=puzzle)
+                new_puzzle['generated_time'] = None 
+                await state.update_data(puzzle=new_puzzle, action_type=None)
+                
+                safe_puzzle = new_puzzle.copy()
+                safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
+                safe_puzzle['timer'] = "--"
+                
+                log_msg = f"⏰ WAKTU HABIS! Kamu terlalu lambat!\n{atk_log} (-{raw_dmg} HP)"
+                next_msg = render_live_battle(p, safe_puzzle, log_msg)
+                
+                try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(puzzle.get('is_boss', False)))
+                except TelegramBadRequest: pass
+                
+                # --- START TIMER BARU UNTUK RONDE SELANJUTNYA ---
+                active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
+
+    except asyncio.CancelledError:
+        # Task dibatalkan karena player menjawab dengan benar/cepat
+        return
+    finally:
+        # Bersihkan dictionary jika selesai
+        if user_id in active_timers and active_timers[user_id] == asyncio.current_task():
+            active_timers.pop(user_id, None)
 
 # === COMMAND HANDLERS ===
 @dp.message(CommandStart())
@@ -274,7 +295,7 @@ async def move_handler(message: Message, state: FSMContext):
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p) # Refresh stats
     
-    # 1. CEK ENERGI & LOGIKA PUSING/RACUN (Tetap sama seperti kodemu)
+    # 1. CEK ENERGI & LOGIKA PUSING/RACUN
     new_energy = p.get('energy', 100) - 1
     update_player(user_id, {"energy": new_energy})
     
@@ -306,15 +327,74 @@ async def move_handler(message: Message, state: FSMContext):
             action_type=None
         )
         
-    # EVENT LAINNYA (REST AREA, CHEST, DLL) -> Tidak berubah
+        # --- START TIMER PERTARUNGAN ---
+        cancel_active_timer(user_id) 
+        active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
+        
+    # EVENT LAINNYA (REST AREA, CHEST, DLL)
     else:
         await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+
+
+# === ROUTER TOMBOL AKSI PERTARUNGAN (STANCE) ===
+@dp.callback_query(GameState.in_combat, F.data.in_(["stance_attack", "stance_block", "stance_dodge", "stance_run", "menu_skill", "menu_item"]))
+async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
+    data = callback.data
+    user_id = callback.from_user.id
+    
+    # 1. Tentukan jenis aksi dari tombol yang diklik
+    action = "attack" # Default
+    if data == "stance_run": action = "run"
+    elif data == "stance_block": action = "block"
+    elif data == "stance_dodge": action = "dodge"
+    elif data == "menu_skill": action = "skill"
+    elif data == "menu_item": action = "item"
+    
+    # 2. Ambil data pertempuran saat ini dari memori (FSM)
+    state_data = await state.get_data()
+    puzzle = state_data.get("puzzle")
+    
+    if not puzzle:
+        return await callback.answer("Sesi pertarungan tidak valid atau sudah selesai.", show_alert=True)
+        
+    # 3. Simpan jenis aksi ke memori
+    await state.update_data(action_type=action)
+    
+    p = get_player(user_id)
+    p['stats'] = calculate_total_stats(p)
+    
+    # 4. Catat waktu teka-teki benar-benar diperlihatkan
+    puzzle['generated_time'] = time.time()
+    await state.update_data(puzzle=puzzle) 
+    
+    action_names = {
+        "attack": "⚔️ MENYERANG",
+        "run": "🏃 KABUR",
+        "block": "🛡️ BERTAHAN",
+        "dodge": "💨 MENGHINDAR",
+        "skill": "🔮 CAST SKILL",
+        "item": "🎒 GUNAKAN ITEM"
+    }
+    selected_action = action_names.get(action, "AKSI")
+    
+    # 5. Tampilkan UI Puzzle yang sebenarnya (pertanyaan muncul)
+    combat_ui = render_live_battle(p, puzzle, f"{selected_action} DIPILIH!\n\n👇 **SELANJUTNYA: KETIK JAWABAN TEKA-TEKI INI DI CHAT!** 👇")
+    
+    try:
+        await callback.message.edit_text(combat_ui, parse_mode="Markdown", reply_markup=None)
+        await callback.answer(f"Segel terbuka! Cepat jawab untuk melakukan {selected_action}!")
+    except TelegramBadRequest:
+        pass
 
 
 # === PUSAT LOGIKA JAWABAN PUZZLE (ATTACK / SKILL / RUN) ===
 @dp.message(GameState.in_combat)
 async def combat_answer_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    
+    # --- PEMAIN MERESPONS: BATALKAN TIMER HITUNG MUNDUR ---
+    cancel_active_timer(user_id)
+    
     try: await message.delete()
     except TelegramBadRequest: pass 
 
@@ -365,7 +445,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             result_msg = f"🔥 *SKILL ACTIVATED!* {atk_log} Musuh -{p_dmg} HP."
             
         elif action == "run":
-            # Dodge chance sekarang ditarik dari stats yang sudah memperhitungkan berat equipment
+            # Dodge chance ditarik dari stats
             chance = p['stats']['dodge'] + 0.30 
             if random.random() < chance:
                 await state.set_state(GameState.exploring)
@@ -414,10 +494,12 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             if battle_msg_id:
                 try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
                 except TelegramBadRequest: pass
+                
+            # --- START TIMER UNTUK RONDE BARU ---
+            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
 
     # JIKA JAWABAN SALAH / TIMEOUT
     else:
-        # === MONSTER MENYERANG BALIK (MESIN BARU) ===
         m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
         
         # --- PENGURANGAN DURABILITAS ARMOR KARENA DISERANG ---
@@ -451,6 +533,9 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             if battle_msg_id:
                 try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
                 except TelegramBadRequest: pass
+                
+            # --- START TIMER UNTUK RONDE BARU ---
+            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
 
 async def main():
     auto_seed_content()
