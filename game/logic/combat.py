@@ -34,15 +34,15 @@ STATUS_ICONS = {
     "regen": "💖",
     "stun": "💫",
     "bleed": "🩸",
-    "atk_buff": "⚔️+",
-    "def_buff": "🛡️+",
-    "speed_debuff": "👟-"
+    "atk_buff": "⚔️↑",
+    "def_buff": "🛡️↑",
+    "speed_debuff": "👟↓",
+    "blind": "🌑"
 }
 
 def apply_turn_status_effects(entity, is_player=True):
     """
-    Memproses efek berkala (DoT/Regen) setiap ronde.
-    entity: data player (dict) atau data puzzle monster (dict).
+    Memproses efek berkala (DoT/Regen) setiap ronde untuk Player atau Monster.
     Mengembalikan: (total_hp_change, list_log_pesan)
     """
     hp_change = 0
@@ -57,19 +57,26 @@ def apply_turn_status_effects(entity, is_player=True):
         val = effect.get('value', 0)
         
         if eff_type == 'poison':
-            # Mengurangi HP berdasarkan persentase (misal 5% Max HP)
+            # Racun: Damage berdasarkan % Max HP (min 1)
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
             dmg = max(1, int(max_hp * 0.05))
             hp_change -= dmg
-            logs.append(f"{STATUS_ICONS['poison']} {name_label} terkena racun! (-{dmg} HP)")
+            logs.append(f"{STATUS_ICONS['poison']} {dmg}")
+            
+        elif eff_type == 'burn':
+            # Terbakar: Damage tetap
+            hp_change -= val
+            logs.append(f"{STATUS_ICONS['burn']} {val}")
             
         elif eff_type == 'regen':
+            # Regen: Memulihkan HP
             hp_change += val
-            logs.append(f"{STATUS_ICONS['regen']} {name_label} memulihkan diri! (+{val} HP)")
+            logs.append(f"{STATUS_ICONS['regen']} {val}")
             
         elif eff_type == 'bleed':
+            # Pendarahan: Damage tetap
             hp_change -= val
-            logs.append(f"{STATUS_ICONS['bleed']} Luka {name_label} terbuka! (-{val} HP)")
+            logs.append(f"{STATUS_ICONS['bleed']} {val}")
 
     return hp_change, logs
 
@@ -93,9 +100,8 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
     p_hp_view = get_dynamic_bar(player.get('hp', 0), player.get('max_hp', 100), type_bar="hp")
     m_hp_view = get_dynamic_bar(monster.get('monster_hp', 0), monster.get('monster_max_hp', 100), type_bar="hp")
     
-    # Render Icon Status Player
+    # Render Icon Status aktif
     p_status = "".join([STATUS_ICONS.get(e['type'], "") for e in player.get('active_effects', [])])
-    # Render Icon Status Monster
     m_status = "".join([STATUS_ICONS.get(e['type'], "") for e in monster.get('monster_effects', [])])
 
     text = (
@@ -119,19 +125,20 @@ def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
 
 # === MESIN KALKULASI DAMAGE ===
 def calculate_damage(attacker, defender, is_attacker_player=True):
-    """Rumus Damage Utama: ATK vs DEF + Efek Stat + Element + Crit + Dodge"""
+    """Rumus Damage Utama: ATK vs DEF + Elemental + Crit + Dodge"""
     log = []
     
-    # Stats pemain sudah termasuk buff dari stats.py
+    # Jika attacker player, gunakan dict stats. Jika monster, gunakan data monster langsung.
     atk_stats = attacker.get('stats', attacker) if is_attacker_player else attacker
     def_stats = defender.get('stats', defender) if not is_attacker_player else defender
 
-    # 1. Cek Dodge (Stat dodge dipengaruhi weight_penalty di stats.py)
-    dodge_chance = def_stats.get("dodge", 0.05) if not is_attacker_player else def_stats.get('stats', {}).get('dodge', 0.05)
+    # 1. Cek Dodge (Stat dodge player ditarik dari stats.py)
+    # Jika defender adalah player, dodge chance diambil dari def_stats['dodge']
+    dodge_chance = def_stats.get("dodge", 0.05) 
     if random.random() < dodge_chance:
         return 0, "💨 *MELLESAT!* Serangan gagal mengenai target."
 
-    # 2. Tentukan Jenis Serangan
+    # 2. Tentukan Jenis Serangan & Damage Dasar
     atk_type = atk_stats.get("attack_type", "physical")
     if atk_type == "physical":
         raw_dmg = atk_stats.get("p_atk", 10) - def_stats.get("p_def", 5)
@@ -142,6 +149,7 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
 
     # 3. Multiplier Elemen
     atk_element = atk_stats.get("element", attacker.get("element", "none")).lower()
+    # Monster menyimpan kelemahan di 'monster_weakness'
     def_element = def_stats.get("monster_element" if not is_attacker_player else "element", "none").lower()
     def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
     
@@ -153,7 +161,7 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
         multiplier = 0.5
         log.append("🛡️ *RESISTANT.*")
 
-    # 4. Critical
+    # 4. Critical Hit
     crit_chance = atk_stats.get("crit_chance", 0.05)
     if random.random() < crit_chance:
         multiplier *= atk_stats.get("crit_damage", 1.5)
@@ -173,9 +181,11 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
     else:
         m_data = get_random_monster(tier_level)
 
+    # Scaling HP berdasarkan Cycle Pemain
     cycle = player.get('cycle', 1)
     hp_scaling = 1 + (cycle * 0.1) 
     
+    # Kalkulasi Timer berdasarkan Speed Monster vs Tier
     m_speed = m_data.get("speed", 5)
     base_timer = 20 if is_boss else 35
     timer_penalty = m_speed * 1.5
@@ -190,7 +200,7 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
         "monster_element": m_data.get("element", "none"),
         "monster_weakness": m_data.get("weakness", "none"),
         "monster_race": m_data.get("race", "unknown"),
-        "monster_effects": [], # Inisialisasi daftar Buff/Debuff Monster
+        "monster_effects": [], # Slot untuk debuff dari player (misal player punya skill racun)
         "p_atk": m_data.get("p_atk", 10),
         "m_atk": m_data.get("m_atk", 10),
         "p_def": m_data.get("p_def", 5),
