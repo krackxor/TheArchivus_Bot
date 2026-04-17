@@ -124,15 +124,16 @@ def get_main_reply_keyboard(player=None):
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, input_field_placeholder="⚔️ Pilih aksimu, Weaver...")
 
 def get_stance_keyboard(is_boss=False):
+    # PERBAIKAN: stance_skill dan stance_item agar tidak terblokir menu tas
     row1 = [
         InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
-        InlineKeyboardButton(text="🔮 Skill", callback_data="menu_skill")
+        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill")
     ]
     row2 = [
         InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
         InlineKeyboardButton(text="💨 Menghindar", callback_data="stance_dodge")
     ]
-    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="menu_item")]
+    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="stance_item")]
     if not is_boss: row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
 
@@ -337,33 +338,31 @@ async def move_handler(message: Message, state: FSMContext):
 
 
 # === ROUTER TOMBOL AKSI PERTARUNGAN (STANCE) ===
-@dp.callback_query(GameState.in_combat, F.data.in_(["stance_attack", "stance_block", "stance_dodge", "stance_run", "menu_skill", "menu_item"]))
+@dp.callback_query(F.data.startswith("stance_"))
 async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    
+    # PENGAMAN: Jika pemain klik tombol lama setelah bot direstart/state hilang
+    if current_state is None or "in_combat" not in current_state:
+        return await callback.answer("⚠️ Sesi pertarungan ini sudah kedaluwarsa. Silakan jalan mencari musuh baru!", show_alert=True)
+        
     data = callback.data
     user_id = callback.from_user.id
     
-    # 1. Tentukan jenis aksi dari tombol yang diklik
-    action = "attack" # Default
-    if data == "stance_run": action = "run"
-    elif data == "stance_block": action = "block"
-    elif data == "stance_dodge": action = "dodge"
-    elif data == "menu_skill": action = "skill"
-    elif data == "menu_item": action = "item"
+    # Bersihkan prefix 'stance_' untuk mendapatkan nama aksi asli
+    action = data.replace("stance_", "") 
     
-    # 2. Ambil data pertempuran saat ini dari memori (FSM)
     state_data = await state.get_data()
     puzzle = state_data.get("puzzle")
     
     if not puzzle:
-        return await callback.answer("Sesi pertarungan tidak valid atau sudah selesai.", show_alert=True)
+        return await callback.answer("Data musuh tidak ditemukan. Silakan cari musuh baru.", show_alert=True)
         
-    # 3. Simpan jenis aksi ke memori
     await state.update_data(action_type=action)
     
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p)
     
-    # 4. Catat waktu teka-teki benar-benar diperlihatkan
     puzzle['generated_time'] = time.time()
     await state.update_data(puzzle=puzzle) 
     
@@ -377,7 +376,6 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     }
     selected_action = action_names.get(action, "AKSI")
     
-    # 5. Tampilkan UI Puzzle yang sebenarnya (pertanyaan muncul)
     combat_ui = render_live_battle(p, puzzle, f"{selected_action} DIPILIH!\n\n👇 **SELANJUTNYA: KETIK JAWABAN TEKA-TEKI INI DI CHAT!** 👇")
     
     try:
@@ -387,7 +385,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         pass
 
 
-# === PUSAT LOGIKA JAWABAN PUZZLE (ATTACK / SKILL / RUN) ===
+# === PUSAT LOGIKA JAWABAN PUZZLE (SEMUA AKSI TERDAPAT DI SINI) ===
 @dp.message(GameState.in_combat)
 async def combat_answer_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -418,34 +416,77 @@ async def combat_answer_handler(message: Message, state: FSMContext):
     if is_correct:
         if action == "attack":
             current_combo += 1
-            # === MENGGUNAKAN MESIN DAMAGE BARU ===
             p_dmg, atk_log = calculate_damage(p, puzzle, is_attacker_player=True)
-            
-            # --- PENGURANGAN DURABILITAS SENJATA KARENA MENYERANG ---
             broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
             if broken_weapons:
                 atk_log += f"\n⚠️ *Peringatan! Senjatamu hancur:* {', '.join(broken_weapons)}"
-            
             puzzle['monster_hp'] -= p_dmg  
             result_msg = f"⚔️ {atk_log} Musuh -{p_dmg} HP."
             
         elif action == "skill":
             current_combo += 1
-            # Skill memberikan modifier damage tambahan
             temp_p = p.copy()
             temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
             p_dmg, atk_log = calculate_damage(temp_p, puzzle, is_attacker_player=True)
-            
-            # --- PENGURANGAN DURABILITAS SENJATA KARENA SKILL ---
             broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
             if broken_weapons:
                 atk_log += f"\n⚠️ *Peringatan! Senjatamu hancur:* {', '.join(broken_weapons)}"
-                
             puzzle['monster_hp'] -= p_dmg
             result_msg = f"🔥 *SKILL ACTIVATED!* {atk_log} Musuh -{p_dmg} HP."
+
+        elif action == "block":
+            current_combo += 1
+            # Memulihkan 15% Max HP
+            heal_amount = int(p.get('max_hp', 100) * 0.15)
+            new_hp = min(p.get('max_hp', 100), p.get('hp', 100) + heal_amount)
+            update_player(user_id, {'hp': new_hp})
+            p['hp'] = new_hp
+            
+            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+            durability_log = f"\n⚠️ *Pelindung retak:* {', '.join(broken_armors)}" if broken_armors else ""
+            result_msg = f"🛡️ *BERTAHAN!* Menangkis dan memulihkan {heal_amount} HP.{durability_log}"
+
+        elif action == "dodge":
+            current_combo += 1
+            # Logika Dodge Berdasarkan Weight
+            base_dodge_chance = 0.50
+            player_dodge_stat = p['stats'].get('dodge', 0.1) 
+            weight_penalty = p['stats'].get('total_weight', 0) * 0.01
+            final_dodge_chance = base_dodge_chance + player_dodge_stat - weight_penalty
+
+            if random.random() < final_dodge_chance:
+                # PERFECT DODGE
+                restore_mp = int(p.get('max_mp', 50) * 0.20)
+                new_mp = min(p.get('max_mp', 50), p.get('mp', 0) + restore_mp)
+                update_player(user_id, {'mp': new_mp})
+                p['mp'] = new_mp
+                
+                c_dmg = int(p['stats']['p_atk'] * 0.5)
+                puzzle['monster_hp'] -= c_dmg
+                result_msg = f"💨 *PERFECT DODGE!* Gerakanmu sangat gesit! (+{restore_mp} MP). Balasan cepat: Musuh -{c_dmg} HP."
+            else:
+                # FAT DODGE (Gagal menghindar penuh, armor menahan damage)
+                m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+                reduced_dmg = max(1, int(m_dmg * 0.7)) 
+                
+                new_hp = p['hp'] - reduced_dmg
+                update_player(user_id, {'hp': new_hp})
+                p['hp'] = new_hp
+                
+                broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+                dur_msg = f"\n⚠️ Pelindung retak menahan benturan: {', '.join(broken_armors)}" if broken_armors else ""
+                result_msg = f"🧱 *TERLALU BERAT!* Gagal menghindar sempurna. Armor menahan sisa serangan (-{reduced_dmg} HP).{dur_msg}"
+
+        elif action == "item":
+            current_combo += 1
+            # Auto-heal 30 HP sebagai contoh
+            heal_amount = 30
+            new_hp = min(p.get('max_hp', 100), p.get('hp', 100) + heal_amount)
+            update_player(user_id, {'hp': new_hp})
+            p['hp'] = new_hp
+            result_msg = f"🎒 *PAKAI ITEM!* Kamu meminum Ramuan Darurat (+{heal_amount} HP)."
             
         elif action == "run":
-            # Dodge chance ditarik dari stats
             chance = p['stats']['dodge'] + 0.30 
             if random.random() < chance:
                 await state.set_state(GameState.exploring)
@@ -455,7 +496,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                     except: pass
                 return await message.answer("🏃💨 *BERHASIL KABUR!*", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
             else:
-                result_msg = "🧱 Jalan diblokir! Gagal kabur!"
+                result_msg = "🧱 Gagal kabur! Jalan terhalang!"
 
         update_player(user_id, {'current_combo': current_combo})
         
