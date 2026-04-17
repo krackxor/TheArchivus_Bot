@@ -24,6 +24,9 @@ from game.logic.stats import calculate_total_stats
 from game.logic.inventory_manager import equip_item, unequip_item
 from game.logic.menu_handler import get_inventory_menu, get_profile_menu
 
+# === PUZZLE MANAGER (BARU DITAMBAHKAN UNTUK RONDE SELANJUTNYA) ===
+from game.puzzles.manager import get_random_puzzle
+
 # === OLD ARCHITECTURE IMPORTS (YANG MASIH DIPAKAI) ===
 from game.systems.exploration import process_move  
 from game.systems.shop import get_shop_keyboard, process_purchase, get_rest_area_keyboard
@@ -181,11 +184,14 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
                 except: pass
                 await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
             else:
-                new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), puzzle.get('is_boss', False), existing_monster=puzzle)
-                new_puzzle['generated_time'] = None 
-                await state.update_data(puzzle=new_puzzle, action_type=None)
+                # PERBAIKAN: Mengambil soal baru saja, musuh tidak di-reset
+                new_q = get_random_puzzle(puzzle.get('tier', 1))
+                puzzle['question'] = new_q['question']
+                puzzle['answer'] = str(new_q['answer']).strip().lower()
+                puzzle['generated_time'] = None 
+                await state.update_data(puzzle=puzzle, action_type=None)
                 
-                safe_puzzle = new_puzzle.copy()
+                safe_puzzle = puzzle.copy()
                 safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
                 safe_puzzle['timer'] = "--"
                 
@@ -196,7 +202,7 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
                 except TelegramBadRequest: pass
                 
                 # --- START TIMER BARU UNTUK RONDE SELANJUTNYA ---
-                active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
+                active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
 
     except asyncio.CancelledError:
         # Task dibatalkan karena player menjawab dengan benar/cepat
@@ -498,6 +504,8 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             else:
                 result_msg = "🧱 Gagal kabur! Jalan terhalang!"
 
+        update_player(user_id, {'current_combo': current_combo})
+        
         # CEK KEMATIAN MUSUH
         if puzzle['monster_hp'] <= 0:
             tier = puzzle.get('tier', 1)
@@ -549,11 +557,15 @@ async def combat_answer_handler(message: Message, state: FSMContext):
         else:
             # MUSUH MASIH HIDUP, LANJUT RONDE
             update_player(user_id, {'current_combo': current_combo}) # Simpan combo sebelum ronde selanjutnya
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
-            new_puzzle['generated_time'] = None 
-            await state.update_data(puzzle=new_puzzle, current_combo=current_combo, action_type=None)
             
-            safe_puzzle = new_puzzle.copy()
+            # PERBAIKAN: Hanya mengambil soal baru, tidak memanggil fungsi generator musuh
+            new_q = get_random_puzzle(puzzle.get('tier', 1))
+            puzzle['question'] = new_q['question']
+            puzzle['answer'] = str(new_q['answer']).strip().lower()
+            puzzle['generated_time'] = None 
+            await state.update_data(puzzle=puzzle, current_combo=current_combo, action_type=None)
+            
+            safe_puzzle = puzzle.copy()
             safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
             safe_puzzle['timer'] = "--"
             
@@ -564,7 +576,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 except TelegramBadRequest: pass
                 
             # --- START TIMER UNTUK RONDE BARU ---
-            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
+            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
 
     # JIKA JAWABAN SALAH / TIMEOUT
     else:
@@ -588,11 +600,14 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 except: pass
             await message.answer(f"💀 Dikalahkan oleh {puzzle['monster_name']}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
-            new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
-            new_puzzle['generated_time'] = None
-            await state.update_data(puzzle=new_puzzle, action_type=None)
+            # PERBAIKAN: Hanya mengambil soal baru, tidak mereset HP musuh
+            new_q = get_random_puzzle(puzzle.get('tier', 1))
+            puzzle['question'] = new_q['question']
+            puzzle['answer'] = str(new_q['answer']).strip().lower()
+            puzzle['generated_time'] = None
+            await state.update_data(puzzle=puzzle, action_type=None)
             
-            safe_puzzle = new_puzzle.copy()
+            safe_puzzle = puzzle.copy()
             safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
             safe_puzzle['timer'] = "--"
             
@@ -603,7 +618,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 except TelegramBadRequest: pass
                 
             # --- START TIMER UNTUK RONDE BARU ---
-            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, new_puzzle, user_id))
+            active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
 
 async def main():
     auto_seed_content()
