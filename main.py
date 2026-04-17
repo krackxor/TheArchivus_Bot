@@ -46,18 +46,62 @@ dp = Dispatcher()
 ADMIN_ID = 123456789  # GANTI DENGAN ID TELEGRAM-MU
 
 # === HELPER DURABILITY (ADAPTED FOR 8-SLOT SYSTEM) ===
-def reduce_equipment_durability(user_id, target_slot='weapon'):
+def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1):
+    """
+    Mengurangi durabilitas equipment yang sedang dipakai.
+    target_slots: bisa berupa string (satu slot) atau list (beberapa slot).
+    damage: jumlah durabilitas yang berkurang (default 1).
+    """
     p = get_player(user_id)
     equipped = p.get('equipped', {})
-    broken_items = []
-    updates = {}
+    inventory = p.get('inventory', [])
     
-    item_id = equipped.get(target_slot)
-    if item_id:
-        # Pura-puranya item punya state durabilitas di inventory player
-        # Dalam implementasi nyata, kamu butuh array object di DB, bukan cuma string ID
-        pass # Disiapkan untuk logika durabilitas di database player
+    # Dictionary baru untuk melacak durabilitas item yang dipakai
+    durability_data = p.get('equipment_durability', {})
+    
+    broken_items = []
+    updates_needed = False
+
+    # Konversi ke list jika inputnya cuma string
+    if isinstance(target_slots, str):
+        target_slots = [target_slots]
+
+    for slot in target_slots:
+        item_id = equipped.get(slot)
         
+        # Jika tidak ada item di slot tersebut, lewati
+        if not item_id:
+            continue 
+
+        # Jika item baru dipakai dan belum ada record, set default
+        if slot not in durability_data:
+            durability_data[slot] = 50 
+            
+        durability_data[slot] -= damage
+        updates_needed = True
+
+        # Cek apakah item hancur (durabilitas <= 0)
+        if durability_data[slot] <= 0:
+            broken_items.append(item_id)
+            
+            # Lepas dari slot pemakaian
+            del equipped[slot]
+            del durability_data[slot]
+            
+            # Hapus item dari tas
+            if item_id in inventory:
+                inventory.remove(item_id)
+
+    if updates_needed:
+        update_data = {
+            "equipment_durability": durability_data
+        }
+        if broken_items:
+            update_data["equipped"] = equipped
+            update_data["inventory"] = inventory
+            
+        update_player(user_id, update_data)
+
     return broken_items
 
 # === ENHANCED KEYBOARDS ===
@@ -83,7 +127,6 @@ def get_stance_keyboard(is_boss=False):
     if not is_boss: row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
 
-# ... (Fungsi keyboard get_combat_skill_keyboard, get_combat_item_keyboard, get_chest_keyboard, get_grave_keyboard, get_idol_keyboard tetap sama seperti kodemu sebelumnya) ...
 
 # === BACKGROUND TIMERS ===
 async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict, user_id: int):
@@ -106,9 +149,14 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
         p = get_player(user_id)
         p['stats'] = calculate_total_stats(p)
         
-        # Monster Menyerang karena Timeout (Menggunakan Logic Combat Baru)
+        # Monster Menyerang karena Timeout
         raw_dmg, atk_log = calculate_damage(puzzle, p, is_attacker_player=False)
         
+        # --- PENGURANGAN DURABILITAS ARMOR KARENA DISERANG ---
+        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
+        if broken_armors:
+            atk_log += f"\n⚠️ *Peringatan! Pelindungmu hancur:* {', '.join(broken_armors)}"
+            
         new_hp = p['hp'] - raw_dmg
         update_player(user_id, {"hp": new_hp, "current_combo": 0})
         p['hp'] = new_hp 
@@ -188,9 +236,6 @@ async def inventory_button_handler(callback: CallbackQuery):
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p)
 
-    # Cek state, jangan biarkan ganti baju pas berantem
-    # (Opsional: tambahkan cek state di sini)
-
     if data == "menu_inventory":
         kb = get_inventory_menu(p)
         await callback.message.edit_text("🎒 **Isi Tas (Klik untuk Pasang):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
@@ -261,7 +306,7 @@ async def move_handler(message: Message, state: FSMContext):
             action_type=None
         )
         
-    # EVENT LAINNYA (REST AREA, CHEST, DLL) -> Tidak berubah, sesuaikan dengan kodemu sebelumnya
+    # EVENT LAINNYA (REST AREA, CHEST, DLL) -> Tidak berubah
     else:
         await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
@@ -296,17 +341,26 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             # === MENGGUNAKAN MESIN DAMAGE BARU ===
             p_dmg, atk_log = calculate_damage(p, puzzle, is_attacker_player=True)
             
+            # --- PENGURANGAN DURABILITAS SENJATA KARENA MENYERANG ---
+            broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
+            if broken_weapons:
+                atk_log += f"\n⚠️ *Peringatan! Senjatamu hancur:* {', '.join(broken_weapons)}"
+            
             puzzle['monster_hp'] -= p_dmg  
             result_msg = f"⚔️ {atk_log} Musuh -{p_dmg} HP."
             
         elif action == "skill":
             current_combo += 1
-            # Skill memberikan modifier damage tambahan di mesin baru
-            # Asumsi: skill memberikan buff stats sementara lalu serang
+            # Skill memberikan modifier damage tambahan
             temp_p = p.copy()
             temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
             p_dmg, atk_log = calculate_damage(temp_p, puzzle, is_attacker_player=True)
             
+            # --- PENGURANGAN DURABILITAS SENJATA KARENA SKILL ---
+            broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
+            if broken_weapons:
+                atk_log += f"\n⚠️ *Peringatan! Senjatamu hancur:* {', '.join(broken_weapons)}"
+                
             puzzle['monster_hp'] -= p_dmg
             result_msg = f"🔥 *SKILL ACTIVATED!* {atk_log} Musuh -{p_dmg} HP."
             
@@ -365,6 +419,12 @@ async def combat_answer_handler(message: Message, state: FSMContext):
     else:
         # === MONSTER MENYERANG BALIK (MESIN BARU) ===
         m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+        
+        # --- PENGURANGAN DURABILITAS ARMOR KARENA DISERANG ---
+        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
+        if broken_armors:
+            m_log += f"\n⚠️ *Peringatan! Pelindungmu hancur:* {', '.join(broken_armors)}"
+            
         dmg_msg = f"❌ Salah/Terlambat!\n{m_log} (-{m_dmg} HP)"
             
         new_hp = p['hp'] - m_dmg
