@@ -37,11 +37,11 @@ def generate_profile_text(player, stats):
     return text
 
 def get_profile_main_menu(player):
-    """Menghasilkan tombol navigasi untuk profil, termasuk tombol Stat Points jika ada."""
+    """Menghasilkan tombol navigasi untuk profil, termasuk tombol Stat Points dan Repair."""
     buttons = []
     sp = player.get('stat_points', 0)
     
-    # Jika punya SP, tampilkan tombol alokasi (2 tombol per baris biar rapi)
+    # Tombol alokasi stat
     if sp > 0:
         buttons.append([
             {"text": "⚔️ + P.ATK", "callback_data": "addstat_p_atk"},
@@ -52,9 +52,12 @@ def get_profile_main_menu(player):
             {"text": "💨 + SPEED", "callback_data": "addstat_speed"}
         ])
     
-    # Tombol navigasi standar
+    # Menu utama
     buttons.append([{"text": "🎒 Buka Tas (Equip Item)", "callback_data": "menu_inventory"}])
     buttons.append([{"text": "👕 Lihat Baju Terpakai", "callback_data": "menu_profile"}])
+    
+    # INTEGRASI PANDAI BESI: Tombol perbaikan
+    buttons.append([{"text": "🔨 Perbaiki Gear (Pandai Besi)", "callback_data": "menu_repair"}])
     
     return buttons
 
@@ -63,20 +66,18 @@ def get_inventory_menu(player):
     buttons = []
     inventory = player.get('inventory', [])
 
-    # Filter hanya item yang bisa di-equip (senjata, armor, artifact, dll)
     equipable_types = ['weapon', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
     equipables = [item_id for item_id in inventory if get_item(item_id) and get_item(item_id).get('type') in equipable_types]
 
     if not equipables:
         return [[{"text": "⬅️ Kembali ke Profil", "callback_data": "menu_main_profile"}]]
 
-    # Buat tombol per baris (2 tombol per baris agar rapi)
     current_row = []
     for item_id in equipables:
         item = get_item(item_id)
         if not item: continue
         
-        icon = "📦" # Default
+        icon = "📦"
         item_type = item.get('type')
         if item_type == 'weapon': icon = "⚔️"
         elif item_type == 'armor': icon = "👕"
@@ -94,14 +95,15 @@ def get_inventory_menu(player):
     if current_row: 
         buttons.append(current_row)
     
-    # Tambahkan tombol navigasi kembali ke menu profil utama
     buttons.append([{"text": "⬅️ Kembali ke Profil", "callback_data": "menu_main_profile"}])
     return buttons
 
 def get_profile_menu(player):
-    """Menampilkan slot yang sedang terpakai untuk dilepas (unequip)."""
+    """Menampilkan slot yang sedang terpakai dengan info durabilitas."""
     buttons = []
     equipped = player.get('equipped', {})
+    # Ambil data durabilitas dinamis pemain
+    durability_data = player.get('equipment_durability', {})
 
     if not equipped:
         return [[{"text": "⬅️ Kembali ke Profil", "callback_data": "menu_main_profile"}]]
@@ -109,7 +111,15 @@ def get_profile_menu(player):
     for slot, item_id in equipped.items():
         item = get_item(item_id)
         if item:
-            buttons.append([{"text": f"❌ Lepas {item['name']}", "callback_data": f"unequip_{slot}"}])
+            # Ambil durabilitas saat ini (default 50 jika belum tercatat)
+            current_dur = durability_data.get(slot, 50)
+            
+            # Tampilan tombol dengan status kondisi item
+            status_icon = "🟢" if current_dur > 20 else "🟡" if current_dur > 5 else "🔴"
+            buttons.append([{
+                "text": f"{status_icon} Lepas {item['name']} ({current_dur}/50)", 
+                "callback_data": f"unequip_{slot}"
+            }])
 
     buttons.append([{"text": "⬅️ Kembali ke Profil", "callback_data": "menu_main_profile"}])
     return buttons
