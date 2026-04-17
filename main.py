@@ -498,30 +498,57 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             else:
                 result_msg = "🧱 Gagal kabur! Jalan terhalang!"
 
-        update_player(user_id, {'current_combo': current_combo})
-        
         # CEK KEMATIAN MUSUH
         if puzzle['monster_hp'] <= 0:
             tier = puzzle.get('tier', 1)
-            base_reward = 500 if is_boss else (int(tier) * 25)
-            total_gold = base_reward + int(base_reward * (current_combo * 0.1))
+            is_boss = puzzle.get('is_boss', False)
             
-            # === MENGGUNAKAN MESIN LOOT BARU ===
+            # --- 1. Kalkulasi Gold & EXP (Ditambah Bonus Combo) ---
+            base_gold = 500 if is_boss else (int(tier) * 25)
+            total_gold = base_gold + int(base_gold * (current_combo * 0.1))
+            
+            base_exp = puzzle.get('exp_reward', 10 * tier)
+            total_exp = base_exp + int(base_exp * (current_combo * 0.1))
+            
+            new_exp = p.get('exp', 0) + total_exp
+            
+            # --- 2. Cek Level Up ---
+            current_level = p.get('level', 1)
+            new_level = calculate_level_from_exp(new_exp)
+            
+            level_up_msg = ""
+            if new_level > current_level:
+                # Tambahkan bonus stat dasar jika level up
+                new_max_hp = p.get('max_hp', 100) + 10
+                new_max_mp = p.get('max_mp', 50) + 5
+                update_player(user_id, {'max_hp': new_max_hp, 'max_mp': new_max_mp, 'hp': new_max_hp, 'mp': new_max_mp})
+                level_up_msg = f"\n\n🆙 **LEVEL UP!** Kamu telah mencapai Level {new_level}! (+Max HP & MP)"
+
+            # --- 3. Proses Drop Item ---
             drops = process_loot(puzzle.get('drops', []))
             inv = p.get('inventory', [])
             inv.extend(drops)
             
-            update_player(user_id, {'kills': p['kills']+1, 'gold': p['gold']+total_gold, 'current_combo': current_combo, 'inventory': inv})
+            # --- 4. Simpan Semua ke Database ---
+            update_player(user_id, {
+                'kills': p['kills']+1, 
+                'gold': p['gold']+total_gold, 
+                'exp': new_exp,
+                'level': new_level,
+                'current_combo': current_combo, 
+                'inventory': inv
+            })
             
             await state.set_state(GameState.exploring)
             if battle_msg_id:
                 try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"🎉 **PERTARUNGAN SELESAI** 🎉\nMusuh telah hancur lebur.", parse_mode="Markdown")
                 except: pass
                 
-            await message.answer(f"🎉 *KEMENANGAN!*\n{result_msg}\n\n💰 Bonus Gold: +{total_gold}\n🎁 Drops: {', '.join(drops) if drops else 'Tidak ada'}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+            await message.answer(f"🎉 *KEMENANGAN!*\n{result_msg}\n\n✨ EXP: +{total_exp}\n💰 Gold: +{total_gold}\n🎁 Drops: {', '.join(drops) if drops else 'Tidak ada'}{level_up_msg}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         
         else:
             # MUSUH MASIH HIDUP, LANJUT RONDE
+            update_player(user_id, {'current_combo': current_combo}) # Simpan combo sebelum ronde selanjutnya
             new_puzzle = generate_battle_puzzle(p, puzzle.get('tier', 1), is_boss, existing_monster=puzzle)
             new_puzzle['generated_time'] = None 
             await state.update_data(puzzle=new_puzzle, current_combo=current_combo, action_type=None)
