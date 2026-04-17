@@ -2,7 +2,7 @@
 
 from game.items import get_item
 from game.logic.stats import calculate_total_stats
-from game.logic.job_manager import detect_player_job # Diperbarui ke jalur yang benar
+from game.logic.job_manager import detect_player_job
 
 def equip_item(player, item_id):
     """
@@ -49,20 +49,15 @@ def equip_item(player, item_id):
     player['equipped'] = equipped
 
     # --- LOGIKA CERDAS 3: SINERGI & JOB CHECK ---
-    # Setiap kali ganti equipment, cek apakah Job berubah
-    job_name, achievement_msg = detect_player_job(player)
+    detect_player_job(player)
     
     # Recalculate stats agar perubahan langsung terasa
     player['stats'] = calculate_total_stats(player)
 
     status_msg = f"✅ **{item['name']}** berhasil dipasang!"
     
-    # Gabungkan semua pesan notifikasi (Warning -> Status -> Achievement)
     if warning_msg:
         status_msg = warning_msg + status_msg
-        
-    if achievement_msg:
-        status_msg += f"\n\n{achievement_msg}"
     
     return True, status_msg
 
@@ -87,3 +82,32 @@ def unequip_item(player, slot):
     player['stats'] = calculate_total_stats(player)
 
     return True, f"📦 **{item_name}** telah dilepas dan dimasukkan ke dalam tas."
+
+# === SISTEM PANDAI BESI (REPAIR) ===
+
+def process_repair_all(player):
+    """
+    Menghitung biaya dan memperbaiki semua item yang terpasang ke 100%.
+    Biaya: 10 Gold per 1 poin durabilitas yang hilang.
+    Maksimal durabilitas: 50
+    """
+    equipped = player.get('equipped', {})
+    durability_data = player.get('equipment_durability', {})
+    total_cost = 0
+    items_repaired = 0
+    
+    # Iterasi setiap item yang sedang dipakai
+    for slot, item_id in equipped.items():
+        # Dapatkan durabilitas saat ini (default 50 jika baru)
+        current_dur = durability_data.get(slot, 50)
+        
+        if current_dur < 50:
+            missing_dur = 50 - current_dur
+            # Hitung biaya per poin perbaikan (10 Gold)
+            total_cost += missing_dur * 10 
+            
+            # Pulihkan ke maksimal
+            durability_data[slot] = 50
+            items_repaired += 1
+            
+    return durability_data, total_cost, items_repaired
