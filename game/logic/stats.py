@@ -6,7 +6,7 @@ from game.logic.job_manager import get_job_bonus
 def calculate_total_stats(player):
     """
     Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
-    Memperhitungkan Grip 2H, Durability, Weight Penalty, dan Job Bonus.
+    Memperhitungkan Grip 2H, Durability, Weight Penalty, Job Bonus, dan Active Effects.
     """
     # 1. Inisialisasi Stat Dasar (dari level/base player)
     stats = {
@@ -21,7 +21,9 @@ def calculate_total_stats(player):
 
     equipped = player.get('equipped', {})
     weapon = get_item(equipped.get('weapon'))
-    artifact = get_item(equipped.get('artifact'))
+    
+    # Ambil data durabilitas dinamis pemain dari database
+    durability_data = player.get('equipment_durability', {})
 
     # 2. Cek Aturan Grip Senjata
     is_two_handed = weapon.get('grip') == '2H' if weapon else False
@@ -33,15 +35,17 @@ def calculate_total_stats(player):
             continue
 
         # LOGIKA KHUSUS ARTIFACT: Diabaikan statnya jika senjata 2H
-        # Kecuali item tersebut adalah "Cursed" atau "Passive Bone" yang tidak butuh tangan
         if slot == 'artifact' and is_two_handed:
             continue 
 
         # PENALTI DURABILITY: Jika barang rusak (0), bonus stat hilang 80%
+        # Mengambil durabilitas dari record pemain, bukan data statis item
+        current_durability = durability_data.get(slot, 50)
+        
         durability_mult = 1.0
-        if item.get('durability', 1) <= 0:
+        if current_durability <= 0:
             durability_mult = 0.2
-            # Senjata rusak sangat berat karena tumpul/patah
+            # Senjata rusak terasa lebih berat/beban karena tumpul/patah
             stats['total_weight'] += item.get('weight', 0) * 1.5 
         else:
             stats['total_weight'] += item.get('weight', 0)
@@ -54,7 +58,6 @@ def calculate_total_stats(player):
         stats['speed'] += item.get('speed', 0) * durability_mult
 
     # 4. LOGIKA BALANCE: Weight vs Dodge/Speed
-    # Rumus: Setiap 5 unit berat mengurangi 2% Dodge dan 1 poin Speed
     weight_penalty = stats['total_weight'] // 5
     
     stats['dodge'] = max(0.05, stats['dodge'] - (weight_penalty * 0.02))
@@ -64,7 +67,7 @@ def calculate_total_stats(player):
     job_name = player.get('current_job', 'Novice Weaver')
     job_bonuses = get_job_bonus(job_name)
     
-    # Terapkan multiplier stat
+    # Terapkan multiplier stat dari Job
     stats['p_atk'] = int(stats['p_atk'] * job_bonuses['p_atk_mult'])
     stats['m_atk'] = int(stats['m_atk'] * job_bonuses['m_atk_mult'])
     stats['p_def'] = int(stats['p_def'] * job_bonuses['p_def_mult'])
@@ -72,11 +75,35 @@ def calculate_total_stats(player):
     # Tambahkan bonus flat untuk speed dan dodge
     stats['speed'] += job_bonuses['speed_bonus']
     stats['dodge'] += job_bonuses['dodge_bonus']
+
+    # === 6. LOGIKA BUFF/DEBUFF STAT SEMENTARA ===
+    # Memproses efek dari ramuan atau sihir yang tersimpan di player
+    active_effects = player.get('active_effects', [])
+    for effect in active_effects:
+        eff_type = effect.get('type') # misal: 'atk_buff', 'def_debuff'
+        value = effect.get('value', 0)
+        
+        if eff_type == 'atk_buff':
+            stats['p_atk'] += value
+            stats['m_atk'] += value
+        elif eff_type == 'def_buff':
+            stats['p_def'] += value
+            stats['m_def'] += value
+        elif eff_type == 'atk_debuff':
+            stats['p_atk'] = max(1, stats['p_atk'] - value)
+            stats['m_atk'] = max(1, stats['m_atk'] - value)
+        elif eff_type == 'def_debuff':
+            stats['p_def'] = max(1, stats['p_def'] - value)
+            stats['m_def'] = max(1, stats['m_def'] - value)
+        elif eff_type == 'speed_debuff':
+            stats['speed'] = max(1, stats['speed'] - value)
+        elif eff_type == 'dodge_buff':
+            stats['dodge'] += value
     
     # Cap maksimal untuk dodge agar tidak bisa 100% menghindar (maksimal 90%)
     stats['dodge'] = min(0.90, stats['dodge'])
 
-    # Elemen utama player diambil dari senjata (jika ada)
+    # Elemen utama player dan tipe serangan diambil dari senjata
     if weapon:
         stats['element'] = weapon.get('element', 'none')
         stats['attack_type'] = 'magic' if weapon.get('m_atk', 0) > weapon.get('p_atk', 0) else 'physical'
