@@ -8,9 +8,9 @@ Jika kombinasi item sesuai, pemain akan mendapatkan Job/Class khusus.
 
 from database import update_player
 
-# === MASTER JOB RECIPES (RESEP 20 CLASS) ===
+# === MASTER JOB RECIPES (RESEP CLASS) ===
 # Masukkan ID item yang akurat dari file weapons.py, armors.py, dll.
-# Untuk class pengguna 2H (Two-Handed), slot 'artifact' tidak perlu diisi.
+# Untuk class pengguna 2H (Two-Handed), slot 'artifact' / 'offhand' tidak perlu diisi.
 
 JOB_DEFINITIONS = {
     "Blizzard Sovereign": {
@@ -41,6 +41,16 @@ JOB_DEFINITIONS = {
         "gloves": "weaver_mits",
         "boots": "scout_boots",
         "cloak": "void_mantle"
+    },
+    "Holy Templar": {                  # --- BARU: KELAS UNTUK SKILL LIGHT / HEAL ---
+        "weapon": "silver_longsword",  # Asumsi item 1H
+        "armor": "templar_plate",
+        "head": "iron_helm",
+        "mask": "holy_visor",
+        "gloves": "heavy_gauntlets",
+        "boots": "steadfast_boots",
+        "cloak": "radiant_cloak",
+        "artifact": "sacred_tome"      # Atau bisa pakai 'shield' jika namanya beda
     },
     "Phantom Archer": {
         "weapon": "oak_shortbow",      # Senjata 2H
@@ -138,11 +148,16 @@ def get_job_bonus(job_name):
         bonuses["m_atk_mult"] = 1.20  # +20% Magic Attack
     elif job_name == "Dread Knight":
         bonuses["p_def_mult"] = 1.25  # +25% Physical Defense
+        bonuses["p_atk_mult"] = 1.10  # +10% Physical Attack
+    elif job_name == "Holy Templar":  # --- BARU ---
+        bonuses["p_def_mult"] = 1.20  # +20% Physical Defense
+        bonuses["m_atk_mult"] = 1.15  # +15% Magic Attack (Untuk heal/skill light)
     elif job_name == "Phantom Archer":
         bonuses["speed_bonus"] = 5    # +5 Flat Speed
         bonuses["dodge_bonus"] = 0.10 # +10% Dodge
     elif job_name == "Void Sage":
         bonuses["m_atk_mult"] = 1.25
+        bonuses["dodge_bonus"] = 0.05
     elif job_name == "Blood Reaper":
         bonuses["p_atk_mult"] = 1.15
         bonuses["speed_bonus"] = 2
