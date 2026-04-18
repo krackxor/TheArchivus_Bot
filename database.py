@@ -36,7 +36,7 @@ def validate_player_data(player_doc, user_id):
     """
     updates = {}
     
-    # Check field-field krusial dan field baru (TERMASUK ARSITEKTUR 8-SLOT & STATS BARU)
+    # Check field-field krusial dan field baru (TERMASUK ARSITEKTUR SKILL BARU)
     default_fields = {
         "equipped": {},
         "current_job": "Novice Weaver",
@@ -52,7 +52,7 @@ def validate_player_data(player_doc, user_id):
         "miniboss_slain_cycle": False,
         "energy": 100,
         "max_energy": 100,
-        "active_effects": [], # Perubahan dari "debuffs" ke "active_effects" untuk kompatibilitas combat.py baru
+        "active_effects": [], 
         "level": 1,
         "exp": 0,
         "exp_needed": 100,
@@ -63,8 +63,13 @@ def validate_player_data(player_doc, user_id):
         "resin_duration": 0,
         "has_companion": False,
         "companion_duration": 0,
-        "equipment_durability": {}, # Tambahan untuk sistem durabilitas
-        "permanent_bonus": {} # Tambahan untuk sistem Altar/Pact
+        "equipment_durability": {}, 
+        "permanent_bonus": {}, 
+        
+        # --- NEW SKILL SYSTEM FIELDS ---
+        "skill_usages": {},
+        "skill_cooldowns": {},
+        "last_skill_used": None
     }
 
     for field, default_value in default_fields.items():
@@ -108,20 +113,25 @@ def get_player(user_id, username="Weaver"):
             # Survival Stats
             "energy": 100,
             "max_energy": 100,
-            "active_effects": [], # Menggantikan debuffs untuk integrasi combat
+            "active_effects": [], 
             
             # Progression System
             "level": 1,
             "exp": 0,
             "exp_needed": 100,
             
-            # Inventory & 8-Slot Equipment System
+            # Inventory & Equipment System
             "inventory": [],
-            "equipped": {}, # Berisi slot: weapon, armor, head, mask, dll
+            "equipped": {}, 
             "equipment_durability": {},
             "current_job": "Novice Weaver",
-            "artifacts": [], # PERMANENT PROGRESSION (Tidak hilang saat mati)
-            "permanent_bonus": {}, # Stats permanen dari Pact/Altar
+            "artifacts": [], 
+            "permanent_bonus": {}, 
+            
+            # --- NEW SKILL SYSTEM FIELDS ---
+            "skill_usages": {},
+            "skill_cooldowns": {},
+            "last_skill_used": None,
             
             # Endless System & Driver
             "cycle": 1,
@@ -213,7 +223,7 @@ def add_history(user_id, event_text):
     players_col.update_one({"user_id": user_id}, {"$set": {"history": history}})
 
 def reset_player_death(user_id, cause):
-    """Logika Endless Roguelite: Penalti kematian tanpa menghapus sejarah & ARTEFAK"""
+    """Logika Endless Roguelite: Penalti kematian tanpa menghapus sejarah, Artefak, dan Evolusi Skill"""
     player = get_player(user_id)
     
     add_history(user_id, f"Gugur karena {cause}.")
@@ -229,6 +239,7 @@ def reset_player_death(user_id, cause):
     
     saved_artifacts = player.get('artifacts', [])
     saved_bonus = player.get('permanent_bonus', {}) # Bonus dari Pacts tetap ada
+    saved_skill_usages = player.get('skill_usages', {}) # PROGRESS EVOLUSI SKILL AMAN!
     
     updates = {
         "hp": player.get("max_hp", 100),
@@ -247,6 +258,12 @@ def reset_player_death(user_id, cause):
         "current_job": "Novice Weaver", # KEMBALI KE KELAS AWAL
         "artifacts": saved_artifacts, # AMAN!
         "permanent_bonus": saved_bonus, # AMAN!
+        
+        # Skill system resets on death
+        "skill_cooldowns": {}, # Cooldown direset
+        "last_skill_used": None, # Combo terputus
+        "skill_usages": saved_skill_usages, # Evolusi dipertahankan!
+        
         "monster_streak": 0,
         "steps_since_event": 0,
         "current_combo": 0,
@@ -274,6 +291,7 @@ Jiwa Weaver hancur berkeping-keping...
 **Sisa Kekuatan yang Terjaga:**
 • ✨ Atribut & Stat Points (Permanen)
 • 💎 Relik Kuno & Bonus Kontrak
+• 🔮 Mastery Skill (Level Evolusi Skill tidak hilang)
 • 🔄 Cycle: {cycle} | 📊 Level: {player.get('level', 1)}
 
 "Archivus menarikmu kembali... namun jejak langkahmu tidak terhapus sepenuhnya."
