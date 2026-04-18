@@ -23,7 +23,7 @@ from game.logic.combat import (
 # IMPORT SISTEM SKILL BARU
 from game.logic.skills import (
     get_available_skills, execute_skill, reduce_all_cooldowns, 
-    get_effective_skill, get_cooldown_remaining, ACTIVE_SKILLS
+    get_effective_skill, get_cooldown_remaining, ACTIVE_SKILLS, get_monster_skill
 )
 from game.logic.stats import calculate_total_stats
 from game.logic.inventory_manager import equip_item, unequip_item, process_repair_all, use_consumable_item
@@ -117,16 +117,12 @@ def get_skill_menu_keyboard(player, player_stats):
     keyboard = []
     
     for skill_id in available_skills:
-        # Kita ambil versi "efektif" (termasuk suffix evolution seperti +, ++, ★)
         skill = get_effective_skill(player, skill_id)
         if not skill: continue
             
         cooldown = get_cooldown_remaining(player, skill_id)
-        
-        # Format Text Tombol: [Nama Skill] - 💧 [MP]
         btn_text = f"{skill['name']} - 💧 {skill['mp_cost']}"
         
-        # Jika skill sedang cooldown, tambahkan icon ⏳ dan nonaktifkan callback-nya
         if cooldown > 0:
             btn_text = f"⏳ {skill['name']} (CD: {cooldown})"
             cb_data = "ignore_cooldown"
@@ -178,8 +174,6 @@ async def profile_bag_handler(message: Message):
 async def popup_handler(callback: CallbackQuery, state: FSMContext):
     if callback.data == "ignore_cooldown":
         return await callback.answer("⏳ Skill ini belum siap digunakan!", show_alert=True)
-    
-    # Hapus pesan pop-up skill/item
     try: await callback.message.delete()
     except: pass
 
@@ -201,6 +195,25 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
     )
     await callback.message.edit_text(repair_msg, parse_mode="Markdown")
     await callback.answer("Berhasil diperbaiki!")
+
+# === HELPER: MONSTER AI TURN ===
+def apply_monster_turn(enemy_data, player):
+    """Mengeksekusi AI Monster dan menerapkan efek ke pemain."""
+    m_skill_id = get_monster_skill(enemy_data)
+    m_res_type, m_val, m_status, m_log = execute_skill(enemy_data, player['stats'], m_skill_id, None)
+    
+    actual_dmg = 0
+    if m_res_type == "damage":
+        actual_dmg = m_val
+        player['hp'] -= m_val
+    elif m_res_type == "heal":
+        enemy_data['monster_hp'] = min(enemy_data.get('monster_max_hp', 999), enemy_data['monster_hp'] + m_val)
+        
+    # Terapkan Debuff jika ada
+    if m_status and m_status not in [e.get('type') for e in player.get('active_effects', [])]:
+        player.setdefault('active_effects', []).append({'type': m_status, 'value': 5, 'duration': 3})
+        
+    return actual_dmg, m_log
 
 # === INVENTORY CALLBACKS ===
 @dp.callback_query(F.data.startswith("menu_") | F.data.startswith("equip_") | F.data.startswith("unequip_") | F.data.startswith("useitem_"))
@@ -234,7 +247,6 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         item_id = data.replace("useitem_", "")
         current_state = await state.get_state()
         
-        # Hapus menu pop-up item-nya agar bersih
         try: await callback.message.delete()
         except: pass
         
@@ -248,9 +260,8 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             enemy_data = data_st.get("enemy_data")
             m_name = enemy_data.get('monster_name', 'Musuh')
             
-            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-            p['hp'] -= m_dmg
-            result_msg = f"🎒 <b>PAKAI RAMUAN:</b> {msg}\n👾 <b>BALASAN:</b> {m_name} menyerang! (-{m_dmg} HP)"
+            m_dmg, m_log = apply_monster_turn(enemy_data, p)
+            result_msg = f"🎒 <b>PAKAI RAMUAN:</b> {msg}\n👾 <b>BALASAN:</b> {m_log}"
             
             m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
             p_hpc, p_logs = apply_turn_status_effects(p, is_player=True)
@@ -298,7 +309,6 @@ async def move_handler(message: Message, state: FSMContext):
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p) 
     
-    # Inisialisasi tracker jika player lawas
     if 'skill_usages' not in p: p['skill_usages'] = {}
     if 'skill_cooldowns' not in p: p['skill_cooldowns'] = {}
     
@@ -344,29 +354,23 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     action = ""
     skill_to_cast = None
     
-    # BACA TIPE TOMBOL
     if callback.data.startswith("stance_"):
         action = callback.data.replace("stance_", "") 
     elif callback.data.startswith("useskill_"):
         action = "cast_skill"
         skill_to_cast = callback.data.replace("useskill_", "")
-        # Hapus pesan popup menu skill
         try: await callback.message.delete()
         except: pass
     
-    # 1. BUKA MENU ITEM
     if action == "item":
         kb = get_consumable_menu(p)
         if not kb or len(kb) <= 1: return await callback.answer("Tas ramuanmu kosong!", show_alert=True)
-        # Munculkan pesan baru terpisah agar UI Battle di atas tidak hilang
         return await callback.message.answer("🎒 **PILIH RAMUAN:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-    # 2. BUKA MENU SKILL BARU
     if action == "skill":
         kb = get_skill_menu_keyboard(p, p['stats'])
         return await callback.message.answer("🔮 **DAFTAR MAGIC & SKILL:**", reply_markup=kb)
 
-    # Ambil Data Combat
     state_data = await state.get_data()
     enemy_data = state_data.get("enemy_data")
     battle_msg_id = state_data.get("battle_msg_id")
@@ -379,32 +383,23 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     current_combo = state_data.get("current_combo", 0) + 1
 
     # --- 3. EKSEKUSI AKSI PEMAIN ---
-    
     if action == "attack": 
-        # Attack sekarang menggunakan logic execute_skill bawaan dengan basic_attack
-        res_type, p_dmg, status, p_log = execute_skill(p['stats'], enemy_data, "basic_attack", p)
-        enemy_data['monster_hp'] -= p_dmg
+        res_type, p_val, status, p_log = execute_skill(p['stats'], enemy_data, "basic_attack", p)
+        enemy_data['monster_hp'] -= p_val
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
         
-        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-        p['hp'] -= m_dmg
-        result_msg = (
-            f"⚔️ <b>SERANG:</b> {p_log}{wpn_msg}\n"
-            f"👾 <b>BALASAN:</b> {m_log} Kamu -{m_dmg} HP."
-        )
+        m_dmg, m_log = apply_monster_turn(enemy_data, p)
+        result_msg = f"⚔️ <b>SERANG:</b> {p_log}{wpn_msg}\n👾 <b>BALASAN:</b> {m_log}"
         
     elif action == "cast_skill" and skill_to_cast:
         skill_info = ACTIVE_SKILLS.get(skill_to_cast)
-        
-        # Validasi MP
         mp_cost = get_effective_skill(p, skill_to_cast).get('mp_cost', 0)
         if p.get('mp', 0) < mp_cost:
             return await callback.answer(f"🔮 MP Tidak cukup! Butuh {mp_cost} MP.", show_alert=True)
             
         p['mp'] -= mp_cost
         
-        # Eksekusi sistem cerdas yang baru
         res_type, p_val, status, p_log = execute_skill(p['stats'], enemy_data, skill_to_cast, p)
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=2)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
@@ -416,27 +411,23 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         elif res_type == "heal":
             p['hp'] = min(p.get('max_hp', 100), p['hp'] + p_val)
         
-        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-        p['hp'] -= m_dmg
-        result_msg = (
-            f"🌟 {p_log}{wpn_msg}\n"
-            f"👾 <b>BALASAN:</b> {m_name} menyerang! (-{m_dmg} HP)"
-        )
+        m_dmg, m_log = apply_monster_turn(enemy_data, p)
+        result_msg = f"🌟 {p_log}{wpn_msg}\n👾 <b>BALASAN:</b> {m_log}"
 
     elif action == "block": 
         heal_amount = int(p.get('max_hp', 100) * 0.15)
         p['hp'] = min(p.get('max_hp', 100), p['hp'] + heal_amount)
         
-        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-        reduced_dmg = max(1, int(m_dmg * 0.2)) 
-        p['hp'] -= reduced_dmg
-        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
-        dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
-        
-        result_msg = (
-            f"🛡️ <b>BERTAHAN:</b> Fokus memulihkan diri (+{heal_amount} HP).\n"
-            f"👾 <b>TERTANGKIS:</b> Serangan {m_name} mereda (-{reduced_dmg} HP).{dur_msg}"
-        )
+        m_dmg, m_log = apply_monster_turn(enemy_data, p)
+        if m_dmg > 0:
+            refund = int(m_dmg * 0.8) # Kurangi damage 80%
+            p['hp'] += refund
+            reduced_dmg = m_dmg - refund
+            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+            dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
+            result_msg = f"🛡️ <b>BERTAHAN:</b> (+{heal_amount} HP).\n👾 <b>TERTANGKIS:</b> {m_log} (-{reduced_dmg} HP).{dur_msg}"
+        else:
+            result_msg = f"🛡️ <b>BERTAHAN:</b> (+{heal_amount} HP).\n👾 <b>MUSUH:</b> {m_log}"
 
     elif action == "dodge":
         base_dodge_chance = 0.50
@@ -447,17 +438,18 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         if random.random() < final_dodge_chance:
             restore_mp = int(p.get('max_mp', 50) * 0.20)
             p['mp'] = min(p.get('max_mp', 50), p.get('mp', 0) + restore_mp)
-            result_msg = (
-                f"💨 <b>PERFECT DODGE:</b> Menghindar kilat (+{restore_mp} MP).\n"
-                f"🎯 {m_name} menyerang angin dan <b>kehilangan gilirannya</b>!"
-            )
+            result_msg = f"💨 <b>PERFECT DODGE:</b> Menghindar kilat (+{restore_mp} MP).\n🎯 {m_name} menyerang angin dan kehilangan gilirannya!"
         else:
-            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-            reduced_dmg = max(1, int(m_dmg * 0.7)) 
-            p['hp'] -= reduced_dmg
-            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
-            dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
-            result_msg = f"🧱 <b>GAGAL MENGHINDAR:</b> Terlalu lambat! (-{reduced_dmg} HP).{dur_msg}"
+            m_dmg, m_log = apply_monster_turn(enemy_data, p)
+            if m_dmg > 0:
+                refund = int(m_dmg * 0.3) # Terkena damage 70% karena gagal menghindar
+                p['hp'] += refund
+                reduced_dmg = m_dmg - refund
+                broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+                dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
+                result_msg = f"🧱 <b>GAGAL MENGHINDAR:</b> Terlalu lambat! {m_log} (-{reduced_dmg} HP).{dur_msg}"
+            else:
+                result_msg = f"🧱 <b>GAGAL MENGHINDAR:</b> Terlalu lambat!\n👾 <b>MUSUH:</b> {m_log}"
 
     elif action == "run":
         chance = p['stats']['dodge'] + 0.30 
@@ -467,15 +459,13 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
             
-            # Reset Cooldowns on Escape
             p['skill_cooldowns'] = {}
             update_player(user_id, {'skill_cooldowns': {}})
             
             return await callback.message.answer("🏃💨 Kamu berhasil melarikan diri ke dalam kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
-            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
-            p['hp'] -= m_dmg
-            result_msg = f"🧱 <b>GAGAL KABUR:</b> Jalan diblokir!\n👾 <b>BALASAN:</b> {m_name} menebas punggungmu (-{m_dmg} HP)"
+            m_dmg, m_log = apply_monster_turn(enemy_data, p)
+            result_msg = f"🧱 <b>GAGAL KABUR:</b> Jalan diblokir!\n👾 <b>BALASAN:</b> {m_log}"
 
     # --- 4. TICK STATUS EFFECTS & COOLDOWN ---
     m_hp_change, m_status_logs = apply_turn_status_effects(enemy_data, is_player=False)
@@ -484,7 +474,6 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hp_change)
     p['hp'] = max(0, p['hp'] + p_hp_change)
     
-    # Kurangi Cooldown setiap ronde!
     reduce_all_cooldowns(p)
     
     update_player(user_id, {
@@ -499,7 +488,6 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     status_log_final = " ".join(m_status_logs + p_status_logs)
     full_log = f"{result_msg}\n{status_log_final}"
 
-    # Eksekusi fase Check Death & Rendering UI
     await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, battle_msg_id)
 
 
@@ -507,7 +495,6 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
 async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int, p: dict, enemy_data: dict, full_log: str, current_combo: int, battle_msg_id: int):
     m_name = enemy_data.get('monster_name', 'Musuh')
     
-    # KEMATIAN MUSUH
     if enemy_data['monster_hp'] <= 0:
         tier = enemy_data.get('tier', 1)
         is_boss = enemy_data.get('is_boss', False)
@@ -532,7 +519,6 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         inv = p.get('inventory', [])
         inv.extend(drops)
         
-        # Reset Cooldown dan Combo setelah Battle Selesai
         update_player(user_id, {
             'kills': p['kills']+1, 'gold': p['gold']+total_gold, 
             'exp': new_exp, 'level': new_level, 'current_combo': 0, 'inventory': inv,
@@ -560,7 +546,6 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
         return
     
-    # KEMATIAN PEMAIN
     elif p['hp'] <= 0:
         msg_text = reset_player_death(user_id, "death_combat")
         await state.set_state(GameState.exploring)
@@ -572,7 +557,6 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         return
         
-    # MUSUH MASIH HIDUP, LANJUT RONDE
     else:
         await state.update_data(enemy_data=enemy_data, current_combo=current_combo, action_type=None)
         
