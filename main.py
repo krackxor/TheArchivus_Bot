@@ -362,6 +362,12 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
     elif data == "menu_main_profile":
         await callback.message.edit_text(generate_profile_text(p, p['stats']), reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_main_menu(p)), parse_mode="Markdown")
+    elif data == "close_menu_profile":
+        try:
+            await callback.message.delete()
+            await callback.answer("Menu ditutup")
+        except:
+            await callback.message.edit_text("✨ Fokus kembali ke penjelajahan...")
     
     # --- LOGIKA PASANG/LEPAS GEAR ---
     elif data.startswith("equip_"):
