@@ -8,11 +8,6 @@ from game.logic.menu_handler import get_main_reply_keyboard
 
 # --- IMPORT DATA MASTER MODULAR ---
 from game.data.npc_data import NPC_POOL, LORE_STORIES
-from game.data.npcs.guides import process_guide_interaction
-from game.data.npcs.quizzes import process_quiz_result, get_random_quiz
-from game.data.npcs.requesters import process_npc_request
-from game.data.npcs.storytellers import process_story_interaction
-from game.data.npcs.pacts import apply_pact_consequences
 from game.data.environment.hazards import process_hazard_interaction
 from game.data.environment.deadly import process_deadly_interaction
 from game.data.environment.landmarks import process_landmark_interaction
@@ -26,7 +21,7 @@ def get_event_interaction_kb(event_type, event_data):
     
     if event_type == "npc":
         cat = event_data.get("category", "wanderer")
-        # Callback pool_{cat} akan memicu handle_npc_pool_interaction
+        # Callback pool_{cat} memicu interaksi dinamis dari NPC_POOL
         kb.append([InlineKeyboardButton(text="🤝 Dekati Sosok Itu", callback_data=f"pool_{cat}")])
         kb.append([InlineKeyboardButton(text="🚶 Abaikan", callback_data="evt_ignore")])
 
@@ -45,7 +40,7 @@ def get_event_interaction_kb(event_type, event_data):
 # --- 2. LOGIKA EKSEKUSI INTERAKSI (THE ENGINE) ---
 
 async def handle_event_interaction(callback, state, player):
-    """Pusat pemrosesan aksi modular."""
+    """Pusat pemrosesan aksi modular tanpa menyebabkan ValidationError."""
     data = callback.data
     user_id = player['user_id']
     
@@ -56,7 +51,7 @@ async def handle_event_interaction(callback, state, player):
         text = f"👤 **{npc['name']}**\n\n_{npc['narration']}_\n"
         quest_msgs = []
 
-        # Eksekusi berdasarkan type yang ada di npc_data.py
+        # Eksekusi berdasarkan type fungsional di database
         npc_type = npc.get("type")
         
         if npc_type == "heal":
@@ -64,7 +59,8 @@ async def handle_event_interaction(callback, state, player):
                 player['hp'] = min(player.get('max_hp', 100), player['hp'] + npc['value'])
                 player['gold'] -= npc['cost']
                 text += f"\n✨ **HP Pulih +{npc['value']}**"
-            else: return await callback.answer("Gold tidak cukup!", show_alert=True)
+            else: 
+                return await callback.answer("Gold tidak cukup!", show_alert=True)
 
         elif npc_type == "gamble":
             if player['gold'] >= npc['bet']:
@@ -72,11 +68,11 @@ async def handle_event_interaction(callback, state, player):
                 reward = npc['bet'] * 2 if win else 0
                 player['gold'] = player['gold'] - npc['bet'] + reward
                 text += f"\n🎲 {'🎉 Menang!' if win else '💀 Kalah!'}"
-            else: return await callback.answer("Gold tidak cukup!", show_alert=True)
+            else: 
+                return await callback.answer("Gold tidak cukup!", show_alert=True)
 
         elif npc_type == "lore":
             text += f"\n\n📜 **Lore:** _{random.choice(LORE_STORIES)}_"
-            # Update quest progress untuk eksplorasi lore
             player, quest_msgs = update_quest_progress(player, "move_steps")
 
         elif npc_type == "gift":
@@ -84,17 +80,29 @@ async def handle_event_interaction(callback, state, player):
             player.setdefault('inventory', []).append(item)
             text += f"\n🎁 **Dapatkan:** {item.replace('_', ' ').title()}"
 
-        # Simpan perubahan & tampilkan quest jika ada yang selesai
+        # Simpan perubahan
         update_player(user_id, player)
+        
         final_text = text + ("\n\n" + "\n".join(quest_msgs) if quest_msgs else "")
-        await callback.message.edit_text(final_text, reply_markup=get_main_reply_keyboard(player))
+        
+        # PERBAIKAN: Hapus pesan lama dan kirim pesan baru untuk mengembalikan keyboard navigasi
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(final_text, reply_markup=get_main_reply_keyboard(player))
 
     # B. MESIN BAHAYA MAUT (Deadly Terrains)
     elif data.startswith("exec_deadly_"):
         event_id = "_".join(data.split("_")[2:])
         success, msg = process_deadly_interaction(player, event_id)
         update_player(user_id, player)
-        await callback.message.edit_text(msg, reply_markup=get_main_reply_keyboard(player))
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
     # C. MESIN LOKASI (Landmarks)
     elif data.startswith("exec_landmark_"):
@@ -102,23 +110,31 @@ async def handle_event_interaction(callback, state, player):
         res, msg = process_landmark_interaction(player, lm_id)
         
         if res == "ambush":
-            # Pemicu Combat mendadak
             await callback.message.edit_text(f"⚠️ {msg}")
-            # logic start_combat() di sini
+            # Logika combat manual bisa dipicu di sini
         else:
             update_player(user_id, player)
-            await callback.message.edit_text(msg, reply_markup=get_main_reply_keyboard(player))
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # D. ABAIKAN / LANJUT
+    # D. ABAIKAN / LANJUT (TRIGGER MOVE QUEST)
     elif data == "evt_ignore":
-        # Setiap kali melangkah/lanjut, update quest progress langkah
         player, quest_msgs = update_quest_progress(player, "move_steps")
         update_player(user_id, player)
         
         await state.set_state(GameState.exploring)
         msg = "🏃 Kamu melanjutkan perjalanan."
-        if quest_msgs: msg += "\n\n" + "\n".join(quest_msgs)
+        if quest_msgs: 
+            msg += "\n\n" + "\n".join(quest_msgs)
         
-        await callback.message.edit_text(msg, reply_markup=get_main_reply_keyboard(player))
+        # Hapus tombol inline dan munculkan kembali menu navigasi bawah
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
     await callback.answer()
