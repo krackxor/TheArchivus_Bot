@@ -57,3 +57,32 @@ def validate_puzzle_answer(user_answer, correct_answer):
     Utility sederhana untuk memvalidasi jawaban.
     """
     return str(user_answer).strip().lower() == str(correct_answer).strip().lower()
+
+# ==============================================================================
+# FUNGSI ADAPTOR (JEMBATAN UNTUK MAIN ARCHITECTURE)
+# ==============================================================================
+def generate_puzzle(tier=1):
+    """
+    Fungsi jembatan yang dibutuhkan oleh handlers/menu.py dan event_handler.py.
+    Mengambil data dari get_random_puzzle lalu memformatnya agar sesuai 
+    dengan format Event Sistem Utama.
+    """
+    # Ambil puzzle mentah dari sistem genre-mu
+    raw_puzzle = get_random_puzzle(tier_level=tier)
+    
+    # Ambil jawaban (string) dan ubah ke huruf kecil untuk validasi
+    correct_answer = raw_puzzle.get("answer", "").lower()
+    
+    # Bungkus menjadi format event_data yang dipahami oleh FSM (State Machine)
+    # process_event_outcome mengecek kunci 'answers' sebagai sebuah List
+    event_data = {
+        "type": "quiz",
+        "tier": tier,
+        "genre": raw_puzzle.get("genre", "Mystery"),
+        "question": f"[{raw_puzzle.get('genre', 'Mystery')}] {raw_puzzle.get('question', '')}",
+        "answers": [correct_answer], # Diubah menjadi list agar tidak error saat divalidasi
+        "gold_reward": tier * 50,    # Reward dinamis berdasarkan tier
+        "exp_reward": tier * 50
+    }
+    
+    return event_data
