@@ -6,7 +6,8 @@ from game.logic.job_manager import get_job_bonus
 def calculate_total_stats(player):
     """
     Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
-    Memperhitungkan Grip 2H, Durability, Weight Penalty, Job Bonus, dan Active Effects.
+    Memperhitungkan Grip 2H, Durability, Weight Penalty, Job Bonus, 
+    Active Effects, dan Permanent Bonus (Pact/Altar).
     """
     # 1. Inisialisasi Stat Dasar (dari level/base player)
     stats = {
@@ -18,6 +19,13 @@ def calculate_total_stats(player):
         "dodge": 0.50, # Base 50%
         "total_weight": 0
     }
+
+    # --- TAMBAHAN: Bonus Permanen dari Kontrak Darah (Pacts/Altar) ---
+    perm_bonus = player.get('permanent_bonus', {})
+    for stat_key, stat_val in perm_bonus.items():
+        if stat_key in stats:
+            stats[stat_key] += stat_val
+    # -----------------------------------------------------------------
 
     equipped = player.get('equipped', {})
     weapon = get_item(equipped.get('weapon'))
@@ -51,11 +59,15 @@ def calculate_total_stats(player):
             stats['total_weight'] += item.get('weight', 0)
 
         # Tambahkan Stat ke Total (Dikali durability multiplier)
-        stats['p_atk'] += item.get('p_atk', 0) * durability_mult
-        stats['m_atk'] += item.get('m_atk', 0) * durability_mult
-        stats['p_def'] += item.get('p_def', 0) * durability_mult
-        stats['m_def'] += item.get('m_def', 0) * durability_mult
-        stats['speed'] += item.get('speed', 0) * durability_mult
+        stats['p_atk'] += int(item.get('p_atk', 0) * durability_mult)
+        stats['m_atk'] += int(item.get('m_atk', 0) * durability_mult)
+        stats['p_def'] += int(item.get('p_def', 0) * durability_mult)
+        stats['m_def'] += int(item.get('m_def', 0) * durability_mult)
+        stats['speed'] += int(item.get('speed', 0) * durability_mult)
+        
+        # Tambahan: Jika item (misal jubah/artefak) memberi bonus dodge
+        if 'dodge' in item:
+            stats['dodge'] += (item['dodge'] * durability_mult)
 
     # 4. LOGIKA BALANCE: Weight vs Dodge/Speed
     weight_penalty = stats['total_weight'] // 5
