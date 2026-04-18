@@ -227,9 +227,27 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
 async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
+    
     if current_state in [GameState.in_combat, GameState.in_event, GameState.in_rest_area]:
-        return await message.answer("Selesaikan dulu urusanmu di depan sebelum bergerak maju!")
+        try: await message.delete() 
+        except: pass
+        warning_msg = await message.answer("⚠️ Selesaikan dulu urusanmu di depan sebelum bergerak maju!")
+        await asyncio.sleep(3)
+        try: await message.bot.delete_message(chat_id=message.chat.id, message_id=warning_msg.message_id)
+        except: pass
+        return
         
+    # --- FITUR CLEAN UI: Hapus pesan arah & narasi sebelumnya ---
+    try: await message.delete()
+    except: pass
+    
+    state_data = await state.get_data()
+    last_expl_msg = state_data.get("last_expl_msg_id")
+    if last_expl_msg:
+        try: await message.bot.delete_message(chat_id=message.chat.id, message_id=last_expl_msg)
+        except: pass
+    # -------------------------------------------------------------
+
     await state.set_state(GameState.exploring)
     tick_buffs(user_id) 
     p = get_player(user_id)
@@ -245,25 +263,24 @@ async def move_handler(message: Message, state: FSMContext):
         is_miniboss = (event_type == "miniboss")
         tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
         
-        # Init combat data (NAMA VARIABEL SUDAH DIUBAH MENJADI enemy_data)
+        # Init combat data
         enemy_data = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         
         await state.set_state(GameState.in_combat)
-        
-        # Bersihkan text markdown jika ada agar tidak bentrok dengan HTML
         safe_narration = narration.replace("**", "")
         combat_ui = render_live_battle(p, enemy_data, f"⚠️ <b>{safe_narration}</b>")
         
-        # Kirim menggunakan HTML Parse Mode
         sent_msg = await message.answer(combat_ui, parse_mode="HTML", reply_markup=get_stance_keyboard(is_boss))
         
         await state.update_data(
             battle_msg_id=sent_msg.message_id,
             enemy_data=enemy_data, 
-            current_combo=0
+            current_combo=0,
+            last_expl_msg_id=None # Reset karena sedang masuk combat
         )
     else:
-        await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        sent_msg = await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
 
 # === PUSAT LOGIKA COMBAT TURN-BASED ===
@@ -367,7 +384,8 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         if random.random() < chance:
             await state.set_state(GameState.exploring)
             update_player(user_id, {'current_combo': 0})
-            try: await callback.message.edit_text("🏃💨 <b>KABUR!</b>", parse_mode="HTML")
+            # Hapus UI battle karena kita lari
+            try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
             return await callback.message.answer("🏃💨 Kamu berhasil melarikan diri ke dalam kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
@@ -428,7 +446,15 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         
         await state.set_state(GameState.exploring)
         
-        # Format HTML murni untuk kemenangan
+        # --- PERBAIKAN: HAPUS BATTLE UI LAMA AGAR CHAT BERSIH ---
+        if battle_msg_id:
+            try: 
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
+            except: 
+                try: await message.bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=battle_msg_id, reply_markup=None)
+                except: pass
+        # -------------------------------------------------------
+        
         safe_drops = ", ".join(drops).replace("_", " ").title() if drops else "Tidak ada"
         
         victory_text = (
@@ -440,17 +466,21 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
             f"{level_up_msg}"
         )
         
-        # Kirim pesan baru untuk kemenangan menggunakan HTML Parse Mode
-        await message.answer(victory_text, reply_markup=get_main_reply_keyboard(p), parse_mode="HTML")
+        sent_msg = await message.answer(victory_text, reply_markup=get_main_reply_keyboard(p), parse_mode="HTML")
+        await state.update_data(last_expl_msg_id=sent_msg.message_id)
         return
     
     # KEMATIAN PEMAIN
     elif p['hp'] <= 0:
         msg_text = reset_player_death(user_id, "death_combat")
         await state.set_state(GameState.exploring)
+        
+        # --- PERBAIKAN: HAPUS BATTLE UI LAMA AGAR CHAT BERSIH ---
         if battle_msg_id:
-            try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"💀 <b>KAU TELAH GUGUR...</b>", parse_mode="HTML")
+            try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
+        # -------------------------------------------------------
+            
         await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         return
         
@@ -470,17 +500,15 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
                     reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
                 )
             except TelegramRetryAfter as e:
-                # Flood control handling: Jangan edit, biarkan saja untuk ronde ini
                 print(f"Rate limited by Telegram. Sleep for {e.retry_after} seconds.")
             except TelegramBadRequest as e:
-                # Fallback aman
                 if "can't parse entities" in str(e):
                     try:
                         await message.bot.edit_message_text(
                             chat_id=message.chat.id, 
                             message_id=battle_msg_id, 
                             text=next_msg, 
-                            parse_mode=None, # Nonaktifkan formatting
+                            parse_mode=None, 
                             reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
                         )
                     except: pass
@@ -489,7 +517,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
 # === EVENT PUZZLE (NON-COMBAT / EKSPLORASI) ===
 @dp.message(GameState.in_event)
 async def event_puzzle_handler(message: Message, state: FSMContext):
-    """Placeholder untuk event teka-teki saat eksplorasi."""
+    """Placeholder untuk event puzzle di eksplorasi."""
     pass
 
 
