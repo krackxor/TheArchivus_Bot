@@ -589,8 +589,49 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
 # === EVENT PUZZLE (NON-COMBAT / EKSPLORASI) ===
 @dp.message(GameState.in_event)
 async def event_puzzle_handler(message: Message, state: FSMContext):
-    """Placeholder untuk event puzzle di eksplorasi."""
-    pass
+    user_id = message.from_user.id
+    p = get_player(user_id)
+    state_data = await state.get_data()
+    event_data = state_data.get("event_data")
+    
+    # Ambil jawaban pemain
+    player_answer = message.text.strip().lower()
+    
+    # Proses hasil event menggunakan sistem event yang sudah kamu import
+    success, reward_msg, loot = process_event_outcome(p, event_data, player_answer)
+    
+    if success:
+        # Tambahkan hadiah ke player
+        if loot:
+            p['inventory'].extend(loot)
+        
+        # Berikan statistik kecerdasan jika benar (sesuai ide sebelumnya)
+        intel_gain = event_data.get('tier', 1) * 2
+        update_player(user_id, {
+            "inventory": p['inventory'],
+            "intelligence": p.get("intelligence", 10) + intel_gain,
+            "scholar_level": p.get("scholar_level", 0) + 1,
+            "gold": p.get("gold", 0) + event_data.get("gold_reward", 50)
+        })
+        
+        await message.answer(f"✅ **BERHASIL!**\n{reward_msg}\n🧠 Intelligence +{intel_gain}", reply_markup=get_main_reply_keyboard(p))
+    else:
+        await message.answer(f"❌ **GAGAL!**\n{reward_msg}", reply_markup=get_main_reply_keyboard(p))
+    
+    await state.set_state(GameState.exploring)
+
+
+@dp.message(F.text == "/help")
+async def help_handler(message: Message):
+    help_text = (
+        "📖 **PANDUAN THE ARCHIVUS**\n"
+        "1. **Eksplorasi:** Gunakan tombol arah untuk berjalan.\n"
+        "2. **Energi:** Tiap langkah memakan 1 Energi. Makan di Rest Area untuk pulih.\n"
+        "3. **Combat:** Gunakan Skill untuk damage besar, tapi perhatikan MP.\n"
+        "4. **Job:** Gunakan equipment set yang sama untuk membuka Class baru.\n"
+        "5. **Durabilitas:** Jika senjata rusak, statnya turun 80%. Perbaiki di Pandai Besi!"
+    )
+    await message.answer(help_text, parse_mode="Markdown")
 
 
 async def main():
