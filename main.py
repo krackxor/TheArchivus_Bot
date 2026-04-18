@@ -231,6 +231,38 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
         
     await callback.answer("✅ Seluruh peralatan berhasil diperbaiki!")
 
+
+# === SHOP PURCHASE CALLBACK ===
+@dp.callback_query(F.data.startswith("buy_"))
+async def shop_purchase_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    item_id = callback.data.replace("buy_", "")
+    p = get_player(user_id)
+    
+    # 1. Proses pembelian (mengurangi gold & menambah inventory di variabel 'p')
+    success, msg = process_purchase(p, item_id)
+    
+    if success:
+        # 2. Update database dengan data terbaru dari variabel 'p'
+        update_player(user_id, {
+            "gold": p.get('gold'), 
+            "inventory": p.get('inventory')
+        })
+        
+        # 3. Notifikasi sukses
+        await callback.answer(f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!")
+        
+        # 4. Refresh tampilan toko agar sisa Gold dan status tombol terupdate
+        try:
+            await callback.message.edit_reply_markup(
+                reply_markup=get_shop_keyboard(p)
+            )
+        except Exception:
+            pass
+    else:
+        # Tampilkan alasan gagal (misal: emas tidak cukup)
+        await callback.answer(msg, show_alert=True)
+
 # === HELPER: MONSTER AI TURN ===
 def apply_monster_turn(enemy_data, player):
     """Mengeksekusi AI Monster dan menerapkan efek ke pemain."""
