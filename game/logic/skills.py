@@ -1541,6 +1541,25 @@ def set_last_used_skill(player: Dict, skill_id: str) -> None:
     player['last_skill_used'] = skill_id
 
 
+def get_monster_skill(monster: Dict) -> str:
+    """
+    Fungsi untuk menentukan skill yang digunakan oleh Monster/Boss.
+    Mengambil secara acak dari list 'skills' yang ada di data monster.
+    """
+    monster_skills = monster.get('skills', [])
+    if not monster_skills:
+        return "mon_bite"  # Fallback jika monster tidak punya skill
+    
+    # Pilih satu skill secara acak
+    selected_skill = random.choice(monster_skills)
+    
+    # Pastikan skill tersebut ada di database ACTIVE_SKILLS
+    if selected_skill not in ACTIVE_SKILLS:
+        return "mon_bite"
+        
+    return selected_skill
+
+
 # ==========================================
 # === 5. GET EFFECTIVE SKILL (Evolution + Branching) ===
 # ==========================================
