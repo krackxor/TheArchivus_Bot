@@ -17,6 +17,23 @@ def calculate_max_exp(level):
     """
     return int(100 * (level ** 1.5))
 
+def calculate_level_from_exp(total_exp):
+    """
+    Menghitung level yang seharusnya dimiliki pemain berdasarkan total EXP.
+    Fungsi ini merupakan kebalikan dari calculate_max_exp untuk sinkronisasi level.
+    Sangat dibutuhkan oleh combat handler untuk validasi progres.
+    """
+    level = 1
+    temp_exp = total_exp
+    while True:
+        needed = calculate_max_exp(level)
+        if temp_exp >= needed:
+            temp_exp -= needed
+            level += 1
+        else:
+            break
+    return level
+
 def add_exp(user_id, amount):
     """
     Menambahkan EXP ke pemain dan mengecek apakah mereka naik level.
