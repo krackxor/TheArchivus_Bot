@@ -170,12 +170,14 @@ async def profile_bag_handler(message: Message):
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
 
 # Menutup pop-up menu (kembali ke battle UI utama)
-@dp.callback_query(F.data == "close_popup" | F.data == "ignore_cooldown")
+@dp.callback_query(F.data.in_(["close_popup", "ignore_cooldown"]))
 async def popup_handler(callback: CallbackQuery, state: FSMContext):
     if callback.data == "ignore_cooldown":
         return await callback.answer("⏳ Skill ini belum siap digunakan!", show_alert=True)
-    try: await callback.message.delete()
-    except: pass
+    try: 
+        await callback.message.delete()
+    except: 
+        pass
 
 # === BLACKSMITH CALLBACK ===
 @dp.callback_query(F.data == "menu_repair")
