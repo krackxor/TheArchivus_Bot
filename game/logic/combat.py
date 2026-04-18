@@ -4,7 +4,7 @@
 CORE COMBAT ENGINE - The Archivus (PURE TURN-BASED EDITION)
 Sistem Pertarungan Berbasis Data: 
 Mendukung Mitigasi Damage Rasio, Turn-Based Logic Button, 
-Modular Status Effects, dan Immersive Battle Logging.
+Modular Status Effects (dengan Durasi), dan Immersive Battle Logging.
 """
 import time
 import random
@@ -26,37 +26,65 @@ ELEMENTAL_CHART = {
     "none": {"strong": "none", "weak": "none"}
 }
 
+# Diperbarui untuk mendukung semua efek dari Sistem Skill Baru
 STATUS_ICONS = {
-    "poison": "🤢", "burn": "🔥", "regen": "💖", "stun": "💫", 
-    "bleed": "🩸", "atk_buff": "⚔️↑", "def_buff": "🛡️↑"
+    "poison": "🤢", "burn": "🔥", "regen": "💖", "stun": "💫", "freeze": "🧊", 
+    "bleed": "🩸", "atk_buff": "⚔️↑", "def_buff": "🛡️↑", "atk_debuff": "⚔️↓", 
+    "def_debuff": "🛡️↓", "dodge_buff": "💨↑", "spd_buff": "⚡↑", "m_atk_buff": "🔮↑"
 }
 
 # === SISTEM STATUS EFFECTS ===
 def apply_turn_status_effects(entity, is_player=True):
     """
-    Memproses DoT/Regen per ronde.
+    Memproses DoT/Regen per ronde dan mengurangi durasi efek.
+    Menghapus efek jika durasinya sudah habis.
     Mengembalikan total perubahan HP dan list log status.
     """
     hp_change = 0
     logs = []
-    effects = entity.get('active_effects' if is_player else 'monster_effects', [])
+    
+    effect_key = 'active_effects' if is_player else 'monster_effects'
+    effects = entity.get(effect_key, [])
+    active_effects = []
     
     for effect in effects:
         eff_type = effect.get('type', '').lower()
         val = effect.get('value', 0)
+        duration = effect.get('duration', 3) # Default durasi 3 turn jika tidak diset
         
+        # Jika durasi habis, efek hilang (tidak dimasukkan ke active_effects)
+        if duration <= 0:
+            continue
+            
+        # Proses Damage over Time (DoT) / Heal over Time (HoT)
         if eff_type == 'poison':
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
-            dmg = max(1, int(max_hp * 0.05))
+            dmg = max(1, int(max_hp * 0.05)) # Poison = 5% Max HP
             hp_change -= dmg
-            logs.append(f"{STATUS_ICONS['poison']}-{dmg}")
+            logs.append(f"{STATUS_ICONS.get('poison', '🤢')}-{dmg}")
+            
+        elif eff_type == 'bleed':
+            dmg = max(1, int(val)) # Bleed = flat damage
+            hp_change -= dmg
+            logs.append(f"{STATUS_ICONS.get('bleed', '🩸')}-{dmg}")
+            
         elif eff_type == 'burn':
             hp_change -= val
-            logs.append(f"{STATUS_ICONS['burn']}-{val}")
+            logs.append(f"{STATUS_ICONS.get('burn', '🔥')}-{val}")
+            
         elif eff_type == 'regen':
             hp_change += val
-            logs.append(f"{STATUS_ICONS['regen']}+{val}")
+            logs.append(f"{STATUS_ICONS.get('regen', '💖')}+{val}")
+            
+        # Kurangi durasi
+        effect['duration'] = duration - 1
+        
+        # Simpan kembali jika durasi belum habis untuk turn berikutnya
+        if effect['duration'] > 0:
+            active_effects.append(effect)
 
+    # Perbarui list efek di entity
+    entity[effect_key] = active_effects
     return hp_change, logs
 
 # === SISTEM UI RAMPING ===
@@ -75,9 +103,9 @@ def get_compact_bar(current, maximum, length=8, bar_type="hp"):
     return f"{color * filled}{'⬜' * empty} `{int(current)}/{int(maximum)}`"
 
 def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
-    """Render UI utama pertarungan (Bersih dari Puzzle)."""
-    p_status = "".join([STATUS_ICONS.get(e['type'], "") for e in player.get('active_effects', [])])
-    m_status = "".join([STATUS_ICONS.get(e['type'], "") for e in monster.get('monster_effects', [])])
+    """Render UI utama pertarungan."""
+    p_status = "".join([STATUS_ICONS.get(e.get('type', ''), "") for e in player.get('active_effects', [])])
+    m_status = "".join([STATUS_ICONS.get(e.get('type', ''), "") for e in monster.get('monster_effects', [])])
 
     text = (
         f"⚔️ <b>BATTLE: {monster['monster_name'].upper()}</b> {m_status}\n"
@@ -92,11 +120,11 @@ def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
     )
     return text
 
-# === MESIN KALKULASI DAMAGE ===
+# === MESIN KALKULASI DAMAGE (FALLBACK) ===
 def calculate_damage(attacker, defender, is_attacker_player=True):
     """
     RUMUS: Damage = ATK * (ATK / (ATK + DEF))
-    Menjamin damage selalu rasional dan DEF sangat berharga.
+    (Dipertahankan sebagai fallback utility untuk basic attacks jika diperlukan)
     """
     log = []
     
