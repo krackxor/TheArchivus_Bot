@@ -160,9 +160,10 @@ def award_achievement(user_id, achievement_id):
         reward_text.append(f"💰 {reward['gold']} Gold")
     
     if 'exp' in reward:
-        leveled_up, new_level, _ = add_exp(user_id, reward['exp'])
+        # Menambahkan exp melalui sistem progression
+        add_exp(user_id, reward['exp'])
         reward_text.append(f"⭐ {reward['exp']} EXP")
-        player_data = get_player(user_id) 
+        player_data = get_player(user_id) # Refresh data setelah exp masuk
     
     if 'max_hp' in reward:
         updates['max_hp'] = player_data.get('max_hp', 100) + reward['max_hp']
@@ -176,7 +177,8 @@ def award_achievement(user_id, achievement_id):
         inventory = player_data.get('inventory', [])
         inventory.append(reward['item'])
         updates['inventory'] = inventory
-        reward_text.append(f"🎁 {reward['item'].replace('_', ' ').title()}")
+        item_name = reward['item'].replace('_', ' ').title()
+        reward_text.append(f"🎁 {item_name}")
     
     unlocked = player_data.get('achievements_unlocked', [])
     unlocked.append(achievement_id)
@@ -194,9 +196,10 @@ def award_achievement(user_id, achievement_id):
 def generate_daily_quests():
     """Generate 3 daily quests acak berdasarkan tanggal hari ini"""
     today = str(datetime.datetime.now().date())
+    # Deterministic seed agar semua user mendapat quest yang sama setiap harinya
     random.seed(today)
     selected = random.sample(DAILY_QUESTS_POOL, 3)
-    random.seed() 
+    random.seed() # Reset seed
     return selected
 
 def check_daily_quest_progress(player, quest_type):
@@ -207,8 +210,7 @@ def check_daily_quest_progress(player, quest_type):
         "kills": "kills_today",
         "gold_earned": "gold_earned_today",
         "steps": "steps_today",
-        "quiz_correct": "quiz_correct_today",
-        "perfect_combat": "perfect_combat_today"
+        "quiz_correct": "quiz_correct_today"
     }
     
     return daily_stats.get(mapping.get(quest_type, ""), 0)
