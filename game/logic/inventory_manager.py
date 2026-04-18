@@ -51,7 +51,8 @@ def equip_item(player, item_id):
     player['stats'] = calculate_total_stats(player)
 
     status_msg = f"✅ **{item['name']}** berhasil dipasang!"
-    if warning_msg: status_msg = warning_msg + status_msg
+    if warning_msg: 
+        status_msg = warning_msg + status_msg
     
     return True, status_msg
 
