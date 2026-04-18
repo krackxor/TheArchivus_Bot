@@ -661,6 +661,23 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         base_exp = enemy_data.get('exp_reward', 15 * tier)
         total_exp = int(base_exp * combo_bonus)
         
+        # ==========================================
+        # === INTEGRASI QUEST (TAMBAHKAN INI) ===
+        # ==========================================
+        # 1. Update Progres Bunuh Monster
+        quest_notif = update_quest_progress(p, "kill_monsters", 1)
+        
+        # 2. Update Progres Boss Slayer (Jika boss)
+        if is_boss or enemy_data.get('is_miniboss'):
+            quest_notif += update_quest_progress(p, "kill_boss", 1)
+            
+        # 3. Update Progres Kumpulkan Emas
+        quest_notif += update_quest_progress(p, "earn_gold", total_gold)
+        
+        # 4. Update Progres Combo (Jika mencapai jumlah tertentu)
+        quest_notif += update_quest_progress(p, "perform_combo", current_combo)
+        # ==========================================
+
         # Proses Level Up
         new_exp = p.get('exp', 0) + total_exp
         old_level = p.get('level', 1)
@@ -668,13 +685,10 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         
         level_up_msg = ""
         if new_level > old_level:
-            # Stats Bonus saat naik level
             hp_gain = 15 + (new_level * 2)
             mp_gain = 5 + (new_level)
             new_max_hp = p.get('max_hp', 100) + hp_gain
             new_max_mp = p.get('max_mp', 50) + mp_gain
-            
-            # Update variable lokal p agar UI akurat
             p.update({'max_hp': new_max_hp, 'max_mp': new_max_mp, 'hp': new_max_hp, 'mp': new_max_mp, 'level': new_level})
             level_up_msg = f"\n\n🆙 <b>LEVEL UP!</b> ({old_level} ➜ {new_level})\n💖 Max HP +{hp_gain} | 💧 Max MP +{mp_gain}"
 
@@ -686,21 +700,20 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         # Finalisasi Data ke Database
         update_player(user_id, {
             'kills': p.get('kills', 0) + 1, 
-            'gold': p.get('gold', 0) + total_gold, 
-            'exp': new_exp, 
+            'gold': p['gold'] + total_gold, # p['gold'] sudah ditambah hadiah quest di helper
+            'exp': p['exp'] + total_exp, 
             'level': p['level'],
             'hp': p['hp'],
             'max_hp': p.get('max_hp'),
             'max_mp': p.get('max_mp'),
             'inventory': inv,
+            'daily_quests': p.get('daily_quests'), # Simpan progres quest terbaru!
             'current_combo': 0,
-            'skill_cooldowns': {} # Reset cooldown setelah menang
+            'skill_cooldowns': {}
         })
         
-        # Catat di History
         add_history(user_id, f"Menang melawan {m_name} (Combo x{current_combo})")
         
-        # Bersihkan pesan battle
         if battle_msg_id:
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
@@ -716,6 +729,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
             f"✨ EXP: +{total_exp}\n"
             f"💰 Gold: +{total_gold}\n"
             f"🎁 Drops: <i>{safe_drops}</i>"
+            f"{quest_notif}" # Tampilkan notifikasi quest selesai di sini
             f"{level_up_msg}"
         )
         
