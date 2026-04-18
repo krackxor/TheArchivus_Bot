@@ -184,19 +184,52 @@ async def popup_handler(callback: CallbackQuery, state: FSMContext):
 async def blacksmith_callback_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     p = get_player(user_id)
+    
+    # 1. Hitung biaya dan jumlah perbaikan
     new_durability, cost, count = process_repair_all(p)
     
-    if count == 0: return await callback.answer("Aethelred: 'Gear-mu masih tajam. Pergi sana!'", show_alert=True)
-    if p.get('gold', 0) < cost: return await callback.answer(f"Aethelred: 'Emasmu kurang! Butuh {cost}G.'", show_alert=True)
+    # 2. Validasi: Jika tidak ada barang yang perlu diperbaiki
+    if count == 0: 
+        return await callback.answer("⚒️ Aethelred: 'Gear-mu masih tajam dan kokoh. Pergi sana, jangan buang waktuku!'", show_alert=True)
+    
+    # 3. Validasi: Cek Emas
+    if p.get('gold', 0) < cost: 
+        return await callback.answer(f"❌ Emasmu tidak cukup! Aethelred butuh {cost} Gold untuk jasa reparasi ini.", show_alert=True)
         
-    update_player(user_id, {"gold": p['gold'] - cost, "equipment_durability": new_durability})
+    # 4. Eksekusi Perbaikan di Database
+    # Penting: Setelah durabilitas diperbaiki, kita harus menghitung ulang total stats 
+    # karena gear yang rusak memberikan penalti stat besar.
+    p['equipment_durability'] = new_durability
+    new_stats = calculate_total_stats(p)
+    
+    update_player(user_id, {
+        "gold": p['gold'] - cost, 
+        "equipment_durability": new_durability,
+        "stats": new_stats
+    })
+    
+    # 5. Visual Feedback (UI)
     repair_msg = (
-        f"⚒️ **BENGKEL AETHELRED** ⚒️\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"💬 *'Nah, sekarang benda ini bisa membelah kulit iblis lagi.'*\n\n"
-        f"🛠️ **Item Diperbaiki:** {count}\n💰 **Biaya:** -{cost} Gold\n✨ **Kondisi:** 100% (50/50)"
+        f"⚒️ **BENGKEL AETHELRED**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💬 *'Nah, sekarang benda ini bisa membelah kulit iblis lagi. Jaga baik-baik, Weaver.'*\n\n"
+        f"🛠️ **Item Diperbaiki:** {count} buah\n"
+        f"💰 **Biaya Jasa:** -{cost} Gold\n"
+        f"✨ **Kondisi:** 100% (Semua Gear Kokoh)\n"
+        f"📊 **Status:** Kekuatan tempurmu telah pulih!"
     )
-    await callback.message.edit_text(repair_msg, parse_mode="Markdown")
-    await callback.answer("Berhasil diperbaiki!")
+    
+    # Gunakan Keyboard Profile kembali agar pemain bisa langsung melihat stats yang pulih
+    from game.logic.menu_handler import get_profile_main_menu
+    p['gold'] -= cost # Update local variable untuk UI
+    kb = get_profile_main_menu(p)
+    
+    try:
+        await callback.message.edit_text(repair_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+    except:
+        await callback.message.answer(repair_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+        
+    await callback.answer("✅ Seluruh peralatan berhasil diperbaiki!")
 
 # === HELPER: MONSTER AI TURN ===
 def apply_monster_turn(enemy_data, player):
