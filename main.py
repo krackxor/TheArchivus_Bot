@@ -42,7 +42,8 @@ from utils.helper_ui import (
     create_hp_bar, create_mp_bar, create_energy_bar, create_status_card, create_combat_header,
     create_achievement_notification, create_loot_drop, create_level_up_animation,
     create_combo_indicator, create_boss_warning,
-    create_death_screen, create_location_transition, create_inventory_display
+    create_death_screen, create_location_transition, create_inventory_display,
+    create_daily_quest_card # Tambahkan ini jika belum ada
 )
 
 dp = Dispatcher()
