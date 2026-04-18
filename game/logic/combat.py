@@ -1,3 +1,5 @@
+# game/logic/combat.py
+
 """
 CORE COMBAT ENGINE - The Archivus (ADVANCED & REFACTORED EDITION)
 Sistem Pertarungan Berbasis Data: 
@@ -32,7 +34,10 @@ STATUS_ICONS = {
 
 # === SISTEM STATUS EFFECTS ===
 def apply_turn_status_effects(entity, is_player=True):
-    """Memproses DoT/Regen per ronde."""
+    """
+    Memproses DoT/Regen per ronde.
+    Mengembalikan total perubahan HP dan list log status.
+    """
     hp_change = 0
     logs = []
     effects = entity.get('active_effects' if is_player else 'monster_effects', [])
@@ -42,14 +47,17 @@ def apply_turn_status_effects(entity, is_player=True):
         val = effect.get('value', 0)
         
         if eff_type == 'poison':
+            # Racun: Mengurangi HP berdasarkan persentase atau nilai tetap
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
             dmg = max(1, int(max_hp * 0.05))
             hp_change -= dmg
             logs.append(f"{STATUS_ICONS['poison']}-{dmg}")
         elif eff_type == 'burn':
+            # Burn: Damage tetap
             hp_change -= val
             logs.append(f"{STATUS_ICONS['burn']}-{val}")
         elif eff_type == 'regen':
+            # Regen: Memulihkan HP
             hp_change += val
             logs.append(f"{STATUS_ICONS['regen']}+{val}")
 
@@ -62,8 +70,12 @@ def get_compact_bar(current, maximum, length=8, bar_type="hp"):
     percent = max(0, min(1, current / maximum))
     filled = int(length * percent)
     empty = length - filled
-    color = "🟩" if percent > 0.5 else "🟨" if percent > 0.2 else "🟥"
-    if bar_type == "mp": color = "🟦"
+    
+    if bar_type == "hp":
+        color = "🟩" if percent > 0.5 else "🟨" if percent > 0.2 else "🟥"
+    else:
+        color = "🟦"
+        
     return f"{color * filled}{'⬜' * empty} `{int(current)}/{int(maximum)}`"
 
 def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
@@ -94,6 +106,8 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
     Menjamin damage selalu rasional dan DEF sangat berharga.
     """
     log = []
+    
+    # Ambil statistik dari player atau data monster
     atk_stats = attacker.get('stats', attacker) if is_attacker_player else attacker
     def_stats = defender.get('stats', defender) if not is_attacker_player else defender
 
@@ -102,7 +116,7 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
     if random.random() < dodge_chance:
         return 0, "💨 *MISS!* Serangan meleset."
 
-    # 2. Base Damage Calculation (Mitigasi)
+    # 2. Base Damage Calculation (Mitigasi Rasio)
     atk_type = atk_stats.get("attack_type", "physical")
     if atk_type == "physical":
         atk_val = atk_stats.get("p_atk", 10)
@@ -112,20 +126,23 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
         def_val = def_stats.get("m_def", 5)
 
     # Formula Mitigasi: Mencegah damage 1 jika DEF tinggi, mencegah OP jika ATK tinggi
-    base_dmg = atk_val * (atk_val / (atk_val + def_val + 1))
+    # Damage = ATK^2 / (ATK + DEF + 1)
+    base_dmg = (atk_val ** 2) / (atk_val + def_val + 1)
     
-    # Variance (0.9x - 1.1x)
+    # Variance (0.9x - 1.1x) untuk variasi damage
     base_dmg *= random.uniform(0.9, 1.1)
 
     # 3. Elemental & Crit
     multiplier = 1.0
     atk_element = atk_stats.get("element", attacker.get("element", "none")).lower()
-    def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
     
+    # Cek kelemahan elemen
+    def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
     if atk_element == def_weakness and atk_element != "none":
-        multiplier = 1.5
+        multiplier *= 1.5
         log.append("🔥 *WEAKNESS!*")
 
+    # Critical Hit
     if random.random() < atk_stats.get("crit_chance", 0.05):
         multiplier *= atk_stats.get("crit_damage", 1.5)
         log.append("💥 *CRITICAL!*")
@@ -137,18 +154,23 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
 # === GENERATOR PERTEMPURAN ===
 def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False):
     """Merakit data pertarungan dengan Scaling & Dynamic Timer."""
-    if is_boss: m_data = get_random_main_boss()
-    elif is_miniboss: m_data = get_random_mini_boss()
-    else: m_data = get_random_monster(tier_level)
+    if is_boss:
+        m_data = get_random_main_boss()
+    elif is_miniboss:
+        m_data = get_random_mini_boss()
+    else:
+        m_data = get_random_monster(tier_level)
 
-    # Scaling HP (Cycle Based)
+    # Scaling HP (Cycle Based) agar musuh makin kuat tiap cycle
     cycle = player.get('cycle', 1)
     hp_scaling = 1 + (cycle * 0.15)
     
     # Dynamic Timer (Berdasarkan Speed Monster)
     m_speed = m_data.get("speed", 5)
+    # Kecepatan monster mengurangi waktu yang tersedia bagi pemain
     final_timer = max(10, int(35 - (m_speed * 1.2) + (tier_level * 1.5)))
 
+    # Ambil teka-teki acak sesuai tier
     puzzle_data = get_random_puzzle(tier_level)
 
     return {
@@ -182,7 +204,7 @@ def validate_answer(user_answer, correct_answer, generated_time, time_limit):
     """Validasi jawaban dengan pengecekan waktu presisi."""
     time_taken = time.time() - generated_time
     if time_taken > time_limit:
-        return (False, True, time_taken)
+        return (False, True, time_taken) # (Salah, Timeout, Waktu)
     
     is_correct = str(user_answer).strip().lower() == str(correct_answer).strip().lower()
     return (is_correct, False, time_taken)
@@ -192,6 +214,7 @@ def process_loot(monster_drops):
     obtained = []
     for item in monster_drops:
         if isinstance(item, dict):
+            # Cek probabilitas drop (0.0 - 1.0)
             if random.random() <= item.get("chance", 1.0):
                 obtained.append(item["id"])
         else:
