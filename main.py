@@ -243,25 +243,38 @@ async def shop_purchase_handler(callback: CallbackQuery):
     success, msg = process_purchase(p, item_id)
     
     if success:
-        # 2. Update database dengan data terbaru dari variabel 'p'
+        # 2. [QUEST UPDATE] Tambah progres quest belanja
+        # Fungsi ini akan menambah angka 'current' dan memberikan gold/exp jika selesai
+        quest_notif = update_quest_progress(p, "buy_items", 1)
+        
+        # 3. Update database dengan data terbaru dari variabel 'p'
+        # Pastikan 'daily_quests' ikut dikirim agar progres tersimpan di MongoDB
         update_player(user_id, {
             "gold": p.get('gold'), 
-            "inventory": p.get('inventory')
+            "inventory": p.get('inventory'),
+            "daily_quests": p.get('daily_quests', [])
         })
         
-        # 3. Notifikasi sukses
-        await callback.answer(f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!")
+        # 4. Notifikasi sukses
+        # Jika quest selesai, tampilkan dalam alert agar lebih mencolok
+        alert_mode = True if quest_notif else False
+        success_msg = f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!{quest_notif}"
         
-        # 4. Refresh tampilan toko agar sisa Gold dan status tombol terupdate
+        await callback.answer(success_msg, show_alert=alert_mode)
+        
+        # 5. Refresh tampilan toko agar sisa Gold dan status tombol (💰/❌) terupdate
         try:
+            # Menggunakan p terbaru yang sudah dipotong Gold-nya
             await callback.message.edit_reply_markup(
-                reply_markup=get_shop_keyboard(p)
+                reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall'))
             )
         except Exception:
+            # Abaikan jika tidak ada perubahan markup (Telegram Error)
             pass
     else:
         # Tampilkan alasan gagal (misal: emas tidak cukup)
         await callback.answer(msg, show_alert=True)
+        
 
 # === HELPER: MONSTER AI TURN ===
 def apply_monster_turn(enemy_data, player):
@@ -283,6 +296,29 @@ def apply_monster_turn(enemy_data, player):
     return actual_dmg, m_log
 
 
+# === HELPER: QUEST PROGRESS TRACKER ===
+def update_quest_progress(player: dict, goal_type: str, amount: int = 1) -> str:
+    """
+    Mengupdate progress quest harian pemain.
+    Returns: Pesan notifikasi jika ada quest yang selesai.
+    """
+    player_quests = player.get('daily_quests', [])
+    notif_msg = ""
+    
+    for q in player_quests:
+        if q['status'] == "active" and q['goal_type'] == goal_type:
+            q['current'] += amount
+            # Cek apakah target tercapai
+            if q['current'] >= q['goal_value']:
+                q['current'] = q['goal_value']
+                q['status'] = "completed"
+                # Berikan Hadiah Langsung ke Player Object
+                player['gold'] += q.get('reward_gold', 0)
+                player['exp'] += q.get('reward_exp', 0)
+                notif_msg += f"\n🎯 **QUEST SELESAI:** {q['icon']} {q['name']} (+{q['reward_gold']}G)"
+                
+    return notif_msg
+    
 # === INVENTORY & SHOP CALLBACKS ===
 @dp.callback_query(F.data.startswith("menu_") | F.data.startswith("equip_") | F.data.startswith("unequip_") | F.data.startswith("useitem_") | F.data.startswith("buy_"))
 async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
@@ -296,11 +332,21 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         item_id = data.replace("buy_", "")
         success, msg = process_purchase(p, item_id)
         if success:
-            update_player(user_id, {"gold": p['gold'], "inventory": p['inventory']})
-            await callback.answer(f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!")
+            # [QUEST UPDATE] Tambah progres belanja
+            quest_notif = update_quest_progress(p, "buy_items", 1)
+            
+            update_player(user_id, {
+                "gold": p['gold'], 
+                "inventory": p['inventory'],
+                "daily_quests": p.get('daily_quests', []) # Simpan Progres Quest
+            })
+            
+            await callback.answer(f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!{quest_notif}")
             try:
                 # Refresh tampilan toko agar sisa gold terupdate
-                await callback.message.edit_reply_markup(reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall')))
+                await callback.message.edit_reply_markup(
+                    reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall'))
+                )
             except: pass
         else:
             await callback.answer(msg, show_alert=True)
@@ -336,13 +382,15 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         item_id = data.replace("useitem_", "")
         current_state = await state.get_state()
         
-        # Hapus pesan menu agar chat tidak menumpuk
         try: await callback.message.delete()
         except: pass
         
         success, msg, p_new = use_consumable_item(p, item_id)
         if not success:
             return await callback.answer(msg, show_alert=True)
+
+        # [QUEST UPDATE] Tambah progres penggunaan item
+        quest_notif = update_quest_progress(p_new, "use_items", 1)
 
         # CEK: Pemicu Quiz (Buku/Scroll)
         item_data = get_item(item_id)
@@ -352,7 +400,7 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             await state.set_state(GameState.in_event)
             await state.update_data(event_data=puzzle)
             return await callback.message.answer(
-                f"📖 {msg}\n\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*",
+                f"{quest_notif}\n📖 {msg}\n\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*",
                 parse_mode="Markdown"
             )
 
@@ -361,10 +409,7 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             data_st = await state.get_data()
             enemy_data = data_st.get("enemy_data")
             
-            # Monster membalas saat kamu minum!
             m_dmg, m_log = apply_monster_turn(enemy_data, p_new)
-            
-            # Tick status (poison/burn)
             m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
             p_hpc, p_logs = apply_turn_status_effects(p_new, is_player=True)
             
@@ -374,28 +419,29 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             reduce_all_cooldowns(p_new)
             current_combo = data_st.get("current_combo", 0) + 1
             
-            # Update Database
             update_player(user_id, {
                 "hp": p_new['hp'], 
                 "mp": p_new['mp'], 
                 "inventory": p_new['inventory'], 
                 "active_effects": p_new.get('active_effects', []),
+                "daily_quests": p_new.get('daily_quests', []), # Simpan Progres
                 "skill_cooldowns": p_new.get('skill_cooldowns', {})
             })
             
-            full_log = f"🎒 {msg}\n👾 {m_log}\n" + " ".join(m_logs + p_logs)
+            full_log = f"🎒 {msg}\n{quest_notif}\n👾 {m_log}\n" + " ".join(m_logs + p_logs)
             await execute_end_of_turn(callback.message, state, user_id, p_new, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
         
-        # LOGIKA: Penggunaan di luar Combat (Eksplorasi)
+        # LOGIKA: Penggunaan di luar Combat
         else:
             update_player(user_id, {
                 'hp': p_new['hp'], 
                 'mp': p_new['mp'], 
                 'energy': p_new.get('energy', 100),
                 'inventory': p_new['inventory'], 
-                'active_effects': p_new.get('active_effects', [])
+                'active_effects': p_new.get('active_effects', []),
+                'daily_quests': p_new.get('daily_quests', []) # Simpan Progres
             })
-            await callback.answer(msg, show_alert=True)
+            await callback.message.answer(f"{msg}\n{quest_notif}", parse_mode="Markdown")
 
 
 # === MOVEMENT & EXPLORATION ===
@@ -796,64 +842,83 @@ async def event_puzzle_handler(message: Message, state: FSMContext):
     # Ambil jawaban pemain
     player_answer = message.text.strip().lower()
     
-    # Proses hasil event menggunakan sistem event yang sudah kamu import
+    # Proses hasil event menggunakan sistem event
     success, reward_msg, loot = process_event_outcome(p, event_data, player_answer)
     
     if success:
-        # Tambahkan hadiah ke player
+        # [QUEST UPDATE] Tambah progres menjawab Quiz
+        quest_notif = update_quest_progress(p, "answer_quiz", 1)
+        
+        # Tambahkan hadiah loot ke inventory jika ada
         if loot:
             p['inventory'].extend(loot)
         
-        # Berikan statistik kecerdasan jika benar (sesuai ide sebelumnya)
+        # Kalkulasi statistik kecerdasan & reward gold
         intel_gain = event_data.get('tier', 1) * 2
+        new_intel = p.get("intelligence", 10) + intel_gain
+        new_gold = p.get("gold", 0) + event_data.get("gold_reward", 50)
+        
+        # Update Database (Daily Quests wajib ikut agar tersimpan)
         update_player(user_id, {
             "inventory": p['inventory'],
-            "intelligence": p.get("intelligence", 10) + intel_gain,
+            "intelligence": new_intel,
             "scholar_level": p.get("scholar_level", 0) + 1,
-            "gold": p.get("gold", 0) + event_data.get("gold_reward", 50)
+            "gold": new_gold,
+            "daily_quests": p.get('daily_quests', [])
         })
         
-        await message.answer(f"✅ **BERHASIL!**\n{reward_msg}\n🧠 Intelligence +{intel_gain}", reply_markup=get_main_reply_keyboard(p))
+        # Notifikasi Berhasil + Reward + Quest Progres
+        success_final = (
+            f"✅ **BERHASIL!**\n{reward_msg}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🧠 Intelligence +{intel_gain}\n"
+            f"💰 Gold +{event_data.get('gold_reward', 50)}\n"
+            f"{quest_notif}"
+        )
+        await message.answer(success_final, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        
     else:
-        await message.answer(f"❌ **GAGAL!**\n{reward_msg}", reply_markup=get_main_reply_keyboard(p))
+        # Jika gagal, quest tidak bertambah
+        await message.answer(f"❌ **GAGAL!**\n{reward_msg}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
     
+    # Kembalikan state ke menjelajah
     await state.set_state(GameState.exploring)
-
-
-# === HELPER: QUEST PROGRESS TRACKER ===
-def update_quest_progress(player: dict, goal_type: str, amount: int = 1) -> str:
-    """
-    Mengupdate progress quest harian pemain.
-    Returns: Pesan notifikasi jika ada quest yang selesai.
-    """
-    player_quests = player.get('daily_quests', [])
-    notif_msg = ""
     
-    for q in player_quests:
-        if q['status'] == "active" and q['goal_type'] == goal_type:
-            q['current'] += amount
-            # Cek apakah target tercapai
-            if q['current'] >= q['goal_value']:
-                q['current'] = q['goal_value']
-                q['status'] = "completed"
-                # Berikan Hadiah Langsung ke Player Object
-                player['gold'] += q.get('reward_gold', 0)
-                player['exp'] += q.get('reward_exp', 0)
-                notif_msg += f"\n🎯 **QUEST SELESAI:** {q['icon']} {q['name']} (+{q['reward_gold']}G)"
-                
-    return notif_msg
 
-
+# === HELP SYSTEM ===
 @dp.message(F.text == "/help")
 async def help_handler(message: Message):
     help_text = (
-        "📖 **PANDUAN THE ARCHIVUS**\n"
-        "1. **Eksplorasi:** Gunakan tombol arah untuk berjalan.\n"
-        "2. **Energi:** Tiap langkah memakan 1 Energi. Makan di Rest Area untuk pulih.\n"
-        "3. **Combat:** Gunakan Skill untuk damage besar, tapi perhatikan MP.\n"
-        "4. **Job:** Gunakan equipment set yang sama untuk membuka Class baru.\n"
-        "5. **Durabilitas:** Jika senjata rusak, statnya turun 80%. Perbaiki di Pandai Besi!"
+        "📜 **ARCHIVUS PROTOCOL: GUIDANCE**\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Selamat datang di pusat bantuan, Weaver. Berikut adalah instruksi dasar untuk bertahan hidup:\n\n"
+        
+        "🧭 **EKSPLORASI & ENERGI**\n"
+        "• Gunakan tombol arah untuk menjelajah.\n"
+        "• Tiap langkah mengonsumsi **1 Energi**.\n"
+        "• Jika Energi 0, gunakan **Makanan** atau temukan **Rest Area**.\n\n"
+        
+        "⚔️ **SISTEM PERTEMPURAN**\n"
+        "• **Skill:** Serangan kuat menggunakan MP.\n"
+        "• **Block:** Mitigasi damage & pulihkan sedikit HP.\n"
+        "• **Dodge:** Peluang hindaran total & bonus MP.\n"
+        "• **Combo:** Serangan beruntun meningkatkan bonus Gold/EXP.\n\n"
+        
+        "🎯 **MISI HARIAN (QUESTS)**\n"
+        "• Selesaikan misi aktif untuk **Reward Besar**.\n"
+        "• Progres dihitung otomatis saat bertarung, belanja, atau melangkah.\n\n"
+        
+        "🛠️ **GEAR & DURABILITAS**\n"
+        "• Senjata/Armor yang rusak kehilangan **80% Stat**.\n"
+        "• Perbaiki Gear di **Bengkel Aethelred** melalui menu Profil.\n\n"
+        
+        "🧠 **KECERDASAN (INTEL)**\n"
+        "• Jawab Quiz dari item buku kuno untuk menaikkan Intel.\n"
+        "• Intel tinggi membuka akses ke **Secret Room** & Event langka.\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔮 *Ingatan adalah senjata terbaikmu di sini.*"
     )
+    
     await message.answer(help_text, parse_mode="Markdown")
 
 
