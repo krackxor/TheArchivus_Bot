@@ -1,8 +1,8 @@
 """
-CORE COMBAT ENGINE - The Archivus (RPG ADVANCED EDITION)
+CORE COMBAT ENGINE - The Archivus (ADVANCED & REFACTORED EDITION)
 Sistem Pertarungan Berbasis Data: 
-Mendukung Physical/Magic Damage, Elemental Multiplier, Speed-based Timer, 
-Dodge, Crit, AI Behavior, Loot Drops, dan STATUS EFFECTS (Buff/Debuff).
+Mendukung Mitigasi Damage Rasio, Turn-Based Logic, 
+Modular Status Effects, dan Immersive Battle Logging.
 """
 import time
 import random
@@ -11,7 +11,7 @@ import random
 from game.entities.monsters import get_random_monster, get_random_mini_boss, get_random_main_boss
 from game.puzzles.manager import get_random_puzzle
 
-# === KONFIGURASI ELEMEN ===
+# === KONFIGURASI ELEMEN & STATUS ===
 ELEMENTAL_CHART = {
     "fire": {"strong": "ice", "weak": "water"},
     "water": {"strong": "fire", "weak": "lightning"},
@@ -22,174 +22,132 @@ ELEMENTAL_CHART = {
     "dark": {"strong": "light", "weak": "light"},
     "light": {"strong": "dark", "weak": "dark"},
     "void": {"strong": "all", "weak": "light"},
-    "blood": {"strong": "none", "weak": "ice"},
-    "poison": {"strong": "none", "weak": "fire"},
     "none": {"strong": "none", "weak": "none"}
 }
 
-# === SISTEM STATUS EFFECTS ===
 STATUS_ICONS = {
-    "poison": "🤢",
-    "burn": "🔥",
-    "regen": "💖",
-    "stun": "💫",
-    "bleed": "🩸",
-    "atk_buff": "⚔️↑",
-    "def_buff": "🛡️↑",
-    "speed_debuff": "👟↓",
-    "blind": "🌑"
+    "poison": "🤢", "burn": "🔥", "regen": "💖", "stun": "💫", 
+    "bleed": "🩸", "atk_buff": "⚔️↑", "def_buff": "🛡️↑"
 }
 
+# === SISTEM STATUS EFFECTS ===
 def apply_turn_status_effects(entity, is_player=True):
-    """
-    Memproses efek berkala (DoT/Regen) setiap ronde untuk Player atau Monster.
-    Mengembalikan: (total_hp_change, list_log_pesan)
-    """
+    """Memproses DoT/Regen per ronde."""
     hp_change = 0
     logs = []
-    
-    # Player menggunakan 'active_effects', monster menggunakan 'monster_effects'
     effects = entity.get('active_effects' if is_player else 'monster_effects', [])
-    name_label = "Weaver" if is_player else entity.get('monster_name', 'Musuh')
-
+    
     for effect in effects:
         eff_type = effect.get('type', '').lower()
         val = effect.get('value', 0)
         
         if eff_type == 'poison':
-            # Racun: Damage berdasarkan % Max HP (min 1)
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
             dmg = max(1, int(max_hp * 0.05))
             hp_change -= dmg
-            logs.append(f"{STATUS_ICONS['poison']} {dmg}")
-            
+            logs.append(f"{STATUS_ICONS['poison']}-{dmg}")
         elif eff_type == 'burn':
-            # Terbakar: Damage tetap
             hp_change -= val
-            logs.append(f"{STATUS_ICONS['burn']} {val}")
-            
+            logs.append(f"{STATUS_ICONS['burn']}-{val}")
         elif eff_type == 'regen':
-            # Regen: Memulihkan HP
             hp_change += val
-            logs.append(f"{STATUS_ICONS['regen']} {val}")
-            
-        elif eff_type == 'bleed':
-            # Pendarahan: Damage tetap
-            hp_change -= val
-            logs.append(f"{STATUS_ICONS['bleed']} {val}")
+            logs.append(f"{STATUS_ICONS['regen']}+{val}")
 
     return hp_change, logs
 
-# === SISTEM UI & VISUAL ===
-def get_dynamic_bar(current, maximum, length=10, type_bar="hp"):
-    """Menghasilkan bar visual untuk HP atau MP"""
-    if maximum <= 0: return "[Empty]"
+# === SISTEM UI RAMPING ===
+def get_compact_bar(current, maximum, length=8, bar_type="hp"):
+    """Visual Bar padat untuk layar mobile."""
+    if maximum <= 0: return "[EMPTY]"
     percent = max(0, min(1, current / maximum))
     filled = int(length * percent)
-    
-    if type_bar == "hp":
-        emoji = "🟩" if percent > 0.6 else "🟨" if percent > 0.3 else "🟥"
-    else:
-        emoji = "🟦"
-        
-    bar = (emoji * filled) + ("⬜" * (length - filled))
-    return f"{bar} {int(current)}/{int(maximum)}"
+    empty = length - filled
+    color = "🟩" if percent > 0.5 else "🟨" if percent > 0.2 else "🟥"
+    if bar_type == "mp": color = "🟦"
+    return f"{color * filled}{'⬜' * empty} `{int(current)}/{int(maximum)}`"
 
 def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
-    """Tampilan UI Pertempuran untuk Telegram dengan Status Effects"""
-    p_hp_view = get_dynamic_bar(player.get('hp', 0), player.get('max_hp', 100), type_bar="hp")
-    m_hp_view = get_dynamic_bar(monster.get('monster_hp', 0), monster.get('monster_max_hp', 100), type_bar="hp")
-    
-    # Render Icon Status aktif
+    """Render UI utama pertarungan (Refactored for Cleanliness)."""
     p_status = "".join([STATUS_ICONS.get(e['type'], "") for e in player.get('active_effects', [])])
     m_status = "".join([STATUS_ICONS.get(e['type'], "") for e in monster.get('monster_effects', [])])
 
     text = (
-        f"⚔️ **BATTLE: {monster['monster_name'].upper()}** ⚔️\n"
+        f"⚔️ **BATTLE: {monster['monster_name'].upper()}** {m_status}\n"
+        f"HP: {get_compact_bar(monster['monster_hp'], monster['monster_max_hp'], bar_type='hp')}\n"
+        f"🛡️ Elem: `{monster['monster_element'].title()}`\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👾 **MUSUH** {m_status}\n"
-        f"❤️ HP: {m_hp_view}\n"
-        f"✨ Elem: `{monster['monster_element'].capitalize()}` | 🧬 Ras: `{monster['monster_race'].capitalize()}`\n\n"
-        f"👤 **WEAVER** {p_status} ({player.get('current_job', 'Novice Weaver')})\n"
-        f"❤️ HP: {p_hp_view}\n"
-        f"🔵 MP: {player.get('mp', 0)}/{player.get('max_mp', 50)}\n"
+        f"👤 **{player.get('name', 'Weaver')}** {p_status}\n"
+        f"HP: {get_compact_bar(player['hp'], player['max_hp'], bar_type='hp')}\n"
+        f"MP: {get_compact_bar(player.get('mp', 0), player.get('max_mp', 50), bar_type='mp')}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📜 **LOG:**\n"
-        f"_{log_msg}_\n"
+        f"📜 **BATTLE LOG:**\n_{log_msg}_\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"❓ **TEKA-TEKI:**\n"
-        f"`{monster['question']}`\n\n"
+        f"🧩 **PUZZLE SEALS:**\n`{monster['question']}`\n"
         f"⏳ Sisa Waktu: `{monster['timer']}s`"
     )
     return text
 
-# === MESIN KALKULASI DAMAGE ===
+# === MESIN KALKULASI DAMAGE (MITIGASI RASIO) ===
 def calculate_damage(attacker, defender, is_attacker_player=True):
-    """Rumus Damage Utama: ATK vs DEF + Elemental + Crit + Dodge"""
+    """
+    RUMUS: Damage = ATK * (ATK / (ATK + DEF))
+    Menjamin damage selalu rasional dan DEF sangat berharga.
+    """
     log = []
-    
-    # Jika attacker player, gunakan dict stats. Jika monster, gunakan data monster langsung.
     atk_stats = attacker.get('stats', attacker) if is_attacker_player else attacker
     def_stats = defender.get('stats', defender) if not is_attacker_player else defender
 
-    # 1. Cek Dodge (Stat dodge player ditarik dari stats.py)
-    # Jika defender adalah player, dodge chance diambil dari def_stats['dodge']
-    dodge_chance = def_stats.get("dodge", 0.05) 
+    # 1. Check Dodge
+    dodge_chance = def_stats.get("dodge", 0.05)
     if random.random() < dodge_chance:
-        return 0, "💨 *MELLESAT!* Serangan gagal mengenai target."
+        return 0, "💨 *MISS!* Serangan meleset."
 
-    # 2. Tentukan Jenis Serangan & Damage Dasar
+    # 2. Base Damage Calculation (Mitigasi)
     atk_type = atk_stats.get("attack_type", "physical")
     if atk_type == "physical":
-        raw_dmg = atk_stats.get("p_atk", 10) - def_stats.get("p_def", 5)
+        atk_val = atk_stats.get("p_atk", 10)
+        def_val = def_stats.get("p_def", 5)
     else:
-        raw_dmg = atk_stats.get("m_atk", 10) - def_stats.get("m_def", 5)
-    
-    raw_dmg = max(1, raw_dmg)
+        atk_val = atk_stats.get("m_atk", 10)
+        def_val = def_stats.get("m_def", 5)
 
-    # 3. Multiplier Elemen
+    # Formula Mitigasi: Mencegah damage 1 jika DEF tinggi, mencegah OP jika ATK tinggi
+    base_dmg = atk_val * (atk_val / (atk_val + def_val + 1))
+    
+    # Variance (0.9x - 1.1x)
+    base_dmg *= random.uniform(0.9, 1.1)
+
+    # 3. Elemental & Crit
+    multiplier = 1.0
     atk_element = atk_stats.get("element", attacker.get("element", "none")).lower()
-    # Monster menyimpan kelemahan di 'monster_weakness'
-    def_element = def_stats.get("monster_element" if not is_attacker_player else "element", "none").lower()
     def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
     
-    multiplier = 1.0
     if atk_element == def_weakness and atk_element != "none":
         multiplier = 1.5
         log.append("🔥 *WEAKNESS!*")
-    elif def_element in ELEMENTAL_CHART.get(atk_element, {}).get("weak", []):
-        multiplier = 0.5
-        log.append("🛡️ *RESISTANT.*")
 
-    # 4. Critical Hit
-    crit_chance = atk_stats.get("crit_chance", 0.05)
-    if random.random() < crit_chance:
+    if random.random() < atk_stats.get("crit_chance", 0.05):
         multiplier *= atk_stats.get("crit_damage", 1.5)
         log.append("💥 *CRITICAL!*")
 
-    final_dmg = int(raw_dmg * multiplier)
+    final_dmg = max(1, int(base_dmg * multiplier))
     log_msg = " ".join(log) if log else "⚔️ *HIT!*"
     return final_dmg, log_msg
 
 # === GENERATOR PERTEMPURAN ===
 def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False):
-    """Merakit data pertarungan termasuk inisialisasi status monster"""
-    if is_boss:
-        m_data = get_random_main_boss()
-    elif is_miniboss:
-        m_data = get_random_mini_boss()
-    else:
-        m_data = get_random_monster(tier_level)
+    """Merakit data pertarungan dengan Scaling & Dynamic Timer."""
+    if is_boss: m_data = get_random_main_boss()
+    elif is_miniboss: m_data = get_random_mini_boss()
+    else: m_data = get_random_monster(tier_level)
 
-    # Scaling HP berdasarkan Cycle Pemain
+    # Scaling HP (Cycle Based)
     cycle = player.get('cycle', 1)
-    hp_scaling = 1 + (cycle * 0.1) 
+    hp_scaling = 1 + (cycle * 0.15)
     
-    # Kalkulasi Timer berdasarkan Speed Monster vs Tier
+    # Dynamic Timer (Berdasarkan Speed Monster)
     m_speed = m_data.get("speed", 5)
-    base_timer = 20 if is_boss else 35
-    timer_penalty = m_speed * 1.5
-    final_timer = max(10, int(base_timer - timer_penalty + (tier_level * 2)))
+    final_timer = max(10, int(35 - (m_speed * 1.2) + (tier_level * 1.5)))
 
     puzzle_data = get_random_puzzle(tier_level)
 
@@ -200,12 +158,11 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
         "monster_element": m_data.get("element", "none"),
         "monster_weakness": m_data.get("weakness", "none"),
         "monster_race": m_data.get("race", "unknown"),
-        "monster_effects": [], # Slot untuk debuff dari player (misal player punya skill racun)
+        "monster_effects": [],
         "p_atk": m_data.get("p_atk", 10),
         "m_atk": m_data.get("m_atk", 10),
         "p_def": m_data.get("p_def", 5),
         "m_def": m_data.get("m_def", 5),
-        "speed": m_speed,
         "attack_type": m_data.get("attack_type", "physical"),
         "dodge": m_data.get("dodge_chance", 0.05),
         "crit_chance": m_data.get("crit_chance", 0.05),
@@ -222,7 +179,7 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
     }
 
 def validate_answer(user_answer, correct_answer, generated_time, time_limit):
-    """Validasi jawaban dan waktu tempuh"""
+    """Validasi jawaban dengan pengecekan waktu presisi."""
     time_taken = time.time() - generated_time
     if time_taken > time_limit:
         return (False, True, time_taken)
@@ -231,12 +188,12 @@ def validate_answer(user_answer, correct_answer, generated_time, time_limit):
     return (is_correct, False, time_taken)
 
 def process_loot(monster_drops):
-    """Mengecek item mana yang jatuh dari monster"""
+    """Sistem Looting Berbasis Chance."""
     obtained = []
     for item in monster_drops:
         if isinstance(item, dict):
             if random.random() <= item.get("chance", 1.0):
                 obtained.append(item["id"])
-        elif isinstance(item, str):
+        else:
             obtained.append(item)
     return obtained
