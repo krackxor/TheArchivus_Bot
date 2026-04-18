@@ -62,6 +62,8 @@ QUIZ_NPCS = {
     }
 }
 
+# --- LOGIKA INTERAKSI KUIS ---
+
 def get_quiz_npc(npc_id):
     """Mengambil data NPC kuis berdasarkan ID."""
     return QUIZ_NPCS.get(npc_id)
@@ -76,3 +78,27 @@ def get_random_quiz(npc_id):
 def check_quiz_answer(user_input, correct_answer):
     """Validasi jawaban user (case-insensitive)."""
     return str(user_input).strip().lower() == str(correct_answer).strip().lower()
+
+def process_quiz_result(player, quiz_data, is_correct):
+    """
+    Memproses hasil kuis dan memberikan reward jika benar.
+    Mengembalikan: (message, reward_details)
+    """
+    if not is_correct:
+        return "Jawaban salah.", None
+        
+    reward = quiz_data.get('reward', {})
+    
+    # Berikan Gold
+    player['gold'] += reward.get('gold', 0)
+    
+    # Berikan EXP
+    player['exp'] += reward.get('exp', 0)
+    
+    # Berikan Item jika ada
+    if 'item' in reward:
+        if 'inventory' not in player:
+            player['inventory'] = []
+        player['inventory'].append(reward['item'])
+        
+    return "Jawaban benar! Kamu menerima hadiah.", reward
