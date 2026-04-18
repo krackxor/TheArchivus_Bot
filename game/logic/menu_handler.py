@@ -69,8 +69,14 @@ def get_inventory_menu(player):
     buttons = []
     inventory = player.get('inventory', [])
 
-    equipable_types = ['weapon', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
-    equipables = [item_id for item_id in inventory if get_item(item_id) and get_item(item_id).get('type') in equipable_types]
+    # PERBARUAN: Menambahkan 'offhand' dan 'shield' agar bisa muncul di tas
+    equipable_types = ['weapon', 'offhand', 'shield', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
+    
+    equipables = []
+    for item_id in inventory:
+        item_data = get_item(item_id)
+        if item_data and item_data.get('type') in equipable_types:
+            equipables.append(item_id)
 
     if not equipables:
         return [[InlineKeyboardButton(text="⬅️ Kembali", callback_data="menu_main_profile")]]
@@ -80,7 +86,7 @@ def get_inventory_menu(player):
         item = get_item(item_id)
         if not item: continue
         
-        icon = "⚔️" if item['type'] == 'weapon' else "👕"
+        icon = "⚔️" if item['type'] == 'weapon' else "🛡️" if item['type'] in ['shield', 'offhand'] else "👕"
         current_row.append(InlineKeyboardButton(text=f"{icon} {item['name']}", callback_data=f"equip_{item_id}"))
         
         # Buat 2 tombol per baris
