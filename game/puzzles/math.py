@@ -1,19 +1,24 @@
+# game/puzzles/math.py
+
 """
-Logika Teka-teki Matematika dan Deret Angka
+Logika Teka-teki Matematika dan Deret Angka - The Archivus
+Modul untuk menghasilkan gangguan numerik dan sandi pola angka.
 """
 
 import random
 
 def generate_math_puzzle(tier):
     """Menghasilkan kombinasi puzzle matematika dinamis berdasarkan tier."""
-    if tier == 1:
+    if tier <= 1:
         # Penjumlahan / Pengurangan sederhana
         a = random.randint(10, 50)
         b = random.randint(1, 30)
         op = random.choice(['+', '-'])
-        answer = str(a + b) if op == '+' else str(max(a, b) - min(a, b)) 
-        real_q = f"{max(a, b)} - {min(a, b)}" if op == '-' else f"{a} + {b}"
-        return f"Pecahkan distorsi numerik ini: {real_q} = ?", answer
+        if op == '-':
+            num1, num2 = max(a, b), min(a, b)
+            return f"Pecahkan distorsi numerik ini: {num1} - {num2} = ?", str(num1 - num2)
+        else:
+            return f"Pecahkan distorsi numerik ini: {a} + {b} = ?", str(a + b)
         
     elif tier == 2:
         # Perkalian dasar
@@ -39,23 +44,42 @@ def generate_sequence_puzzle(tier):
     """Menghasilkan kombinasi deret angka (sequence)."""
     start = random.randint(1, 10)
     if tier <= 2:
-        # Deret aritmatika (tambah-tambahan tetap)
+        # Deret aritmatika
         step = random.randint(2, 6)
         seq = [start + (i * step) for i in range(4)]
         answer = str(start + (4 * step))
         return f"Lengkapi deret memori ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
         
     elif tier <= 4:
-        # Deret geometri (perkalian tetap eksponensial)
-        step = random.randint(2, 4)
+        # Deret geometri
+        step = random.randint(2, 3) # Dikurangi agar angka tidak terlalu raksasa
         seq = [start * (step ** i) for i in range(4)]
         answer = str(start * (step ** 4))
         return f"Pecahkan pola eksponensial ini: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ... ?", answer
         
     else:
-        # Deret ala Fibonacci (angka berikutnya adalah jumlah 2 angka sebelumnya)
+        # Fibonacci-style
         seq = [start, start + random.randint(1, 5)]
         for i in range(2, 5):
             seq.append(seq[-1] + seq[-2])
         answer = str(seq[-1] + seq[-2])
         return f"Sandi Kuno Archivus (Deret): {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, {seq[4]}, ... ?", answer
+
+def get_puzzle(tier=None):
+    """
+    Fungsi utama untuk dipanggil oleh manager.py.
+    Memilih secara acak antara hitungan matematika atau deret angka.
+    """
+    if tier is None:
+        tier = random.randint(1, 5)
+        
+    # Kocok antara tipe Math atau Sequence
+    if random.choice(["math", "seq"]) == "math":
+        q, a = generate_math_puzzle(tier)
+    else:
+        q, a = generate_sequence_puzzle(tier)
+        
+    return {
+        "question": f"🔢 **NUMERICAL ANOMALY**\n_{q}_",
+        "answer": a.strip().lower()
+    }
