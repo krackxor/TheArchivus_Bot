@@ -3,14 +3,15 @@
 """
 CORE COMBAT ENGINE - The Archivus (PURE TURN-BASED EDITION)
 Sistem Pertarungan Berbasis Data: 
-Mendukung Mitigasi Damage Rasio, Turn-Based Logic Button, 
-Modular Status Effects (dengan Durasi), dan Immersive Battle Logging.
+Mendukung Mitigasi Damage Rasio, Modular Status Effects, 
+Daily Quest Tracker, dan Immersive Battle Logging.
 """
-import time
 import random
 
 # --- IMPORT SYSTEM ---
 from game.entities.monsters import get_random_monster, get_random_mini_boss, get_random_main_boss
+from game.data.quests import update_quest_progress
+from game.data.script import MONSTER_WARNINGS
 
 # === KONFIGURASI ELEMEN & STATUS ===
 ELEMENTAL_CHART = {
@@ -26,7 +27,6 @@ ELEMENTAL_CHART = {
     "none": {"strong": "none", "weak": "none"}
 }
 
-# Diperbarui untuk mendukung semua efek dari Sistem Skill Baru
 STATUS_ICONS = {
     "poison": "🤢", "burn": "🔥", "regen": "💖", "stun": "💫", "freeze": "🧊", 
     "bleed": "🩸", "atk_buff": "⚔️↑", "def_buff": "🛡️↑", "atk_debuff": "⚔️↓", 
@@ -35,11 +35,7 @@ STATUS_ICONS = {
 
 # === SISTEM STATUS EFFECTS ===
 def apply_turn_status_effects(entity, is_player=True):
-    """
-    Memproses DoT/Regen per ronde dan mengurangi durasi efek.
-    Menghapus efek jika durasinya sudah habis.
-    Mengembalikan total perubahan HP dan list log status.
-    """
+    """Memproses DoT/Regen per ronde dan mengurangi durasi efek."""
     hp_change = 0
     logs = []
     
@@ -50,56 +46,38 @@ def apply_turn_status_effects(entity, is_player=True):
     for effect in effects:
         eff_type = effect.get('type', '').lower()
         val = effect.get('value', 0)
-        duration = effect.get('duration', 3) # Default durasi 3 turn jika tidak diset
+        duration = effect.get('duration', 3)
         
-        # Jika durasi habis, efek hilang (tidak dimasukkan ke active_effects)
-        if duration <= 0:
-            continue
+        if duration <= 0: continue
             
-        # Proses Damage over Time (DoT) / Heal over Time (HoT)
         if eff_type == 'poison':
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
-            dmg = max(1, int(max_hp * 0.05)) # Poison = 5% Max HP
+            dmg = max(1, int(max_hp * 0.05))
             hp_change -= dmg
             logs.append(f"{STATUS_ICONS.get('poison', '🤢')}-{dmg}")
-            
         elif eff_type == 'bleed':
-            dmg = max(1, int(val)) # Bleed = flat damage
+            dmg = max(1, int(val))
             hp_change -= dmg
             logs.append(f"{STATUS_ICONS.get('bleed', '🩸')}-{dmg}")
-            
-        elif eff_type == 'burn':
-            hp_change -= val
-            logs.append(f"{STATUS_ICONS.get('burn', '🔥')}-{val}")
-            
         elif eff_type == 'regen':
             hp_change += val
             logs.append(f"{STATUS_ICONS.get('regen', '💖')}+{val}")
             
-        # Kurangi durasi
         effect['duration'] = duration - 1
-        
-        # Simpan kembali jika durasi belum habis untuk turn berikutnya
         if effect['duration'] > 0:
             active_effects.append(effect)
 
-    # Perbarui list efek di entity
     entity[effect_key] = active_effects
     return hp_change, logs
 
-# === SISTEM UI RAMPING ===
+# === SISTEM UI BATTLE ===
 def get_compact_bar(current, maximum, length=8, bar_type="hp"):
     """Visual Bar padat untuk layar mobile."""
     if maximum <= 0: return "[EMPTY]"
     percent = max(0, min(1, current / maximum))
     filled = int(length * percent)
     empty = length - filled
-    
-    if bar_type == "hp":
-        color = "🟩" if percent > 0.5 else "🟨" if percent > 0.2 else "🟥"
-    else:
-        color = "🟦"
-        
+    color = ("🟩" if percent > 0.5 else "🟨" if percent > 0.2 else "🟥") if bar_type == "hp" else "🟦"
     return f"{color * filled}{'⬜' * empty} `{int(current)}/{int(maximum)}`"
 
 def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
@@ -116,43 +94,31 @@ def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
         f"HP: {get_compact_bar(player['hp'], player['max_hp'], bar_type='hp')}\n"
         f"MP: {get_compact_bar(player.get('mp', 0), player.get('max_mp', 50), bar_type='mp')}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📜 <b>BATTLE LOG:</b>\n{log_msg}"
+        f"📜 <b>LOG:</b>\n{log_msg}"
     )
     return text
 
-# === MESIN KALKULASI DAMAGE (FALLBACK) ===
+# === MESIN KALKULASI DAMAGE ===
 def calculate_damage(attacker, defender, is_attacker_player=True):
-    """
-    RUMUS: Damage = ATK * (ATK / (ATK + DEF))
-    (Dipertahankan sebagai fallback utility untuk basic attacks jika diperlukan)
-    """
+    """Rumus Damage: ATK^2 / (ATK + DEF)."""
     log = []
-    
     atk_stats = attacker.get('stats', attacker) if is_attacker_player else attacker
     def_stats = defender.get('stats', defender) if not is_attacker_player else defender
 
-    # 1. Check Dodge
-    dodge_chance = def_stats.get("dodge", 0.05)
-    if random.random() < dodge_chance:
+    if random.random() < def_stats.get("dodge", 0.05):
         return 0, "💨 <i>MISS!</i> Serangan meleset."
 
-    # 2. Base Damage Calculation
     atk_type = atk_stats.get("attack_type", "physical")
-    if atk_type == "physical":
-        atk_val = atk_stats.get("p_atk", 10)
-        def_val = def_stats.get("p_def", 5)
-    else:
-        atk_val = atk_stats.get("m_atk", 10)
-        def_val = def_stats.get("m_def", 5)
+    atk_val = atk_stats.get("p_atk" if atk_type == "physical" else "m_atk", 10)
+    def_val = def_stats.get("p_def" if atk_type == "physical" else "m_def", 5)
 
     base_dmg = (atk_val ** 2) / (atk_val + def_val + 1)
     base_dmg *= random.uniform(0.9, 1.1)
 
-    # 3. Elemental & Crit
     multiplier = 1.0
-    atk_element = atk_stats.get("element", attacker.get("element", "none")).lower()
-    
+    atk_element = atk_stats.get("element", "none").lower()
     def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
+    
     if atk_element == def_weakness and atk_element != "none":
         multiplier *= 1.5
         log.append("🔥 <i>WEAKNESS!</i>")
@@ -162,55 +128,63 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
         log.append("💥 <i>CRITICAL!</i>")
 
     final_dmg = max(1, int(base_dmg * multiplier))
-    log_msg = " ".join(log) if log else "⚔️ <i>HIT!</i>"
-    return final_dmg, log_msg
+    return final_dmg, " ".join(log) if log else "⚔️ <i>HIT!</i>"
+
+# === LOGIKA SETELAH PERTARUNGAN (REWARD & QUEST) ===
+def finalize_battle(player, monster):
+    """Memproses Reward, Loot, dan Update Daily Quest."""
+    quest_msgs = []
+    
+    # 1. Update Progres Quest Slayer
+    if monster.get('is_boss'):
+        player, quest_msgs = update_quest_progress(player, "kill_boss")
+    else:
+        player, quest_msgs = update_quest_progress(player, "kill_monsters")
+    
+    # 2. Update Gold Progress Quest
+    player, gold_quest_msg = update_quest_progress(player, "earn_gold", monster['gold_reward'])
+    if gold_quest_msg: quest_msgs.extend(gold_quest_msg)
+    
+    # 3. Proses Loot (Looting Quest)
+    loot = process_loot(monster['drops'])
+    if loot:
+        player, loot_quest_msg = update_quest_progress(player, "collect_drops", len(loot))
+        if loot_quest_msg: quest_msgs.extend(loot_quest_msg)
+        player.setdefault('inventory', []).extend(loot)
+
+    return player, loot, quest_msgs
 
 # === GENERATOR PERTEMPURAN ===
 def generate_battle_data(player, tier_level=1, is_boss=False, is_miniboss=False):
-    """
-    Merakit data stats musuh untuk pertarungan.
-    """
-    if is_boss:
-        m_data = get_random_main_boss()
-    elif is_miniboss:
-        m_data = get_random_mini_boss()
-    else:
-        m_data = get_random_monster(tier_level)
+    """Merakit musuh dan menyisipkan peringatan dari script.py."""
+    if is_boss: m_data = get_random_main_boss()
+    elif is_miniboss: m_data = get_random_mini_boss()
+    else: m_data = get_random_monster(tier_level)
 
-    # Scaling HP (Cycle Based)
-    cycle = player.get('cycle', 1)
-    hp_scaling = 1 + (cycle * 0.15)
+    scaling = 1 + (player.get('cycle', 1) * 0.15)
     
     return {
         "monster_name": m_data["name"],
-        "monster_hp": int(m_data["base_hp"] * hp_scaling),
-        "monster_max_hp": int(m_data["base_hp"] * hp_scaling),
+        "monster_hp": int(m_data["base_hp"] * scaling),
+        "monster_max_hp": int(m_data["base_hp"] * scaling),
         "monster_element": m_data.get("element", "none"),
         "monster_weakness": m_data.get("weakness", "none"),
-        "monster_race": m_data.get("race", "unknown"),
         "monster_effects": [],
         "p_atk": m_data.get("p_atk", 10),
         "m_atk": m_data.get("m_atk", 10),
         "p_def": m_data.get("p_def", 5),
         "m_def": m_data.get("m_def", 5),
-        "attack_type": m_data.get("attack_type", "physical"),
-        "dodge": m_data.get("dodge_chance", 0.05),
-        "crit_chance": m_data.get("crit_chance", 0.05),
-        "crit_damage": m_data.get("crit_damage", 1.5),
-        "tier": tier_level,
-        "is_boss": is_boss,
+        "is_boss": is_boss or is_miniboss,
         "exp_reward": m_data.get("exp", 10),
         "gold_reward": m_data.get("gold", 5),
-        "drops": m_data.get("drops", [])
+        "drops": m_data.get("drops", []),
+        "warning_msg": random.choice(MONSTER_WARNINGS) # Dari script.py
     }
 
 def process_loot(monster_drops):
-    """Sistem Looting Berbasis Chance."""
     obtained = []
     for item in monster_drops:
-        if isinstance(item, dict):
-            if random.random() <= item.get("chance", 1.0):
-                obtained.append(item["id"])
-        else:
-            obtained.append(item)
+        chance = item.get("chance", 1.0) if isinstance(item, dict) else 1.0
+        if random.random() <= chance:
+            obtained.append(item["id"] if isinstance(item, dict) else item)
     return obtained
