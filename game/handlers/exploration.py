@@ -6,51 +6,21 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-# === IMPORTS ===
+# === IMPORTS UTAMA ===
 from database import get_player, update_player, tick_buffs
 from game.logic.states import GameState
 from game.logic.stats import calculate_total_stats
 from game.systems.exploration import process_move
-from game.logic.menu_handler import get_main_reply_keyboard
+# Import kedua keyboard dari menu_handler
+from game.logic.menu_handler import get_main_reply_keyboard, get_stance_keyboard 
 from game.logic.combat import generate_battle_data, render_live_battle
 from game.systems.shop import get_rest_area_keyboard
 
+# Import Sistem Quest dari tempat aslinya
+from game.systems.achievements import update_quest_progress
+
 # Inisialisasi Router
 router = Router()
-
-# ==============================================================================
-# HELPER SEMENTARA (Pastikan ini nanti ada di game/systems/achievements.py)
-# ==============================================================================
-def update_quest_progress(player: dict, goal_type: str, amount: int = 1) -> str:
-    player_quests = player.get('daily_quests', [])
-    notif_msg = ""
-    for q in player_quests:
-        if q['status'] == "active" and q['goal_type'] == goal_type:
-            q['current'] += amount
-            if q['current'] >= q['goal_value']:
-                q['current'] = q['goal_value']
-                q['status'] = "completed"
-                player['gold'] += q.get('reward_gold', 0)
-                player['exp'] += q.get('reward_exp', 0)
-                notif_msg += f"\n🎯 **QUEST SELESAI:** {q['icon']} {q['name']} (+{q['reward_gold']}G)"
-    return notif_msg
-
-# HELPER SEMENTARA (Pastikan ini nanti dipindah ke game/logic/menu_handler.py)
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-def get_stance_keyboard(is_boss=False):
-    row1 = [
-        InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
-        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill")
-    ]
-    row2 = [
-        InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
-        InlineKeyboardButton(text="💨 Menghindar", callback_data="stance_dodge")
-    ]
-    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="stance_item")]
-    if not is_boss: row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
-    return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
-# ==============================================================================
-
 
 # === MOVEMENT & EXPLORATION ===
 @router.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
