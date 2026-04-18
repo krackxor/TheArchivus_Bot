@@ -3,7 +3,7 @@
 import asyncio
 import random
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 # === IMPORTS UTAMA ===
@@ -11,10 +11,10 @@ from database import get_player, update_player, tick_buffs
 from game.logic.states import GameState
 from game.logic.stats import calculate_total_stats
 from game.systems.exploration import process_move
-# Import kedua keyboard dari menu_handler
-from game.logic.menu_handler import get_main_reply_keyboard, get_stance_keyboard 
 from game.logic.combat import generate_battle_data, render_live_battle
-from game.systems.shop import get_rest_area_keyboard
+
+# Import keyboard dari menu_handler (Termasuk get_rest_area_keyboard yang baru)
+from game.logic.menu_handler import get_main_reply_keyboard, get_stance_keyboard, get_rest_area_keyboard
 
 # Import Sistem Quest dari tempat aslinya
 from game.systems.achievements import update_quest_progress
@@ -22,7 +22,9 @@ from game.systems.achievements import update_quest_progress
 # Inisialisasi Router
 router = Router()
 
-# === MOVEMENT & EXPLORATION ===
+# ==============================================================================
+# 1. MOVEMENT & EXPLORATION (JALAN KAKI)
+# ==============================================================================
 @router.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
 async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -125,7 +127,9 @@ async def move_handler(message: Message, state: FSMContext):
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
 
-# --- FITUR EMERGENCY: MEDITASI ---
+# ==============================================================================
+# 2. FITUR EMERGENCY: MEDITASI
+# ==============================================================================
 @router.message(GameState.exploring, F.text == "🧘 Meditasi")
 async def meditation_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -154,3 +158,77 @@ async def meditation_handler(message: Message, state: FSMContext):
         f"🔋 Status: ⚡ {new_energy} | ❤️ {new_hp}",
         parse_mode="Markdown"
     )
+
+# ==============================================================================
+# 3. HANDLER REST AREA (API UNGGUN / TENDA)
+# ==============================================================================
+@router.callback_query(GameState.in_rest_area)
+async def rest_area_callback_handler(callback: CallbackQuery, state: FSMContext):
+    """Menangkap interaksi tombol saat pemain berada di dalam Rest Area."""
+    user_id = callback.from_user.id
+    data = callback.data
+    p = get_player(user_id)
+    
+    # --- OPSI 1: PASANG TENDA (BUTUH ITEM) ---
+    if data == "rest_tent":
+        inventory = p.get('inventory', [])
+        
+        # Cek apakah pemain punya tenda
+        if "tenda" not in inventory:
+            return await callback.answer("❌ Kamu tidak memiliki item 'Tenda' di dalam tas!", show_alert=True)
+            
+        try: await callback.message.delete()
+        except: pass
+        
+        # Hapus 1 tenda dari tas
+        inventory.remove("tenda")
+        
+        # Heal Maksimal (+100)
+        new_hp = min(p.get('max_hp', 100), p.get('hp', 0) + 100)
+        new_mp = min(p.get('max_mp', 50), p.get('mp', 0) + 100)
+        new_energy = min(100, p.get('energy', 0) + 100)
+        
+        update_player(user_id, {"hp": new_hp, "mp": new_mp, "energy": new_energy, "inventory": inventory})
+        await state.set_state(GameState.exploring)
+        
+        await callback.message.answer(
+            f"⛺ **KEMAH YANG NYAMAN**\n\n"
+            f"Kau mendirikan tenda dan tidur dengan nyenyak. Tubuhmu sepenuhnya bugar kembali!\n\n"
+            f"*(💖 +100 HP | 💧 +100 MP | ⚡ +100 Energi)*\n"
+            f"_[-1 Tenda digunakan]_", 
+            reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown"
+        )
+        await callback.answer("Tidur nyenyak!")
+
+    # --- OPSI 2: MENYALAKAN API (GRATIS) ---
+    elif data == "rest_fire":
+        try: await callback.message.delete()
+        except: pass
+        
+        # Heal Sebagian (+50 HP/MP, +25 Energi)
+        new_hp = min(p.get('max_hp', 100), p.get('hp', 0) + 50)
+        new_mp = min(p.get('max_mp', 50), p.get('mp', 0) + 50)
+        new_energy = min(100, p.get('energy', 0) + 25)
+        
+        update_player(user_id, {"hp": new_hp, "mp": new_mp, "energy": new_energy})
+        await state.set_state(GameState.exploring)
+        
+        await callback.message.answer(
+            f"🔥 **API UNGGUN MENYALA**\n\n"
+            f"Kau duduk di dekat api yang berderak. Cukup untuk mengusir hawa dingin malam ini.\n\n"
+            f"*(💖 +50 HP | 💧 +50 MP | ⚡ +25 Energi)*", 
+            reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown"
+        )
+        await callback.answer("Istirahat sejenak...")
+
+    # --- OPSI 3: LANJUT BERJALAN ---
+    elif data == "rest_leave": 
+        try: await callback.message.delete()
+        except: pass
+        
+        await state.set_state(GameState.exploring)
+        await callback.message.answer(
+            "🚶‍♂️ Kamu mengabaikan tempat berlindung itu dan terus berjalan menembus kegelapan...", 
+            reply_markup=get_main_reply_keyboard(p)
+        )
+        await callback.answer("Melanjutkan perjalanan...")
