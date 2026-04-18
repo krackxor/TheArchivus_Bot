@@ -95,9 +95,9 @@ def get_main_reply_keyboard(player=None):
         [KeyboardButton(text="⬆️ Utara")],
         [KeyboardButton(text="⬅️ Barat"), KeyboardButton(text="Timur ➡️")],
         [KeyboardButton(text="⬇️ Selatan")],
-        [KeyboardButton(text="📊 Profil & Tas")] 
+        [KeyboardButton(text="🧘 Meditasi"), KeyboardButton(text="📊 Profil & Tas")]
     ]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, input_field_placeholder="⚔️ Pilih aksimu, Weaver...")
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 def get_stance_keyboard(is_boss=False):
     row1 = [
@@ -464,7 +464,7 @@ async def move_handler(message: Message, state: FSMContext):
     try: await message.delete()
     except: pass
     
-    # 2. CLEANUP: Hapus pesan eksplorasi sebelumnya agar tidak spam
+    # 2. CLEANUP: Hapus pesan eksplorasi sebelumnya agar chat tidak spam
     state_data = await state.get_data()
     last_expl_msg = state_data.get("last_expl_msg_id")
     if last_expl_msg:
@@ -476,30 +476,39 @@ async def move_handler(message: Message, state: FSMContext):
     tick_buffs(user_id) 
     p = get_player(user_id)
     
-    # Sinkronisasi Stats
+    # Sinkronisasi Stats terbaru
     p['stats'] = calculate_total_stats(p) 
     luck_bonus = p['stats'].get('luck', 0)
     intel_bonus = p.get('intelligence', 10)
     
-    # 4. ENERGI CHECK
+    # 4. ENERGI CHECK (Safety Net)
     current_energy = p.get('energy', 100)
     if current_energy <= 0:
-        return await message.answer("😫 Kamu terlalu lelah untuk melangkah... Gunakan makanan atau istirahat di Rest Area!", 
-                                   reply_markup=get_main_reply_keyboard(p))
+        # Jika energi habis, tampilkan panduan Meditasi agar pemain baru tidak bingung
+        text_tired = (
+            "😫 **KELELAHAN EKSTREM**\n\n"
+            "Tubuhmu menolak untuk melangkah lebih jauh. Energimu habis (**0**).\n\n"
+            "💡 *Solusi:* Gunakan **Makanan** dari Tas atau gunakan fitur **🧘 Meditasi** "
+            "untuk memulihkan tenaga dengan bayaran sisa HP-mu."
+        )
+        return await message.answer(text_tired, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
-    # 5. UPDATE PROGRES QUEST & ENERGI
+    # 5. UPDATE PROGRES & ENERGI
     new_energy = current_energy - 1
+    
+    # Update Quest Progres (Langkah)
     quest_notif = update_quest_progress(p, "move_steps", 1)
     
+    # Update ke Database
     update_player(user_id, {
         "energy": new_energy,
         "daily_quests": p.get('daily_quests', [])
     })
     
-    # 6. LOGIKA PERGERAKAN (Dari exploration.py)
+    # 6. LOGIKA PERGERAKAN (Proses RNG Event)
     event_type, event_data, narration = process_move(user_id, luck=luck_bonus, intel=intel_bonus)
     
-    # Tambahkan notifikasi quest jika ada
+    # Gabungkan narasi utama dengan notifikasi quest (jika ada yang selesai)
     final_narration = f"{narration}\n{quest_notif}" if quest_notif else narration
 
     # 7. PENANGANAN HASIL EVENT
@@ -507,22 +516,28 @@ async def move_handler(message: Message, state: FSMContext):
     if event_type in ["boss", "monster", "miniboss"]:
         is_boss = (event_type == "boss")
         is_miniboss = (event_type == "miniboss")
+        # Scaling tingkat kesulitan berdasarkan kills
         tier_level = 5 if is_boss else min(5, max(1, (p.get('kills', 0) // 5) + 1))
         
         enemy_data = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         await state.set_state(GameState.in_combat)
         
+        # UI Battle Live
         safe_narration = final_narration.replace("**", "")
         combat_ui = render_live_battle(p, enemy_data, f"⚠️ <b>{safe_narration}</b>")
         sent_msg = await message.answer(combat_ui, parse_mode="HTML", reply_markup=get_stance_keyboard(is_boss))
         
-        await state.update_data(battle_msg_id=sent_msg.message_id, enemy_data=enemy_data, current_combo=0, last_expl_msg_id=None)
+        await state.update_data(
+            battle_msg_id=sent_msg.message_id,
+            enemy_data=enemy_data, 
+            current_combo=0,
+            last_expl_msg_id=None
+        )
 
     # --- B. EVENT INTERAKTIF (NPC, Hazard, Landmark) ---
     elif event_type in ["npc", "hazard", "landmark"]:
         from game.logic.event_handler import get_event_interaction_kb
-        
-        # Mengambil keyboard interaktif dari event_handler.py
+        # Tombol interaksi dari event_handler.py
         kb = get_event_interaction_kb(event_type, event_data)
         
         sent_msg = await message.answer(
@@ -532,28 +547,60 @@ async def move_handler(message: Message, state: FSMContext):
         )
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
-    # --- C. EVENT KHUSUS (Rest Area & Puzzle) ---
+    # --- C. REST AREA ---
     elif event_type == "rest_area":
         await state.set_state(GameState.in_rest_area)
         kb = get_rest_area_keyboard()
         sent_msg = await message.answer(f"🏕️ **REST AREA**\n{final_narration}", reply_markup=kb, parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
-    elif event_type == "event": # Mystery Event / Puzzle
+    # --- D. PUZZLE / MYSTERY EVENT ---
+    elif event_type == "event": 
         await state.set_state(GameState.in_event)
         await state.update_data(event_data=event_data)
-        sent_msg = await message.answer(f"❓ **MYSTERY EVENT**\n{final_narration}\n\n*Ketik jawabanmu di sini...*", parse_mode="Markdown")
+        sent_msg = await message.answer(f"❓ **MYSTERY EVENT**\n{final_narration}\n\n*Ketik jawabanmu langsung di sini...*", parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
-    # --- D. EKSPLORASI AMAN ---
+    # --- E. EKSPLORASI AMAN ---
     else:
-        sent_msg = await message.answer(
-            f"{final_narration}\n\n⚡ Energi: {new_energy}/100", 
-            reply_markup=get_main_reply_keyboard(p), 
-            parse_mode="Markdown"
-        )
+        status_line = f"\n\n⚡ Energi: {new_energy}/100"
+        sent_msg = await message.answer(f"{final_narration}{status_line}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
         
+
+# --- FITUR EMERGENCY: MEDITASI ---
+@dp.message(GameState.exploring, F.text == "🧘 Meditasi")
+async def meditation_handler(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    p = get_player(user_id)
+    
+    # 1. Cek Energi (Hanya aktif jika 0)
+    if p.get('energy', 0) > 0:
+        return await message.answer("⏳ **FOKUS TERJAGA**\n\nMeditasi hanya bisa dilakukan saat Energimu benar-benar habis (**0**).")
+
+    # 2. Cek HP (Minimal 10 untuk bertahan hidup)
+    if p['hp'] <= 10:
+        return await message.answer("⚠️ **KONDISI KRITIS**\n\nTubuhmu terlalu lemah. Meditasi sekarang akan membunuhmu!")
+
+    # 3. Eksekusi Meditasi
+    gain_energy = random.randint(8, 12)
+    loss_hp = 10
+    
+    new_energy = p['energy'] + gain_energy
+    new_hp = max(1, p['hp'] - loss_hp)
+    
+    update_player(user_id, {"energy": new_energy, "hp": new_hp})
+
+    await message.answer(
+        f"🧘 **DEEP MEDITATION**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ Energi: +{gain_energy}\n"
+        f"💔 HP: -{loss_hp}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔋 Status: ⚡ {new_energy} | ❤️ {new_hp}",
+        parse_mode="Markdown"
+    )
+
 
 # === EVENT INTERACTION CALLBACK ===
 # Menangani klik tombol dari NPC, Hazard, dan Landmark
