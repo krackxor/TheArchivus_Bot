@@ -43,33 +43,47 @@ GAMBLER_NPCS = {
     }
 }
 
+# --- LOGIKA EKSEKUSI PERJUDIAN ---
+
+def process_gambling_action(player, npc_id, bet_amount, user_input):
+    """
+    Logika utama untuk memproses taruhan pemain.
+    Mengembalikan: (is_win, message, final_reward)
+    """
+    npc = GAMBLER_NPCS.get(npc_id)
+    if not npc:
+        return False, "❌ NPC tidak ditemukan.", 0
+
+    if player['gold'] < bet_amount:
+        return False, "❌ Emasmu tidak cukup untuk taruhan ini.", 0
+
+    # Tentukan Kemenangan berdasarkan Win Chance di Database
+    # random.random() menghasilkan angka 0.0 - 1.0
+    is_win = random.random() < npc.get('win_chance', 0.5)
+    
+    # Faktor Kecurangan Tambahan (5% chance otomatis kalah)
+    if random.random() < 0.05:
+        is_win = False
+
+    if is_win:
+        reward = int(bet_amount * npc['multiplier'])
+        player['gold'] += (reward - bet_amount) # Tambahkan selisih kemenangan
+        return True, f"🎉 {npc['win_msg']}", reward
+    else:
+        player['gold'] -= bet_amount
+        return False, f"💀 {npc['lose_msg']}", 0
+
 def get_gambler_data(npc_id):
     """Mengambil data NPC penjudi berdasarkan ID."""
     return GAMBLER_NPCS.get(npc_id)
 
-def play_coin_toss(bet_amount, user_choice):
-    """
-    Logika Mini-game Tebak Koin.
-    user_choice: 'Heads' atau 'Tails'
-    """
+# --- LOGIKA MINI-GAMES (Fungsi Pembantu) ---
+
+def play_coin_toss(user_choice):
+    """Logika visual untuk Tebak Koin."""
     result = random.choice(['Heads', 'Tails'])
-    is_win = user_choice.lower() == result.lower()
-    
-    # Tambahan: Faktor kecurangan bandar (5% chance otomatis kalah)
-    if random.random() < 0.05:
-        is_win = False
+    return result
 
-    return is_win, result
-
-def play_dice_roll(bet_amount, user_guess):
-    """
-    Logika Mini-game Dadu (Big vs Small).
-    Big: 4-6, Small: 1-3
-    """
-    roll = random.randint(1, 6)
-    if user_guess.lower() == "big":
-        is_win = roll >= 4
-    else:
-        is_win = roll <= 3
-        
-    return is_win, roll
+def play_dice_roll():
+    """Logika visual untuk Dadu."""
+    return random.randint(1, 6)
