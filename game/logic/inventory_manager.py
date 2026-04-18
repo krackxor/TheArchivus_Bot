@@ -16,15 +16,15 @@ def equip_item(player, item_id):
     if item_id not in player.get('inventory', []):
         return False, "❌ Kau tidak memiliki item ini di tasmu."
 
-    # 'weapon', 'armor', 'head', 'mask', 'cloak', 'offhand', 'artifact', dll.
+    # Ambil slot asli (weapon, armor, head, mask, gloves, boots, cloak, offhand, artifact)
     slot = item.get('type') 
     
-    # Adaptasi: Jika tipe item adalah shield, masukkan ke slot offhand
-    if slot == 'shield':
+    # Sinkronisasi Slot: Di Archivus, perisai atau orb masuk ke slot 'offhand'
+    # Namun job_manager mungkin mengecek 'artifact'. Kita simpan secara konsisten di 'offhand'.
+    if slot == 'artifact':
         slot = 'offhand'
         
     equipped = player.get('equipped', {})
-    
     warning_msg = ""
 
     # --- LOGIKA 1: KONFLIK 2-HANDED (2H) vs OFFHAND ---
@@ -55,7 +55,7 @@ def equip_item(player, item_id):
 
     # --- LOGIKA 3: UPDATE JOB & CACHING STAT ---
     detect_player_job(player)
-    # Penting: Re-kalkulasi stat hanya dilakukan saat ganti equipment
+    # Re-kalkulasi stat total termasuk dari equipment baru
     player['stats'] = calculate_total_stats(player)
 
     status_msg = f"✅ **{item['name']}** berhasil dipasang!"
@@ -85,34 +85,12 @@ def unequip_item(player, slot):
 
     return True, f"📦 **{item_name}** telah dilepas ke tas."
 
-# === SISTEM PANDAI BESI (REPAIR) ===
-
-def process_repair_all(player):
-    """
-    Memperbaiki semua item yang terpasang ke kondisi maksimal (50/50).
-    Biaya: 5 Gold per poin durabilitas (Disesuaikan agar lebih balance).
-    """
-    equipped = player.get('equipped', {})
-    durability_data = player.get('equipment_durability', {})
-    total_cost = 0
-    items_repaired = 0
-    
-    for slot in equipped.keys():
-        current_dur = durability_data.get(slot, 50)
-        if current_dur < 50:
-            missing_dur = 50 - current_dur
-            total_cost += missing_dur * 5 # Biaya perbaikan per poin
-            durability_data[slot] = 50
-            items_repaired += 1
-            
-    return durability_data, total_cost, items_repaired
-
 # === SISTEM CONSUMABLES (PENGGUNAAN ITEM) ===
 
 def use_consumable_item(player, item_id):
     """
-    Logika penggunaan item habis pakai (Potion, Antidote, dll).
-    Mendukung pemulihan HP, MP, dan pembersihan status efek negatif.
+    Logika penggunaan item habis pakai dari folder game/items/consumables/.
+    Mendukung HP, MP, Energy, Antidote, dan pemicu Quiz.
     """
     item = get_item(item_id)
     if not item or item.get('type') != 'consumable':
@@ -126,7 +104,7 @@ def use_consumable_item(player, item_id):
     eff_type = item.get('effect_type')
     val = item.get('value', 0)
 
-    # 1. Efek Pemulihan HP (Potion)
+    # 1. Pemulihan HP (Ramuan Merah)
     if eff_type == 'heal_hp':
         if player['hp'] >= player.get('max_hp', 100):
             return False, "❌ Darahmu sudah penuh!", player
@@ -134,7 +112,7 @@ def use_consumable_item(player, item_id):
         player['hp'] = min(player.get('max_hp', 100), player['hp'] + val)
         msg = f"💖 Meminum {item['name']}! (+{player['hp'] - old_hp} HP)"
     
-    # 2. Efek Pemulihan MP (Mana Potion)
+    # 2. Pemulihan MP (Ramuan Biru)
     elif eff_type == 'restore_mp':
         if player.get('mp', 0) >= player.get('max_mp', 50):
             return False, "❌ Mana milikmu sudah penuh!", player
@@ -142,18 +120,55 @@ def use_consumable_item(player, item_id):
         player['mp'] = min(player.get('max_mp', 50), player.get('mp', 0) + val)
         msg = f"🔵 Meminum {item['name']}! (+{player['mp'] - old_mp} MP)"
 
-    # 3. Efek Penawar Racun (Antidote)
+    # 3. Pemulihan Energi (Makanan)
+    elif eff_type == 'restore_energy':
+        if player.get('energy', 100) >= player.get('max_energy', 100):
+            return False, "❌ Kau masih sangat bertenaga!", player
+        old_en = player.get('energy', 100)
+        player['energy'] = min(player.get('max_energy', 100), player.get('energy', 100) + val)
+        msg = f"🍴 Memakan {item['name']}! (+{player['energy'] - old_en} Energi)"
+
+    # 4. Penawar Racun (Utility)
     elif eff_type == 'clear_poison':
         active_effects = player.get('active_effects', [])
-        # Cek apakah memang sedang terkena racun
-        if not any(e['type'] == 'poison' for e in active_effects):
+        if not any(e.get('type') == 'poison' for e in active_effects):
             return False, "❌ Kau tidak sedang terkena racun.", player
             
-        player['active_effects'] = [e for e in active_effects if e['type'] != 'poison']
+        player['active_effects'] = [e for e in active_effects if e.get('type') != 'poison']
         msg = f"🧪 {item['name']} menetralkan racun di tubuhmu!"
 
-    # Kurangi item setelah berhasil digunakan
+    # 5. Pemicu Quiz (Special Item)
+    elif eff_type == 'trigger_quiz':
+        # Penanganan State sebenarnya dilakukan di main.py, 
+        # di sini kita hanya memvalidasi penggunaan item.
+        msg = f"📖 Kau mulai membaca {item['name']}..."
+        # Jangan hapus item di sini jika Quiz gagal, 
+        # namun untuk kesederhanaan, kita hapus saat item "dibuka".
+    
+    else:
+        return False, "❌ Item ini belum memiliki fungsi dalam sistem.", player
+
+    # Kurangi item dari inventory setelah berhasil digunakan
     inventory.remove(item_id)
     player['inventory'] = inventory
     
     return True, msg, player
+
+# === SISTEM REPAIR (DURABILITY) ===
+
+def process_repair_all(player):
+    """Memperbaiki seluruh equipment yang terpasang."""
+    equipped = player.get('equipped', {})
+    durability_data = player.get('equipment_durability', {})
+    total_cost = 0
+    items_repaired = 0
+    
+    for slot in equipped.keys():
+        current_dur = durability_data.get(slot, 50)
+        if current_dur < 50:
+            missing_dur = 50 - current_dur
+            total_cost += missing_dur * 5
+            durability_data[slot] = 50
+            items_repaired += 1
+            
+    return durability_data, total_cost, items_repaired
