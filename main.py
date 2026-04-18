@@ -243,42 +243,83 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p['current_job']})
         await callback.answer(msg)
         await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
-    elif data.startswith("useitem_"):
+   elif data.startswith("useitem_"):
         item_id = data.replace("useitem_", "")
         current_state = await state.get_state()
         
+        # Hapus pesan menu inventory agar chat bersih
         try: await callback.message.delete()
         except: pass
         
-        if current_state == GameState.in_combat:
-            success, msg, p_new = use_consumable_item(p, item_id)
-            if not success:
-                return await callback.answer(msg, show_alert=True)
+        # 1. Jalankan fungsi dasar penggunaan item
+        success, msg, p_new = use_consumable_item(p, item_id)
+        
+        if not success:
+            return await callback.answer(msg, show_alert=True)
+
+        # 2. CEK: Apakah item ini adalah pemicu Quiz (Buku/Scroll)?
+        item_data = get_item(item_id)
+        if item_data and item_data.get("effect_type") == "trigger_quiz":
+            from game.puzzles.manager import generate_puzzle
+            # Buat kuis berdasarkan Tier item (semakin tinggi Tier, semakin sulit/besar hadiahnya)
+            puzzle = generate_puzzle(tier=item_data.get("tier", 2))
             
-            p = p_new
+            await state.set_state(GameState.in_event)
+            # Simpan data kuis ke state agar bisa divalidasi di handler event_puzzle
+            await state.update_data(event_data=puzzle)
+            
+            return await callback.message.answer(
+                f"📖 {msg}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"❓ **PERTANYAAN:**\n"
+                f"*{puzzle['question']}*\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💬 *Ketik jawabanmu di bawah ini...*",
+                parse_mode="Markdown"
+            )
+
+        # 3. JIKA ITEM BIASA (Potion/Makanan):
+        if current_state == GameState.in_combat:
+            # Jika digunakan saat bertarung, monster tidak akan diam!
             data_st = await state.get_data()
             enemy_data = data_st.get("enemy_data")
-            m_name = enemy_data.get('monster_name', 'Musuh')
             
-            m_dmg, m_log = apply_monster_turn(enemy_data, p)
-            result_msg = f"🎒 <b>PAKAI RAMUAN:</b> {msg}\n👾 <b>BALASAN:</b> {m_log}"
+            # Monster Turn
+            m_dmg, m_log = apply_monster_turn(enemy_data, p_new)
             
+            # Tick Status Effects (Racun/Burn)
             m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
-            p_hpc, p_logs = apply_turn_status_effects(p, is_player=True)
+            p_hpc, p_logs = apply_turn_status_effects(p_new, is_player=True)
+            
             enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hpc)
-            p['hp'] = max(0, p['hp'] + p_hpc)
+            p_new['hp'] = max(0, p_new['hp'] + p_hpc)
             
-            reduce_all_cooldowns(p)
+            # Update Cooldowns & Combo
+            reduce_all_cooldowns(p_new)
             current_combo = data_st.get("current_combo", 0) + 1
-            update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', []), "skill_cooldowns": p.get('skill_cooldowns', {})})
             
-            full_log = f"{result_msg}\n" + " ".join(m_logs + p_logs)
-            await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
+            # Update Database
+            update_player(user_id, {
+                "hp": p_new['hp'], 
+                "mp": p_new['mp'], 
+                "inventory": p_new['inventory'], 
+                "active_effects": p_new.get('active_effects', []),
+                "skill_cooldowns": p_new.get('skill_cooldowns', {})
+            })
+            
+            full_log = f"🎒 <b>ITEM:</b> {msg}\n👾 <b>BALASAN:</b> {m_log}\n" + " ".join(m_logs + p_logs)
+            await execute_end_of_turn(callback.message, state, user_id, p_new, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
+        
         else:
-            success, msg, p_new = use_consumable_item(p, item_id)
-            if success:
-                update_player(user_id, {'hp': p_new['hp'], 'mp': p_new['mp'], 'inventory': p_new['inventory'], 'active_effects': p_new.get('active_effects', [])})
-                await callback.answer(msg, show_alert=True)
+            # Jika digunakan di luar pertarungan (Menu Tas Biasa)
+            update_player(user_id, {
+                'hp': p_new['hp'], 
+                'mp': p_new['mp'], 
+                'energy': p_new.get('energy', 100),
+                'inventory': p_new['inventory'], 
+                'active_effects': p_new.get('active_effects', [])
+            })
+            await callback.answer(msg, show_alert=True)
 
 # === MOVEMENT & EXPLORATION ===
 @dp.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
