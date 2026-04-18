@@ -282,14 +282,31 @@ def apply_monster_turn(enemy_data, player):
         
     return actual_dmg, m_log
 
-# === INVENTORY CALLBACKS ===
-@dp.callback_query(F.data.startswith("menu_") | F.data.startswith("equip_") | F.data.startswith("unequip_") | F.data.startswith("useitem_"))
+
+# === INVENTORY & SHOP CALLBACKS ===
+@dp.callback_query(F.data.startswith("menu_") | F.data.startswith("equip_") | F.data.startswith("unequip_") | F.data.startswith("useitem_") | F.data.startswith("buy_"))
 async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     data = callback.data
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p)
 
+    # --- LOGIKA SHOP (BELI BARANG) ---
+    if data.startswith("buy_"):
+        item_id = data.replace("buy_", "")
+        success, msg = process_purchase(p, item_id)
+        if success:
+            update_player(user_id, {"gold": p['gold'], "inventory": p['inventory']})
+            await callback.answer(f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!")
+            try:
+                # Refresh tampilan toko agar sisa gold terupdate
+                await callback.message.edit_reply_markup(reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall')))
+            except: pass
+        else:
+            await callback.answer(msg, show_alert=True)
+        return
+
+    # --- LOGIKA NAVIGASI MENU ---
     if data == "menu_inventory":
         await callback.message.edit_text("🎒 **Isi Tas (Equipment):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
     elif data == "menu_consumables":
@@ -298,70 +315,62 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
     elif data == "menu_main_profile":
         await callback.message.edit_text(generate_profile_text(p, p['stats']), reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_main_menu(p)), parse_mode="Markdown")
+    
+    # --- LOGIKA PASANG/LEPAS GEAR ---
     elif data.startswith("equip_"):
         item_id = data.replace("equip_", "")
         _, msg = equip_item(p, item_id)
         update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p['current_job']})
         await callback.answer(msg)
         await callback.message.edit_text("🎒 **Isi Tas:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
+    
     elif data.startswith("unequip_"):
         slot = data.replace("unequip_", "")
         _, msg = unequip_item(p, slot)
         update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p['current_job']})
         await callback.answer(msg)
         await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
-   elif data.startswith("useitem_"):
+    
+    # --- LOGIKA PENGGUNAAN ITEM (POTION/QUIZ) ---
+    elif data.startswith("useitem_"):
         item_id = data.replace("useitem_", "")
         current_state = await state.get_state()
         
-        # Hapus pesan menu inventory agar chat bersih
+        # Hapus pesan menu agar chat tidak menumpuk
         try: await callback.message.delete()
         except: pass
         
-        # 1. Jalankan fungsi dasar penggunaan item
         success, msg, p_new = use_consumable_item(p, item_id)
-        
         if not success:
             return await callback.answer(msg, show_alert=True)
 
-        # 2. CEK: Apakah item ini adalah pemicu Quiz (Buku/Scroll)?
+        # CEK: Pemicu Quiz (Buku/Scroll)
         item_data = get_item(item_id)
         if item_data and item_data.get("effect_type") == "trigger_quiz":
             from game.puzzles.manager import generate_puzzle
-            # Buat kuis berdasarkan Tier item (semakin tinggi Tier, semakin sulit/besar hadiahnya)
             puzzle = generate_puzzle(tier=item_data.get("tier", 2))
-            
             await state.set_state(GameState.in_event)
-            # Simpan data kuis ke state agar bisa divalidasi di handler event_puzzle
             await state.update_data(event_data=puzzle)
-            
             return await callback.message.answer(
-                f"📖 {msg}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"❓ **PERTANYAAN:**\n"
-                f"*{puzzle['question']}*\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💬 *Ketik jawabanmu di bawah ini...*",
+                f"📖 {msg}\n\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*",
                 parse_mode="Markdown"
             )
 
-        # 3. JIKA ITEM BIASA (Potion/Makanan):
+        # LOGIKA: Penggunaan di dalam Combat
         if current_state == GameState.in_combat:
-            # Jika digunakan saat bertarung, monster tidak akan diam!
             data_st = await state.get_data()
             enemy_data = data_st.get("enemy_data")
             
-            # Monster Turn
+            # Monster membalas saat kamu minum!
             m_dmg, m_log = apply_monster_turn(enemy_data, p_new)
             
-            # Tick Status Effects (Racun/Burn)
+            # Tick status (poison/burn)
             m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
             p_hpc, p_logs = apply_turn_status_effects(p_new, is_player=True)
             
             enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hpc)
             p_new['hp'] = max(0, p_new['hp'] + p_hpc)
             
-            # Update Cooldowns & Combo
             reduce_all_cooldowns(p_new)
             current_combo = data_st.get("current_combo", 0) + 1
             
@@ -374,11 +383,11 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
                 "skill_cooldowns": p_new.get('skill_cooldowns', {})
             })
             
-            full_log = f"🎒 <b>ITEM:</b> {msg}\n👾 <b>BALASAN:</b> {m_log}\n" + " ".join(m_logs + p_logs)
+            full_log = f"🎒 {msg}\n👾 {m_log}\n" + " ".join(m_logs + p_logs)
             await execute_end_of_turn(callback.message, state, user_id, p_new, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
         
+        # LOGIKA: Penggunaan di luar Combat (Eksplorasi)
         else:
-            # Jika digunakan di luar pertarungan (Menu Tas Biasa)
             update_player(user_id, {
                 'hp': p_new['hp'], 
                 'mp': p_new['mp'], 
@@ -388,27 +397,27 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             })
             await callback.answer(msg, show_alert=True)
 
+
 # === MOVEMENT & EXPLORATION ===
 @dp.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
 async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
     
-    # 1. CEK STATE: Mencegah jalan saat bertarung/event
+    # 1. CEK STATE: Mencegah jalan saat bertarung/event/istirahat
     if current_state in [GameState.in_combat, GameState.in_event, GameState.in_rest_area]:
         try: await message.delete() 
         except: pass
         warning_msg = await message.answer("⚠️ Selesaikan dulu urusanmu di depan sebelum bergerak maju!")
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
         try: await message.bot.delete_message(chat_id=message.chat.id, message_id=warning_msg.message_id)
         except: pass
         return
         
-    # Hapus pesan input user agar chat bersih
     try: await message.delete()
     except: pass
     
-    # 2. CLEANUP: Hapus pesan eksplorasi sebelumnya
+    # 2. CLEANUP: Hapus pesan eksplorasi sebelumnya agar chat tidak spam
     state_data = await state.get_data()
     last_expl_msg = state_data.get("last_expl_msg_id")
     if last_expl_msg:
@@ -420,7 +429,7 @@ async def move_handler(message: Message, state: FSMContext):
     tick_buffs(user_id) 
     p = get_player(user_id)
     
-    # Sinkronisasi Stats (Termasuk Luck & Intel)
+    # Sinkronisasi Stats
     p['stats'] = calculate_total_stats(p) 
     luck_bonus = p['stats'].get('luck', 0)
     intel_bonus = p.get('intelligence', 10)
@@ -434,22 +443,21 @@ async def move_handler(message: Message, state: FSMContext):
     new_energy = current_energy - 1
     update_player(user_id, {"energy": new_energy})
     
-    # 5. LOGIKA PERGERAKAN (Sinergi dengan Luck & Intel)
+    # 5. LOGIKA PERGERAKAN
     event_type, event_data, narration = process_move(user_id, luck=luck_bonus, intel=intel_bonus)
     
     # 6. PENANGANAN HASIL EVENT
-    # A. BATTLE EVENT (Monster/Boss)
     if event_type in ["boss", "monster", "miniboss"]:
         is_boss = (event_type == "boss")
         is_miniboss = (event_type == "miniboss")
-        tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
+        tier_level = 5 if is_boss else min(5, max(1, (p.get('kills', 0) // 5) + 1))
         
         enemy_data = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
-        
         await state.set_state(GameState.in_combat)
+        
+        # UI Battle
         safe_narration = narration.replace("**", "")
         combat_ui = render_live_battle(p, enemy_data, f"⚠️ <b>{safe_narration}</b>")
-        
         sent_msg = await message.answer(combat_ui, parse_mode="HTML", reply_markup=get_stance_keyboard(is_boss))
         
         await state.update_data(
@@ -459,22 +467,21 @@ async def move_handler(message: Message, state: FSMContext):
             last_expl_msg_id=None
         )
 
-    # B. REST AREA EVENT (Toko/Pulihkan Energi)
     elif event_type == "rest_area":
         await state.set_state(GameState.in_rest_area)
         kb = get_rest_area_keyboard()
         sent_msg = await message.answer(f"🏕️ **REST AREA**\n{narration}", reply_markup=kb, parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
-    # C. PUZZLE / LORE EVENT
     elif event_type == "event":
         await state.set_state(GameState.in_event)
         await state.update_data(event_data=event_data)
-        sent_msg = await message.answer(f"❓ **MYSTERY EVENT**\n{narration}\n\n*Ketik jawabanmu langsung di sini...*", parse_mode="Markdown")
+        # Menambahkan hint visual jika itu puzzle intel
+        sent_msg = await message.answer(f"❓ **MYSTERY EVENT**\n{narration}\n\n*Ketik jawabanmu di sini...*", parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
-    # D. EKSPLORASI BIASA (Jalan Kosong / Temukan Gold Kecil)
     else:
+        # Eksplorasi Biasa
         sent_msg = await message.answer(f"{narration}\n\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
@@ -497,9 +504,11 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     elif callback.data.startswith("useskill_"):
         action = "cast_skill"
         skill_to_cast = callback.data.replace("useskill_", "")
+        # Tutup pop-up menu skill agar tidak menumpuk
         try: await callback.message.delete()
         except: pass
     
+    # --- 1. SUB-MENU HANDLING ---
     if action == "item":
         kb = get_consumable_menu(p)
         if not kb or len(kb) <= 1: return await callback.answer("Tas ramuanmu kosong!", show_alert=True)
@@ -509,101 +518,103 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         kb = get_skill_menu_keyboard(p, p['stats'])
         return await callback.message.answer("🔮 **DAFTAR MAGIC & SKILL:**", reply_markup=kb)
 
+    # --- 2. PREPARASI DATA COMBAT ---
     state_data = await state.get_data()
     enemy_data = state_data.get("enemy_data")
     battle_msg_id = state_data.get("battle_msg_id")
     
     if not enemy_data:
-        return await callback.answer("Data musuh tidak ditemukan.", show_alert=True)
+        return await callback.answer("❌ Data musuh hilang. Gunakan tombol arah untuk memulai ulang.", show_alert=True)
         
     m_name = enemy_data.get('monster_name', 'Musuh')
     result_msg = ""
-    current_combo = state_data.get("current_combo", 0) + 1
+    current_combo = state_data.get("current_combo", 0)
 
     # --- 3. EKSEKUSI AKSI PEMAIN ---
     if action == "attack": 
+        current_combo += 1
         res_type, p_val, status, p_log = execute_skill(p['stats'], enemy_data, "basic_attack", p)
         enemy_data['monster_hp'] -= p_val
-        broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
-        wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
+        reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
         
         m_dmg, m_log = apply_monster_turn(enemy_data, p)
-        result_msg = f"⚔️ <b>SERANG:</b> {p_log}{wpn_msg}\n👾 <b>BALASAN:</b> {m_log}"
+        result_msg = f"⚔️ <b>SERANG:</b> {p_log}\n👾 <b>BALASAN:</b> {m_log}"
         
     elif action == "cast_skill" and skill_to_cast:
-        skill_info = ACTIVE_SKILLS.get(skill_to_cast)
-        mp_cost = get_effective_skill(p, skill_to_cast).get('mp_cost', 0)
+        eff_skill = get_effective_skill(p, skill_to_cast)
+        if not eff_skill:
+            return await callback.answer("❌ Skill tidak valid.", show_alert=True)
+            
+        mp_cost = eff_skill.get('mp_cost', 0)
         if p.get('mp', 0) < mp_cost:
             return await callback.answer(f"🔮 MP Tidak cukup! Butuh {mp_cost} MP.", show_alert=True)
             
+        current_combo += 1
         p['mp'] -= mp_cost
-        
         res_type, p_val, status, p_log = execute_skill(p['stats'], enemy_data, skill_to_cast, p)
-        broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=2)
-        wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
+        reduce_equipment_durability(user_id, target_slots=['weapon'], damage=2)
         
         if res_type == "damage":
             enemy_data['monster_hp'] -= p_val
-            if status and status not in [e['type'] for e in enemy_data['monster_effects']]:
-                enemy_data['monster_effects'].append({'type': status, 'value': int(p_val * 0.2) or 5})
+            if status and status not in [e['type'] for e in enemy_data.get('monster_effects', [])]:
+                enemy_data.setdefault('monster_effects', []).append({'type': status, 'value': int(p_val * 0.2) or 5})
         elif res_type == "heal":
             p['hp'] = min(p.get('max_hp', 100), p['hp'] + p_val)
         
         m_dmg, m_log = apply_monster_turn(enemy_data, p)
-        result_msg = f"🌟 {p_log}{wpn_msg}\n👾 <b>BALASAN:</b> {m_log}"
+        result_msg = f"🌟 {p_log}\n👾 <b>BALASAN:</b> {m_log}"
 
     elif action == "block": 
-        heal_amount = int(p.get('max_hp', 100) * 0.15)
+        current_combo = 0 # Reset combo karena fokus bertahan
+        heal_amount = int(p.get('max_hp', 100) * 0.10) # Nerf sedikit agar tidak OP
         p['hp'] = min(p.get('max_hp', 100), p['hp'] + heal_amount)
         
         m_dmg, m_log = apply_monster_turn(enemy_data, p)
         if m_dmg > 0:
-            refund = int(m_dmg * 0.8) # Kurangi damage 80%
+            refund = int(m_dmg * 0.8) # Reduksi 80%
             p['hp'] += refund
-            reduced_dmg = m_dmg - refund
-            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
-            dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
-            result_msg = f"🛡️ <b>BERTAHAN:</b> (+{heal_amount} HP).\n👾 <b>TERTANGKIS:</b> {m_log} (-{reduced_dmg} HP).{dur_msg}"
+            reduced_dmg = max(0, m_dmg - refund)
+            reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+            result_msg = f"🛡️ <b>BERTAHAN:</b> (+{heal_amount} HP).\n👾 <b>TERTANGKIS:</b> {m_log} (-{reduced_dmg} HP)."
         else:
             result_msg = f"🛡️ <b>BERTAHAN:</b> (+{heal_amount} HP).\n👾 <b>MUSUH:</b> {m_log}"
 
     elif action == "dodge":
-        base_dodge_chance = 0.50
+        base_dodge_chance = 0.40
         player_dodge_stat = p['stats'].get('dodge', 0.1) 
-        weight_penalty = p['stats'].get('total_weight', 0) * 0.01
-        final_dodge_chance = base_dodge_chance + player_dodge_stat - weight_penalty
+        # Penalti berat: Semakin banyak barang dibawa, semakin sulit menghindar
+        weight_penalty = p['stats'].get('total_weight', 0) * 0.005 
+        final_dodge_chance = min(0.90, max(0.10, base_dodge_chance + player_dodge_stat - weight_penalty))
 
         if random.random() < final_dodge_chance:
-            restore_mp = int(p.get('max_mp', 50) * 0.20)
+            current_combo += 1
+            restore_mp = int(p.get('max_mp', 50) * 0.15)
             p['mp'] = min(p.get('max_mp', 50), p.get('mp', 0) + restore_mp)
-            result_msg = f"💨 <b>PERFECT DODGE:</b> Menghindar kilat (+{restore_mp} MP).\n🎯 {m_name} menyerang angin dan kehilangan gilirannya!"
+            result_msg = f"💨 <b>PERFECT DODGE:</b> (+{restore_mp} MP).\n🎯 {m_name} menyerang angin!"
         else:
+            current_combo = 0
             m_dmg, m_log = apply_monster_turn(enemy_data, p)
             if m_dmg > 0:
-                refund = int(m_dmg * 0.3) # Terkena damage 70% karena gagal menghindar
+                refund = int(m_dmg * 0.2) # Gagal dodge tetap kena damage besar
                 p['hp'] += refund
                 reduced_dmg = m_dmg - refund
-                broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
-                dur_msg = f" ⚠️ <i>Pelindung retak!</i>" if broken_armors else ""
-                result_msg = f"🧱 <b>GAGAL MENGHINDAR:</b> Terlalu lambat! {m_log} (-{reduced_dmg} HP).{dur_msg}"
+                reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
+                result_msg = f"🧱 <b>GAGAL DODGE!</b> {m_log} (-{reduced_dmg} HP)."
             else:
-                result_msg = f"🧱 <b>GAGAL MENGHINDAR:</b> Terlalu lambat!\n👾 <b>MUSUH:</b> {m_log}"
+                result_msg = f"🧱 <b>GAGAL DODGE!</b>\n👾 <b>MUSUH:</b> {m_log}"
 
     elif action == "run":
-        chance = p['stats']['dodge'] + 0.30 
+        chance = p['stats'].get('dodge', 0.1) + 0.30 
         if random.random() < chance:
             await state.set_state(GameState.exploring)
-            update_player(user_id, {'current_combo': 0})
-            try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
+            update_player(user_id, {'current_combo': 0, 'skill_cooldowns': {}})
+            try: await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=battle_msg_id)
             except: pass
-            
-            p['skill_cooldowns'] = {}
-            update_player(user_id, {'skill_cooldowns': {}})
-            
-            return await callback.message.answer("🏃💨 Kamu berhasil melarikan diri ke dalam kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+            return await callback.message.answer("🏃💨 Kamu melarikan diri ke kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
+            current_combo = 0
             m_dmg, m_log = apply_monster_turn(enemy_data, p)
-            result_msg = f"🧱 <b>GAGAL KABUR:</b> Jalan diblokir!\n👾 <b>BALASAN:</b> {m_log}"
+            result_msg = f"🧱 <b>GAGAL KABUR!</b>\n👾 <b>BALASAN:</b> {m_log}"
 
     # --- 4. TICK STATUS EFFECTS & COOLDOWN ---
     m_hp_change, m_status_logs = apply_turn_status_effects(enemy_data, is_player=False)
@@ -612,20 +623,24 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hp_change)
     p['hp'] = max(0, p['hp'] + p_hp_change)
     
+    # Kurangi cooldown hanya jika pemain melakukan aksi (bukan buka menu)
     reduce_all_cooldowns(p)
     
+    # Sinkronisasi ke Database
     update_player(user_id, {
         "hp": p['hp'], "mp": p['mp'], 
         "inventory": p['inventory'], 
         "active_effects": p.get('active_effects', []),
         "skill_usages": p.get('skill_usages', {}),
         "skill_cooldowns": p.get('skill_cooldowns', {}),
-        "last_skill_used": p.get('last_skill_used', None)
+        "last_skill_used": p.get('last_skill_used', None),
+        "current_combo": current_combo
     })
     
     status_log_final = " ".join(m_status_logs + p_status_logs)
     full_log = f"{result_msg}\n{status_log_final}"
 
+    # --- 5. FINALIZE TURN ---
     await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, battle_msg_id)
 
 
@@ -633,72 +648,100 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
 async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int, p: dict, enemy_data: dict, full_log: str, current_combo: int, battle_msg_id: int):
     m_name = enemy_data.get('monster_name', 'Musuh')
     
+    # --- SKENARIO 1: PEMAIN MENANG ---
     if enemy_data['monster_hp'] <= 0:
         tier = enemy_data.get('tier', 1)
         is_boss = enemy_data.get('is_boss', False)
         
+        # Kalkulasi Reward (Ditambah bonus Combo)
+        combo_bonus = 1 + (current_combo * 0.1)
         base_gold = 500 if is_boss else (int(tier) * 25)
-        total_gold = base_gold + int(base_gold * (current_combo * 0.1))
-        base_exp = enemy_data.get('exp_reward', 10 * tier)
-        total_exp = base_exp + int(base_exp * (current_combo * 0.1))
+        total_gold = int(base_gold * combo_bonus)
         
+        base_exp = enemy_data.get('exp_reward', 15 * tier)
+        total_exp = int(base_exp * combo_bonus)
+        
+        # Proses Level Up
         new_exp = p.get('exp', 0) + total_exp
-        current_level = p.get('level', 1)
+        old_level = p.get('level', 1)
         new_level = calculate_level_from_exp(new_exp)
         
         level_up_msg = ""
-        if new_level > current_level:
-            new_max_hp = p.get('max_hp', 100) + 10
-            new_max_mp = p.get('max_mp', 50) + 5
-            update_player(user_id, {'max_hp': new_max_hp, 'max_mp': new_max_mp, 'hp': new_max_hp, 'mp': new_max_mp})
-            level_up_msg = f"\n\n🆙 <b>LEVEL UP!</b> Kamu telah mencapai Level {new_level}! (+Max HP & MP)"
+        if new_level > old_level:
+            # Stats Bonus saat naik level
+            hp_gain = 15 + (new_level * 2)
+            mp_gain = 5 + (new_level)
+            new_max_hp = p.get('max_hp', 100) + hp_gain
+            new_max_mp = p.get('max_mp', 50) + mp_gain
+            
+            # Update variable lokal p agar UI akurat
+            p.update({'max_hp': new_max_hp, 'max_mp': new_max_mp, 'hp': new_max_hp, 'mp': new_max_mp, 'level': new_level})
+            level_up_msg = f"\n\n🆙 <b>LEVEL UP!</b> ({old_level} ➜ {new_level})\n💖 Max HP +{hp_gain} | 💧 Max MP +{mp_gain}"
 
+        # Proses Loot
         drops = process_loot(enemy_data.get('drops', []))
         inv = p.get('inventory', [])
         inv.extend(drops)
         
+        # Finalisasi Data ke Database
         update_player(user_id, {
-            'kills': p['kills']+1, 'gold': p['gold']+total_gold, 
-            'exp': new_exp, 'level': new_level, 'current_combo': 0, 'inventory': inv,
-            'skill_cooldowns': {}
+            'kills': p.get('kills', 0) + 1, 
+            'gold': p.get('gold', 0) + total_gold, 
+            'exp': new_exp, 
+            'level': p['level'],
+            'hp': p['hp'],
+            'max_hp': p.get('max_hp'),
+            'max_mp': p.get('max_mp'),
+            'inventory': inv,
+            'current_combo': 0,
+            'skill_cooldowns': {} # Reset cooldown setelah menang
         })
         
-        await state.set_state(GameState.exploring)
+        # Catat di History
+        add_history(user_id, f"Menang melawan {m_name} (Combo x{current_combo})")
         
+        # Bersihkan pesan battle
         if battle_msg_id:
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
         
-        safe_drops = ", ".join(drops).replace("_", " ").title() if drops else "Tidak ada"
+        await state.set_state(GameState.exploring)
         
+        safe_drops = ", ".join(drops).replace("_", " ").title() if drops else "Hanya debu..."
         victory_text = (
             f"🎉 <b>KEMENANGAN!</b>\n"
-            f"{full_log}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👾 <b>{m_name}</b> telah tumbang!\n"
+            f"⚔️ Combo Tertinggi: x{current_combo}\n\n"
             f"✨ EXP: +{total_exp}\n"
             f"💰 Gold: +{total_gold}\n"
-            f"🎁 Drops: {safe_drops}"
+            f"🎁 Drops: <i>{safe_drops}</i>"
             f"{level_up_msg}"
         )
         
         sent_msg = await message.answer(victory_text, reply_markup=get_main_reply_keyboard(p), parse_mode="HTML")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
         return
-    
+
+    # --- SKENARIO 2: PEMAIN MATI ---
     elif p['hp'] <= 0:
-        msg_text = reset_player_death(user_id, "death_combat")
+        death_text = reset_player_death(user_id, f"Dikalahkan oleh {m_name}")
         await state.set_state(GameState.exploring)
         
         if battle_msg_id:
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
             
-        await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        await message.answer(f"💀 <b>ANDA MATI</b>\n\n{death_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="HTML")
         return
         
+    # --- SKENARIO 3: PERTARUNGAN LANJUT ---
     else:
-        await state.update_data(enemy_data=enemy_data, current_combo=current_combo, action_type=None)
+        # Update state data untuk turn berikutnya
+        await state.update_data(enemy_data=enemy_data, current_combo=current_combo)
         
-        next_msg = render_live_battle(p, enemy_data, f"✅ {full_log}")
+        # Render UI Battle terbaru
+        next_msg = render_live_battle(p, enemy_data, f"💬 {full_log}")
         
         if battle_msg_id:
             try:
@@ -710,18 +753,11 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
                     reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
                 )
             except TelegramRetryAfter as e:
-                print(f"Rate limited by Telegram. Sleep for {e.retry_after} seconds.")
-            except TelegramBadRequest as e:
-                if "can't parse entities" in str(e):
-                    try:
-                        await message.bot.edit_message_text(
-                            chat_id=message.chat.id, 
-                            message_id=battle_msg_id, 
-                            text=next_msg, 
-                            parse_mode=None, 
-                            reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
-                        )
-                    except: pass
+                await asyncio.sleep(e.retry_after)
+            except Exception:
+                # Fallback jika edit gagal (misal pesan dihapus user atau API error)
+                new_battle_msg = await message.answer(next_msg, parse_mode="HTML", reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False)))
+                await state.update_data(battle_msg_id=new_battle_msg.message_id)
 
 
 # === EVENT PUZZLE (NON-COMBAT / EKSPLORASI) ===
