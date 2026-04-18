@@ -66,6 +66,51 @@ REQUESTER_NPCS = {
     }
 }
 
+# --- LOGIKA INTERAKSI REQUESTER ---
+
+def process_npc_request(player, npc_id):
+    """
+    Memproses permintaan item oleh NPC.
+    Mengembalikan: (success, message)
+    """
+    npc = REQUESTER_NPCS.get(npc_id)
+    if not npc:
+        return False, "❌ NPC tidak ditemukan."
+
+    item_required = npc['request_item']
+    
+    # Cek apakah item ada di inventory pemain
+    if item_required not in player.get('inventory', []):
+        return False, f"❌ Kamu tidak memiliki {item_required.replace('_', ' ')}."
+
+    # Proses pengambilan item dari inventory
+    player['inventory'].remove(item_required)
+
+    # --- LOGIKA TRAP (JEBAKAN) ---
+    if npc.get('is_trap'):
+        trap = npc['trap']
+        player['hp'] -= trap['hp_loss']
+        
+        if 'gold_loss' in trap:
+            player['gold'] = max(0, player['gold'] - trap['gold_loss'])
+            
+        if 'mp_loss' in trap:
+            player['mp'] = max(0, player.get('mp', 0) - trap['mp_loss'])
+            
+        return True, f"⚠️ {trap['msg']} (HP -{trap['hp_loss']})"
+
+    # --- LOGIKA REWARD (HADIAH) ---
+    reward = npc['reward']
+    player['gold'] += reward.get('gold', 0)
+    player['exp'] += reward.get('exp', 0)
+    
+    if 'item' in reward:
+        if 'inventory' not in player:
+            player['inventory'] = []
+        player['inventory'].append(reward['item'])
+        
+    return True, f"✅ {npc['success_msg']}"
+
 def get_requester_data(npc_id):
     """Mengambil data NPC peminta berdasarkan ID."""
     return REQUESTER_NPCS.get(npc_id)
