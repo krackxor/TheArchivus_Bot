@@ -286,6 +286,7 @@ async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     current_state = await state.get_state()
     
+    # 1. CEK STATE: Mencegah jalan saat bertarung/event
     if current_state in [GameState.in_combat, GameState.in_event, GameState.in_rest_area]:
         try: await message.delete() 
         except: pass
@@ -295,28 +296,41 @@ async def move_handler(message: Message, state: FSMContext):
         except: pass
         return
         
+    # Hapus pesan input user agar chat bersih
     try: await message.delete()
     except: pass
     
+    # 2. CLEANUP: Hapus pesan eksplorasi sebelumnya
     state_data = await state.get_data()
     last_expl_msg = state_data.get("last_expl_msg_id")
     if last_expl_msg:
         try: await message.bot.delete_message(chat_id=message.chat.id, message_id=last_expl_msg)
         except: pass
 
+    # 3. PREPARASI DATA & STATS
     await state.set_state(GameState.exploring)
     tick_buffs(user_id) 
     p = get_player(user_id)
+    
+    # Sinkronisasi Stats (Termasuk Luck & Intel)
     p['stats'] = calculate_total_stats(p) 
+    luck_bonus = p['stats'].get('luck', 0)
+    intel_bonus = p.get('intelligence', 10)
     
-    if 'skill_usages' not in p: p['skill_usages'] = {}
-    if 'skill_cooldowns' not in p: p['skill_cooldowns'] = {}
-    
-    new_energy = p.get('energy', 100) - 1
+    # 4. ENERGI CHECK
+    current_energy = p.get('energy', 100)
+    if current_energy <= 0:
+        return await message.answer("😫 Kamu terlalu lelah untuk melangkah... Gunakan makanan atau istirahat di Rest Area!", 
+                                   reply_markup=get_main_reply_keyboard(p))
+
+    new_energy = current_energy - 1
     update_player(user_id, {"energy": new_energy})
     
-    event_type, event_data, narration = process_move(user_id)
+    # 5. LOGIKA PERGERAKAN (Sinergi dengan Luck & Intel)
+    event_type, event_data, narration = process_move(user_id, luck=luck_bonus, intel=intel_bonus)
     
+    # 6. PENANGANAN HASIL EVENT
+    # A. BATTLE EVENT (Monster/Boss)
     if event_type in ["boss", "monster", "miniboss"]:
         is_boss = (event_type == "boss")
         is_miniboss = (event_type == "miniboss")
@@ -336,8 +350,24 @@ async def move_handler(message: Message, state: FSMContext):
             current_combo=0,
             last_expl_msg_id=None
         )
+
+    # B. REST AREA EVENT (Toko/Pulihkan Energi)
+    elif event_type == "rest_area":
+        await state.set_state(GameState.in_rest_area)
+        kb = get_rest_area_keyboard()
+        sent_msg = await message.answer(f"🏕️ **REST AREA**\n{narration}", reply_markup=kb, parse_mode="Markdown")
+        await state.update_data(last_expl_msg_id=sent_msg.message_id)
+
+    # C. PUZZLE / LORE EVENT
+    elif event_type == "event":
+        await state.set_state(GameState.in_event)
+        await state.update_data(event_data=event_data)
+        sent_msg = await message.answer(f"❓ **MYSTERY EVENT**\n{narration}\n\n*Ketik jawabanmu langsung di sini...*", parse_mode="Markdown")
+        await state.update_data(last_expl_msg_id=sent_msg.message_id)
+
+    # D. EKSPLORASI BIASA (Jalan Kosong / Temukan Gold Kecil)
     else:
-        sent_msg = await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        sent_msg = await message.answer(f"{narration}\n\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         await state.update_data(last_expl_msg_id=sent_msg.message_id)
 
 
