@@ -3,6 +3,7 @@
 """
 NPC Functional Database - The Archivus
 Berisi NPC dengan fungsi sistem tetap: Blacksmith, Merchant, dan Healer.
+Termasuk logika interaksi untuk memproses aksi mereka.
 """
 
 FUNCTIONAL_NPCS = {
@@ -29,13 +30,13 @@ FUNCTIONAL_NPCS = {
             "Aku punya barang-barang dari Cycle yang sudah lama terlupakan. Lihatlah.",
             "Koin emasmu berisik sekali di dalam kantung itu. Mari kita tukar dengan sesuatu yang berguna."
         ],
-        # Daftar ID item yang dijual (Harus sesuai dengan ID di game/items/)
+        # Daftar ID item yang dijual
         "inventory": [
             "pot_red_1", 
             "pot_blue_1", 
             "anti_poi_1", 
-            "item_masker_gas",  # Item pelindung rawa
-            "item_mantel_bulu"   # Item pelindung area dingin
+            "item_masker_gas", 
+            "item_mantel_bulu"
         ]
     },
 
@@ -49,10 +50,45 @@ FUNCTIONAL_NPCS = {
             "Dunia ini sangat kejam bagi tubuh yang fana. Izinkan aku memulihkanmu.",
             "Cahaya ini tidak gratis, namun ia akan menjamin perjalananmu berlanjut."
         ],
-        "heal_cost": 200, # Biaya emas untuk memulihkan HP & MP secara penuh
-        "clear_debuff_cost": 100 # Biaya tambahan untuk menghapus status buruk (Poison, dll)
+        "heal_cost": 200, # Biaya emas untuk memulihkan HP & MP
+        "clear_debuff_cost": 100 # Biaya untuk menghapus status buruk
     }
 }
+
+# --- LOGIKA INTERAKSI FUNGSIONAL ---
+
+def process_functional_action(player, npc_id, action_type, extra_data=None):
+    """
+    Memproses aksi yang dilakukan pemain terhadap NPC fungsional.
+    """
+    npc = FUNCTIONAL_NPCS.get(npc_id)
+    if not npc:
+        return False, "❌ NPC tidak ditemukan."
+
+    # 1. LOGIKA PENYEMBUH (HEALER)
+    if action_type == "heal":
+        cost = npc.get('heal_cost', 200)
+        if player['gold'] >= cost:
+            player['gold'] -= cost
+            player['hp'] = player.get('max_hp', 100)
+            player['mp'] = player.get('max_mp', 50)
+            return True, f"✨ {npc['name']} memulihkan seluruh HP dan MP milikmu! (-{cost} Gold)"
+        return False, "❌ Emasmu tidak cukup untuk penyembuhan."
+
+    # 2. LOGIKA PANDAI BESI (REPAIR)
+    elif action_type == "repair":
+        # Mengimpor fungsi perbaikan dari manager inventory
+        from game.logic.inventory_manager import process_repair_all
+        dur_data, total_cost, count = process_repair_all(player)
+        
+        final_cost = int(total_cost * npc.get('repair_factor', 1.0))
+        if player['gold'] >= final_cost:
+            player['gold'] -= final_cost
+            player['equipment_durability'] = dur_data
+            return True, f"🔨 {npc['name']} memperbaiki {count} item milikmu. (-{final_cost} Gold)"
+        return False, "❌ Emasmu tidak cukup untuk biaya perbaikan."
+
+    return False, "❌ Aksi tidak dikenal."
 
 def get_functional_npc(npc_id):
     """Mengambil data NPC fungsional berdasarkan ID."""
