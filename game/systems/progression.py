@@ -10,11 +10,12 @@ from database import get_player, update_player, add_history
 def calculate_max_exp(level):
     """
     Rumus kurva EXP. Semakin tinggi level, semakin eksponensial kebutuhannya.
-    Lv 1 -> 50 EXP
-    Lv 2 -> 141 EXP
-    Lv 3 -> 259 EXP
+    Lv 1 -> 100 EXP
+    Lv 2 -> 282 EXP
+    Lv 3 -> 519 EXP
+    (Menggunakan basis 100 agar seimbang dengan reward monster)
     """
-    return int(50 * (level ** 1.5))
+    return int(100 * (level ** 1.5))
 
 def add_exp(user_id, amount):
     """
@@ -35,8 +36,7 @@ def add_exp(user_id, amount):
         leveled_up = True
         current_exp -= max_exp
         current_level += 1
-        max_exp = calculate_max_exp(current_level)
-
+        
         # Bonus Atribut Otomatis per Level
         p['max_hp'] = p.get('max_hp', 100) + 15
         p['max_mp'] = p.get('max_mp', 50) + 5
@@ -55,11 +55,14 @@ def add_exp(user_id, amount):
             f"❤️ Max HP meningkat!\n"
             f"✨ Kau mendapatkan 3 Stat Point (SP) baru."
         )
+        # Update max_exp untuk level berikutnya dalam loop
+        max_exp = calculate_max_exp(current_level)
 
     # Menyiapkan data untuk disimpan
     updates = {
         'exp': current_exp,
-        'level': current_level
+        'level': current_level,
+        'exp_needed': max_exp # Simpan cache agar main.py tidak perlu hitung ulang
     }
 
     if leveled_up:
