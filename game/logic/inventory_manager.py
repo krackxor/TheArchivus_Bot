@@ -16,20 +16,26 @@ def equip_item(player, item_id):
     if item_id not in player.get('inventory', []):
         return False, "❌ Kau tidak memiliki item ini di tasmu."
 
-    slot = item.get('type') # 'weapon', 'armor', 'head', 'mask', 'cloak', 'artifact', dll.
+    # 'weapon', 'armor', 'head', 'mask', 'cloak', 'offhand', 'artifact', dll.
+    slot = item.get('type') 
+    
+    # Adaptasi: Jika tipe item adalah shield, masukkan ke slot offhand
+    if slot == 'shield':
+        slot = 'offhand'
+        
     equipped = player.get('equipped', {})
     
     warning_msg = ""
 
-    # --- LOGIKA 1: KONFLIK 2-HANDED (2H) vs ARTIFACT ---
+    # --- LOGIKA 1: KONFLIK 2-HANDED (2H) vs OFFHAND ---
     if slot == 'weapon':
         if item.get('grip') == '2H':
-            if equipped.get('artifact'):
-                # Lepas artifact otomatis jika pakai senjata 2H
-                unequip_item(player, 'artifact')
-                warning_msg = f"⚠️ **{item['name']}** butuh dua tangan. Artifact dilepas.\n"
+            if equipped.get('offhand'):
+                # Lepas offhand otomatis jika pakai senjata 2H
+                unequip_item(player, 'offhand')
+                warning_msg = f"⚠️ **{item['name']}** butuh dua tangan. Tangan kirimu dikosongkan.\n"
     
-    elif slot == 'artifact':
+    elif slot == 'offhand':
         weapon_id = equipped.get('weapon')
         if weapon_id:
             weapon = get_item(weapon_id)
@@ -37,10 +43,12 @@ def equip_item(player, item_id):
                 return False, f"❌ Tanganmu penuh! Lepas **{weapon['name']}** (2H) terlebih dahulu."
 
     # --- LOGIKA 2: PROSES PERGANTIAN ITEM ---
+    # Jika di slot yang sama sudah ada barang, kembalikan barang lama ke tas
     old_item_id = equipped.get(slot)
     if old_item_id:
         player['inventory'].append(old_item_id)
 
+    # Pasang barang baru dan hapus dari tas
     equipped[slot] = item_id
     player['inventory'].remove(item_id)
     player['equipped'] = equipped
