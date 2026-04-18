@@ -2,62 +2,65 @@
 
 """
 Sistem Toko & Rest Area Archivus (Shop System)
-Terintegrasi dengan Master Data Equipment dan Dinamika Lokasi.
-Menyediakan barang unik (Kunci, Gear Survival) berdasarkan wilayah Rest Area.
+Terintegrasi dengan Folder Consumables Baru dan Master Data Equipment.
 """
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# Memanggil fungsi dari file database dan equipment baru
 from database import get_player, update_player
-from game.items import get_item # Memanggil dari MASTER_ITEM_DB
+from game.items import get_item  # Memanggil dari MASTER_ITEM_DB gabungan
 
 # --- KATALOG TOKO LENGKAP ---
-# Format item yang dijual adalah "ID item" yang sesuai dengan MASTER_ITEM_DB
+# Format: "ID_DATABASE": {"cost": Harga, "name": "Nama Tampilan Toko"}
 SHOP_CATALOG = {
-    # RAMUAN HP & MP (ID item harus sesuai dengan database item agar bisa ditumpuk/stacking)
-    "potion_heal": {"name": "🧪 Minor HP Potion", "cost": 50},
-    "potion_heal_major": {"name": "🧪 Major HP Potion", "cost": 120},
-    "potion_mana": {"name": "🔮 Tetesan Memori", "cost": 60},
-    
-    # MAKANAN (ENERGI)
-    "food_ration": {"name": "Status: 🍞 Roti Kering", "cost": 30},
-    "food_meat": {"name": "Status: 🍖 Daging Asap", "cost": 75},
+    # HP POTIONS (Dari hp.py)
+    "potion_heal": {"cost": 40, "name": "🧪 Minor HP Potion"},
+    "potion_heal_average": {"cost": 85, "name": "🧪 Standard HP Potion"},
+    "potion_heal_major": {"cost": 150, "name": "🧪 Major HP Potion"},
 
-    # PENAWAR STATUS & SURVIVAL
-    "cure_poison": {"name": "🌿 Antidote", "cost": 45},
-    "repair_all_kit": {"name": "⚒️ Repair Kit", "cost": 150},
-    
-    # KUNCI & SURVIVAL GEAR (Sangat penting untuk eksplorasi)
-    "buy_key_iron": {"item_id": "buy_key_iron", "name": "🔑 Iron Key", "cost": 75},
-    "buy_key_magic": {"item_id": "buy_key_magic", "name": "🔮 Mana Crystal", "cost": 250},
-    "item_masker_gas": {"item_id": "item_masker_gas", "name": "😷 Masker Gas", "cost": 200},
-    "item_mantel_bulu": {"item_id": "item_mantel_bulu", "name": "🧥 Mantel Bulu", "cost": 200},
-    "item_lentera_jiwa": {"item_id": "item_lentera_jiwa", "name": "🏮 Lentera Jiwa", "cost": 300},
+    # MP POTIONS (Dari mp.py)
+    "potion_mana_minor": {"cost": 35, "name": "💧 Minor Mana Potion"},
+    "potion_mana": {"cost": 70, "name": "🔮 Tetesan Memori"},
+    "potion_mana_major": {"cost": 140, "name": "🌌 Major Mana Potion"},
 
-    # EQUIPMENT (Menggunakan ID dari MASTER_ITEM_DB)
-    "iron_sword": {"item_id": "iron_sword", "cost": 150},
-    "novice_staff": {"item_id": "novice_staff", "cost": 150},
-    "leather_armor": {"item_id": "leather_armor", "cost": 120},
-    "cloth_robe": {"item_id": "cloth_robe", "cost": 100},
-    "wooden_shield": {"item_id": "wooden_shield", "cost": 80}
+    # FOOD / ENERGY (Dari food.py)
+    "food_ration": {"cost": 25, "name": "🍞 Roti Kering"},
+    "food_meat": {"cost": 60, "name": "🍖 Daging Panggang"},
+    "vegetable_stew": {"cost": 45, "name": "🍲 Rebusan Sayur"},
+
+    # UTILITY (Dari utility.py)
+    "cure_poison": {"cost": 50, "name": "🌿 Antidote"},
+    "repair_kit_minor": {"cost": 100, "name": "⚒️ Minor Repair Kit"},
+    "recall_scroll": {"cost": 200, "name": "📜 Recall Scroll"},
+
+    # SPECIAL / QUIZ (Dari special.py)
+    "old_book": {"cost": 150, "name": "📖 Buku Berdebu (Quiz)"},
+    "mysterious_scroll": {"cost": 300, "name": "📜 Gulungan Rahasia"},
+
+    # EQUIPMENT (ID harus sesuai MASTER_ITEM_DB)
+    "iron_sword": {"cost": 250},
+    "novice_staff": {"cost": 250},
+    "leather_armor": {"cost": 200},
+    "cloth_robe": {"cost": 180},
+    "wooden_shield": {"cost": 120}
 }
 
 # === SISTEM TOKO DINAMIS ===
 
 def get_rest_area_stock(location):
     """Menentukan barang apa saja yang dijual Merchant berdasarkan lokasi."""
-    stock = ["potion_heal", "food_ration", "potion_mana", "repair_all_kit"]
+    # Stok dasar yang selalu ada di semua Rest Area
+    stock = ["potion_heal", "potion_mana_minor", "food_ration", "repair_kit_minor"]
     
     if location == "The Whispering Hall":
-        stock.extend(["novice_staff", "cloth_robe", "item_lentera_jiwa"])
+        stock.extend(["novice_staff", "cloth_robe", "old_book"])
     elif location == "The Forsaken Mire":
-        stock.extend(["cure_poison", "item_masker_gas", "potion_heal_major", "iron_sword"])
+        stock.extend(["cure_poison", "potion_heal_average", "iron_sword", "wooden_shield"])
     elif location == "The Abyssal Depth":
-        stock.extend(["item_lentera_jiwa", "buy_key_magic", "leather_armor"]) 
+        stock.extend(["potion_heal_major", "potion_mana_major", "mysterious_scroll"]) 
     elif location == "The Frozen Purgatory":
-        stock.extend(["item_mantel_bulu", "food_meat", "buy_key_magic"])
+        stock.extend(["food_meat", "vegetable_stew", "recall_scroll"])
     else: 
-        stock.extend(["food_meat", "leather_armor", "buy_key_magic"])
+        # Fallback stock
+        stock.extend(["food_meat", "leather_armor", "recall_scroll"])
         
     return stock
 
@@ -69,43 +72,50 @@ def get_rest_area_keyboard():
         [InlineKeyboardButton(text="🚪 Lanjutkan Perjalanan", callback_data="rest_exit")]
     ])
 
-def get_shop_keyboard(location="The Whispering Hall"):
-    """Membuat susunan tombol toko yang rapi sesuai stok di wilayah tersebut."""
+def get_shop_keyboard(player, location="The Whispering Hall"):
+    """Membuat tombol toko. Sekarang membutuhkan parameter 'player' untuk cek Gold."""
     keyboard = []
     available_stock = get_rest_area_stock(location)
+    current_gold = player.get('gold', 0)
     
-    for code in available_stock:
-        catalog_entry = SHOP_CATALOG.get(code)
+    for item_id in available_stock:
+        catalog_entry = SHOP_CATALOG.get(item_id)
         if not catalog_entry: continue
             
-        # Ambil ID asli yang merujuk ke database item (jika ada)
-        item_id = catalog_entry.get("item_id", code)
         item_data = get_item(item_id)
+        cost = catalog_entry['cost']
         
-        # Format tombol berdasarkan tipe item
+        # Penentuan Icon berdasarkan tipe item dari database
+        icon = "📦"
+        name = catalog_entry.get('name')
+        
         if item_data:
-            if item_data.get('type') == 'weapon':
-                icon = "⚔️"
-            elif item_data.get('type') in ['armor', 'head', 'shield', 'offhand', 'boots', 'gloves', 'mask']:
-                icon = "🛡️"
-            else:
-                icon = "📦"
-            
-            button_text = f"{icon} {item_data.get('name', 'Unknown Item')} - 💰 {catalog_entry['cost']}"
-        else:
-            # Fallback untuk item yang tidak ada di MASTER_ITEM_DB (misal: keys/story items)
-            button_text = f"📦 {catalog_entry.get('name', code)} - 💰 {catalog_entry['cost']}"
-            
-        keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"buy_{code}")])
+            name = item_data.get('name', name)
+            itype = item_data.get('type')
+            if itype == 'weapon': icon = "⚔️"
+            elif itype in ['armor', 'head', 'offhand', 'mask']: icon = "🛡️"
+            elif itype == 'consumable':
+                eff = item_data.get('effect_type')
+                if 'heal' in eff: icon = "💖"
+                elif 'mp' in eff: icon = "💧"
+                elif 'energy' in eff: icon = "🍖"
+                elif 'clear' in eff: icon = "🌿"
+        
+        # Beri tanda jika uang tidak cukup
+        status_icon = "💰" if current_gold >= cost else "❌"
+        button_text = f"{icon} {name} - {status_icon} {cost}"
+        
+        keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"buy_{item_id}")])
     
-    keyboard.append([InlineKeyboardButton(text="🔙 Kembali ke Tenda", callback_data="rest_main_menu")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Kembali", callback_data="rest_shop_back")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def process_purchase(user_id, callback_data):
-    """Logika transaksi dan memasukkan item ke inventory."""
-    item_code = callback_data.replace("buy_", "")
-    player = get_player(user_id)
-    catalog_item = SHOP_CATALOG.get(item_code)
+def process_purchase(player, item_id):
+    """
+    Logika transaksi. 
+    Sekarang menerima objek 'player' langsung agar sinkron dengan main.py.
+    """
+    catalog_item = SHOP_CATALOG.get(item_id)
     
     if not catalog_item:
         return False, "⚠️ Barang tidak tersedia di dimensi ini."
@@ -114,20 +124,18 @@ def process_purchase(user_id, callback_data):
         
     # 1. Cek Ketersediaan Gold
     if player.get('gold', 0) < cost:
-        return False, f"❌ Gold tidak cukup! Kamu butuh *{cost} Gold*."
+        return False, f"❌ Gold tidak cukup! Kamu butuh {cost} Gold."
         
-    # 2. Masukkan ke Inventory (Hanya ID string untuk sinkronisasi database)
+    # 2. Masukkan ke Inventory
     inventory = player.get('inventory', [])
-    item_id = catalog_item.get("item_id", item_code)
-    
     inventory.append(item_id)
     
-    # 3. Update Database
-    new_gold = player['gold'] - cost
-    update_player(user_id, {"gold": new_gold, "inventory": inventory})
+    # 3. Potong Gold
+    player['gold'] -= cost
+    player['inventory'] = inventory
     
-    # 4. Ambil nama untuk notifikasi
+    # Ambil nama asli dari database untuk pesan sukses
     item_data = get_item(item_id)
-    item_name = item_data['name'] if item_data else catalog_item.get('name', item_id.replace("_", " ").title())
+    item_name = item_data['name'] if item_data else item_id.replace("_", " ").title()
     
-    return True, f"✅ Berhasil membeli *{item_name}*!\nBarang sudah masuk ke 🎒 Tasmu."
+    return True, f"✅ Membeli **{item_name}**!"
