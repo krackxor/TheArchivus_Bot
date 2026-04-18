@@ -20,6 +20,11 @@ from game.logic.combat import (
     generate_battle_data, calculate_damage, 
     render_live_battle, process_loot, apply_turn_status_effects
 )
+# IMPORT SISTEM SKILL BARU
+from game.logic.skills import (
+    get_available_skills, execute_skill, reduce_all_cooldowns, 
+    get_effective_skill, get_cooldown_remaining, ACTIVE_SKILLS
+)
 from game.logic.stats import calculate_total_stats
 from game.logic.inventory_manager import equip_item, unequip_item, process_repair_all, use_consumable_item
 from game.logic.menu_handler import get_inventory_menu, get_profile_menu, get_consumable_menu, get_profile_main_menu, generate_profile_text
@@ -48,7 +53,6 @@ ADMIN_ID = 123456789
 
 # === HELPER DURABILITY ===
 def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1, chance=0.3):
-    """Sistem Durabilitas: Peluang 30% durability berkurang saat beraksi."""
     if random.random() > chance:
         return []
 
@@ -97,7 +101,7 @@ def get_main_reply_keyboard(player=None):
 def get_stance_keyboard(is_boss=False):
     row1 = [
         InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
-        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill")
+        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill") # Tombol untuk buka menu skill
     ]
     row2 = [
         InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
@@ -107,12 +111,46 @@ def get_stance_keyboard(is_boss=False):
     if not is_boss: row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
 
+# Membuat Menu Pop-up untuk Skill
+def get_skill_menu_keyboard(player, player_stats):
+    available_skills = get_available_skills(player, player_stats)
+    keyboard = []
+    
+    for skill_id in available_skills:
+        # Kita ambil versi "efektif" (termasuk suffix evolution seperti +, ++, ★)
+        skill = get_effective_skill(player, skill_id)
+        if not skill: continue
+            
+        cooldown = get_cooldown_remaining(player, skill_id)
+        
+        # Format Text Tombol: [Nama Skill] - 💧 [MP]
+        btn_text = f"{skill['name']} - 💧 {skill['mp_cost']}"
+        
+        # Jika skill sedang cooldown, tambahkan icon ⏳ dan nonaktifkan callback-nya
+        if cooldown > 0:
+            btn_text = f"⏳ {skill['name']} (CD: {cooldown})"
+            cb_data = "ignore_cooldown"
+        else:
+            cb_data = f"useskill_{skill_id}"
+            
+        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=cb_data)])
+        
+    keyboard.append([InlineKeyboardButton(text="🔙 Kembali", callback_data="close_popup")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 # === COMMAND HANDLERS ===
 @dp.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.first_name
     player = get_player(user_id, username)
+    
+    # Inisialisasi dictionary skill jika player baru
+    if 'skill_usages' not in player: player['skill_usages'] = {}
+    if 'skill_cooldowns' not in player: player['skill_cooldowns'] = {}
+    update_player(user_id, {"skill_usages": player['skill_usages'], "skill_cooldowns": player['skill_cooldowns']})
+    
     player['stats'] = calculate_total_stats(player) 
     
     await state.set_state(GameState.exploring)
@@ -134,6 +172,16 @@ async def profile_bag_handler(message: Message):
     text = generate_profile_text(p, p['stats'])
     kb = get_profile_main_menu(p)
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+
+# Menutup pop-up menu (kembali ke battle UI utama)
+@dp.callback_query(F.data == "close_popup" | F.data == "ignore_cooldown")
+async def popup_handler(callback: CallbackQuery, state: FSMContext):
+    if callback.data == "ignore_cooldown":
+        return await callback.answer("⏳ Skill ini belum siap digunakan!", show_alert=True)
+    
+    # Hapus pesan pop-up skill/item
+    try: await callback.message.delete()
+    except: pass
 
 # === BLACKSMITH CALLBACK ===
 @dp.callback_query(F.data == "menu_repair")
@@ -186,8 +234,11 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
         item_id = data.replace("useitem_", "")
         current_state = await state.get_state()
         
+        # Hapus menu pop-up item-nya agar bersih
+        try: await callback.message.delete()
+        except: pass
+        
         if current_state == GameState.in_combat:
-            # PENGGUNAAN ITEM LANGSUNG DALAM COMBAT (TURN-BASED)
             success, msg, p_new = use_consumable_item(p, item_id)
             if not success:
                 return await callback.answer(msg, show_alert=True)
@@ -197,30 +248,26 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             enemy_data = data_st.get("enemy_data")
             m_name = enemy_data.get('monster_name', 'Musuh')
             
-            # Monster Counter Attack
             m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
             p['hp'] -= m_dmg
             result_msg = f"🎒 <b>PAKAI RAMUAN:</b> {msg}\n👾 <b>BALASAN:</b> {m_name} menyerang! (-{m_dmg} HP)"
             
-            # Tick Status Effects
             m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
             p_hpc, p_logs = apply_turn_status_effects(p, is_player=True)
             enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hpc)
             p['hp'] = max(0, p['hp'] + p_hpc)
             
+            reduce_all_cooldowns(p)
             current_combo = data_st.get("current_combo", 0) + 1
-            update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', [])})
+            update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', []), "skill_cooldowns": p.get('skill_cooldowns', {})})
             
             full_log = f"{result_msg}\n" + " ".join(m_logs + p_logs)
             await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
-            
         else:
-            # PENGGUNAAN ITEM DI LUAR COMBAT
             success, msg, p_new = use_consumable_item(p, item_id)
             if success:
                 update_player(user_id, {'hp': p_new['hp'], 'mp': p_new['mp'], 'inventory': p_new['inventory'], 'active_effects': p_new.get('active_effects', [])})
                 await callback.answer(msg, show_alert=True)
-                await callback.message.edit_text("🧪 **Daftar Ramuan:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_consumable_menu(p_new)), parse_mode="Markdown")
 
 # === MOVEMENT & EXPLORATION ===
 @dp.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
@@ -237,7 +284,6 @@ async def move_handler(message: Message, state: FSMContext):
         except: pass
         return
         
-    # --- FITUR CLEAN UI: Hapus pesan arah & narasi sebelumnya ---
     try: await message.delete()
     except: pass
     
@@ -246,12 +292,15 @@ async def move_handler(message: Message, state: FSMContext):
     if last_expl_msg:
         try: await message.bot.delete_message(chat_id=message.chat.id, message_id=last_expl_msg)
         except: pass
-    # -------------------------------------------------------------
 
     await state.set_state(GameState.exploring)
     tick_buffs(user_id) 
     p = get_player(user_id)
     p['stats'] = calculate_total_stats(p) 
+    
+    # Inisialisasi tracker jika player lawas
+    if 'skill_usages' not in p: p['skill_usages'] = {}
+    if 'skill_cooldowns' not in p: p['skill_cooldowns'] = {}
     
     new_energy = p.get('energy', 100) - 1
     update_player(user_id, {"energy": new_energy})
@@ -263,7 +312,6 @@ async def move_handler(message: Message, state: FSMContext):
         is_miniboss = (event_type == "miniboss")
         tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
         
-        # Init combat data
         enemy_data = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         
         await state.set_state(GameState.in_combat)
@@ -276,7 +324,7 @@ async def move_handler(message: Message, state: FSMContext):
             battle_msg_id=sent_msg.message_id,
             enemy_data=enemy_data, 
             current_combo=0,
-            last_expl_msg_id=None # Reset karena sedang masuk combat
+            last_expl_msg_id=None
         )
     else:
         sent_msg = await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
@@ -284,20 +332,39 @@ async def move_handler(message: Message, state: FSMContext):
 
 
 # === PUSAT LOGIKA COMBAT TURN-BASED ===
-@dp.callback_query(F.data.startswith("stance_"))
+@dp.callback_query(F.data.startswith("stance_") | F.data.startswith("useskill_"))
 async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     if await state.get_state() != GameState.in_combat:
         return await callback.answer("⚠️ Sesi pertarungan ini sudah kedaluwarsa.", show_alert=True)
         
-    action = callback.data.replace("stance_", "") 
     user_id = callback.from_user.id
     p = get_player(user_id)
+    p['stats'] = calculate_total_stats(p)
     
-    # 1. BUKA MENU ITEM SAAT COMBAT
+    action = ""
+    skill_to_cast = None
+    
+    # BACA TIPE TOMBOL
+    if callback.data.startswith("stance_"):
+        action = callback.data.replace("stance_", "") 
+    elif callback.data.startswith("useskill_"):
+        action = "cast_skill"
+        skill_to_cast = callback.data.replace("useskill_", "")
+        # Hapus pesan popup menu skill
+        try: await callback.message.delete()
+        except: pass
+    
+    # 1. BUKA MENU ITEM
     if action == "item":
         kb = get_consumable_menu(p)
         if not kb or len(kb) <= 1: return await callback.answer("Tas ramuanmu kosong!", show_alert=True)
-        return await callback.message.edit_text("🎒 **PILIH RAMUAN:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        # Munculkan pesan baru terpisah agar UI Battle di atas tidak hilang
+        return await callback.message.answer("🎒 **PILIH RAMUAN:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+    # 2. BUKA MENU SKILL BARU
+    if action == "skill":
+        kb = get_skill_menu_keyboard(p, p['stats'])
+        return await callback.message.answer("🔮 **DAFTAR MAGIC & SKILL:**", reply_markup=kb)
 
     # Ambil Data Combat
     state_data = await state.get_data()
@@ -307,14 +374,15 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     if not enemy_data:
         return await callback.answer("Data musuh tidak ditemukan.", show_alert=True)
         
-    p['stats'] = calculate_total_stats(p)
     m_name = enemy_data.get('monster_name', 'Musuh')
     result_msg = ""
     current_combo = state_data.get("current_combo", 0) + 1
 
-    # --- 2. EKSEKUSI AKSI PEMAIN ---
-    if action == "attack": # (1:1 Turn)
-        p_dmg, p_log = calculate_damage(p, enemy_data, is_attacker_player=True)
+    # --- 3. EKSEKUSI AKSI PEMAIN ---
+    
+    if action == "attack": 
+        # Attack sekarang menggunakan logic execute_skill bawaan dengan basic_attack
+        res_type, p_dmg, status, p_log = execute_skill(p['stats'], enemy_data, "basic_attack", p)
         enemy_data['monster_hp'] -= p_dmg
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
@@ -322,28 +390,40 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
         p['hp'] -= m_dmg
         result_msg = (
-            f"⚔️ <b>SERANG:</b> {p_log} (-{p_dmg} HP){wpn_msg}\n"
+            f"⚔️ <b>SERANG:</b> {p_log}{wpn_msg}\n"
             f"👾 <b>BALASAN:</b> {m_log} Kamu -{m_dmg} HP."
         )
         
-    elif action == "skill": # (1:2 Turn)
-        temp_p = p.copy()
-        temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
-        p_dmg, p_log = calculate_damage(temp_p, enemy_data, is_attacker_player=True)
-        enemy_data['monster_hp'] -= p_dmg
+    elif action == "cast_skill" and skill_to_cast:
+        skill_info = ACTIVE_SKILLS.get(skill_to_cast)
+        
+        # Validasi MP
+        mp_cost = get_effective_skill(p, skill_to_cast).get('mp_cost', 0)
+        if p.get('mp', 0) < mp_cost:
+            return await callback.answer(f"🔮 MP Tidak cukup! Butuh {mp_cost} MP.", show_alert=True)
+            
+        p['mp'] -= mp_cost
+        
+        # Eksekusi sistem cerdas yang baru
+        res_type, p_val, status, p_log = execute_skill(p['stats'], enemy_data, skill_to_cast, p)
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=2)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
         
-        m_dmg1, m_log1 = calculate_damage(enemy_data, p, is_attacker_player=False)
-        m_dmg2, m_log2 = calculate_damage(enemy_data, p, is_attacker_player=False)
-        total_m_dmg = m_dmg1 + m_dmg2
-        p['hp'] -= total_m_dmg
+        if res_type == "damage":
+            enemy_data['monster_hp'] -= p_val
+            if status and status not in [e['type'] for e in enemy_data['monster_effects']]:
+                enemy_data['monster_effects'].append({'type': status, 'value': int(p_val * 0.2) or 5})
+        elif res_type == "heal":
+            p['hp'] = min(p.get('max_hp', 100), p['hp'] + p_val)
+        
+        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
+        p['hp'] -= m_dmg
         result_msg = (
-            f"🔮 <b>SKILL:</b> {p_log} (-{p_dmg} HP){wpn_msg}\n"
-            f"⚠️ <b>RECOVERY:</b> {m_name} menyerang 2x! (-{total_m_dmg} HP)"
+            f"🌟 {p_log}{wpn_msg}\n"
+            f"👾 <b>BALASAN:</b> {m_name} menyerang! (-{m_dmg} HP)"
         )
 
-    elif action == "block": # (Damage Reduction)
+    elif action == "block": 
         heal_amount = int(p.get('max_hp', 100) * 0.15)
         p['hp'] = min(p.get('max_hp', 100), p['hp'] + heal_amount)
         
@@ -384,23 +464,37 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         if random.random() < chance:
             await state.set_state(GameState.exploring)
             update_player(user_id, {'current_combo': 0})
-            # Hapus UI battle karena kita lari
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
+            
+            # Reset Cooldowns on Escape
+            p['skill_cooldowns'] = {}
+            update_player(user_id, {'skill_cooldowns': {}})
+            
             return await callback.message.answer("🏃💨 Kamu berhasil melarikan diri ke dalam kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
             m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
             p['hp'] -= m_dmg
             result_msg = f"🧱 <b>GAGAL KABUR:</b> Jalan diblokir!\n👾 <b>BALASAN:</b> {m_name} menebas punggungmu (-{m_dmg} HP)"
 
-    # --- 3. TICK STATUS EFFECTS (BUFF/DEBUFF) ---
+    # --- 4. TICK STATUS EFFECTS & COOLDOWN ---
     m_hp_change, m_status_logs = apply_turn_status_effects(enemy_data, is_player=False)
     p_hp_change, p_status_logs = apply_turn_status_effects(p, is_player=True)
     
     enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hp_change)
     p['hp'] = max(0, p['hp'] + p_hp_change)
     
-    update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', [])})
+    # Kurangi Cooldown setiap ronde!
+    reduce_all_cooldowns(p)
+    
+    update_player(user_id, {
+        "hp": p['hp'], "mp": p['mp'], 
+        "inventory": p['inventory'], 
+        "active_effects": p.get('active_effects', []),
+        "skill_usages": p.get('skill_usages', {}),
+        "skill_cooldowns": p.get('skill_cooldowns', {}),
+        "last_skill_used": p.get('last_skill_used', None)
+    })
     
     status_log_final = " ".join(m_status_logs + p_status_logs)
     full_log = f"{result_msg}\n{status_log_final}"
@@ -411,7 +505,6 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
 
 # === HELPER: FASE END OF TURN & CHECK DEATH ===
 async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int, p: dict, enemy_data: dict, full_log: str, current_combo: int, battle_msg_id: int):
-    """Menangani logika kematian musuh, kematian pemain, atau ronde berlanjut."""
     m_name = enemy_data.get('monster_name', 'Musuh')
     
     # KEMATIAN MUSUH
@@ -439,21 +532,18 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         inv = p.get('inventory', [])
         inv.extend(drops)
         
+        # Reset Cooldown dan Combo setelah Battle Selesai
         update_player(user_id, {
             'kills': p['kills']+1, 'gold': p['gold']+total_gold, 
-            'exp': new_exp, 'level': new_level, 'current_combo': 0, 'inventory': inv
+            'exp': new_exp, 'level': new_level, 'current_combo': 0, 'inventory': inv,
+            'skill_cooldowns': {}
         })
         
         await state.set_state(GameState.exploring)
         
-        # --- PERBAIKAN: HAPUS BATTLE UI LAMA AGAR CHAT BERSIH ---
         if battle_msg_id:
-            try: 
-                await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
-            except: 
-                try: await message.bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=battle_msg_id, reply_markup=None)
-                except: pass
-        # -------------------------------------------------------
+            try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
+            except: pass
         
         safe_drops = ", ".join(drops).replace("_", " ").title() if drops else "Tidak ada"
         
@@ -475,11 +565,9 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         msg_text = reset_player_death(user_id, "death_combat")
         await state.set_state(GameState.exploring)
         
-        # --- PERBAIKAN: HAPUS BATTLE UI LAMA AGAR CHAT BERSIH ---
         if battle_msg_id:
             try: await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
             except: pass
-        # -------------------------------------------------------
             
         await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         return
