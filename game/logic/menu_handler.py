@@ -222,3 +222,15 @@ def get_stance_keyboard(is_boss=False):
         row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
         
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
+
+def get_rest_area_keyboard():
+    """
+    Tombol interaksi saat berada di Rest Area (Campfire).
+    Menawarkan opsi gratis dan berbayar (Item Tenda).
+    """
+    buttons = [
+        [InlineKeyboardButton(text="🔥 Menyalakan Api", callback_data="rest_fire")],
+        [InlineKeyboardButton(text="⛺ Pasang Tenda", callback_data="rest_tent")],
+        [InlineKeyboardButton(text="🚶‍♂️ Lanjut Berjalan", callback_data="rest_leave")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
