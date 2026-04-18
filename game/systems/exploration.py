@@ -11,10 +11,11 @@ import time
 # Panggilan ke database
 from database import get_player, update_player, add_history
 
-# Panggilan ke sistem Entitas & Data
+# Panggilan ke sistem Data & Lingkungan
 from game.entities.monsters import get_random_mini_boss
-from game.entities.npcs import get_random_npc_event
 from game.data import NARRATIVES, MONSTER_WARNINGS
+from game.data.environment import hazards, deadly, landmarks
+from game.data.npcs import functional, storytellers, guides, requesters
 
 # --- KONFIGURASI LOKASI ---
 try:
@@ -30,7 +31,8 @@ def update_location_if_needed(player):
     kills = player.get('kills', 0)
     current_loc = player.get('location', LOCATIONS[0])
     
-    loc_idx = min(kills // 5, len(LOCATIONS) - 1)
+    # Ganti area setiap 5-10 kills
+    loc_idx = min(kills // 10, len(LOCATIONS) - 1)
     new_location = LOCATIONS[loc_idx]
     
     if new_location != current_loc:
@@ -40,74 +42,61 @@ def update_location_if_needed(player):
         
     return current_loc, False
 
-def check_environment_protection(player, hazard_type):
+def check_environment_protection(player, hazard_id):
     """
     Logika Survival: Mengecek apakah pemain punya item pelindung untuk hazard tertentu.
     """
+    hazard_data = hazards.get_hazard_data(hazard_id)
+    if not hazard_data:
+        return True
+
+    required_item = hazard_data.get('required_item')
     inventory = player.get('inventory', [])
     equipped = list(player.get('equipped', {}).values())
-    all_items = inventory + equipped
-
-    protection_map = {
-        "RACUN": "item_masker_gas",
-        "DINGIN": "item_mantel_bulu",
-        "GELAP": "item_lentera_jiwa"
-    }
-
-    required_item = protection_map.get(hazard_type)
-    if not required_item:
-        return True # Tidak butuh item pelindung khusus
-        
-    return required_item in all_items
-
-def apply_trap_or_hazard(player, event_type, hazard_type=""):
-    """Fungsi Penalti: Memotong HP/Energy jika terkena hazard tanpa pelindung."""
-    updates = {}
-    current_hp = player.get('hp', 100)
     
-    if event_type == "trap":
-        dmg = random.randint(10, 25)
-        updates["hp"] = max(0, current_hp - dmg)
-        
-    elif event_type == "hazard":
-        # Cek apakah selamat karena punya item pelindung
-        if not check_environment_protection(player, hazard_type):
-            if hazard_type == "RACUN":
-                # Tambahkan status poisoned ke active_effects (Logic combat akan memproses)
-                effects = player.get('active_effects', [])
-                if not any(e['type'] == 'poison' for e in effects):
-                    effects.append({"type": "poison", "value": 5, "icon": "🤢"})
-                    updates["active_effects"] = effects
-                updates["hp"] = max(0, current_hp - 15)
-            elif hazard_type == "DINGIN":
-                updates["energy"] = max(0, player.get('energy', 100) - 20)
-                updates["hp"] = max(0, current_hp - 5)
-            elif hazard_type == "GELAP":
-                # Kegelapan menguras kewarasan (MP)
-                updates["mp"] = max(0, player.get('mp', 0) - 15)
+    return required_item in inventory or required_item in equipped
 
+def apply_hazard_penalty(player, hazard_id):
+    """Fungsi Penalti: Memproses dampak negatif dari lingkungan."""
+    hazard_data = hazards.get_hazard_data(hazard_id)
+    penalty = hazard_data.get('penalty', {})
+    updates = {}
+    
+    # 1. HP Loss
+    if 'hp_loss' in penalty:
+        updates['hp'] = max(0, player.get('hp', 100) - penalty['hp_loss'])
+    
+    # 2. Energy Loss
+    if 'energy_loss' in penalty:
+        updates['energy'] = max(0, player.get('energy', 100) - penalty['energy_loss'])
+        
+    # 3. Status Effects (Poison, etc)
+    if 'status_effect' in penalty:
+        effects = player.get('active_effects', [])
+        eff_type = penalty['status_effect']
+        if not any(e['type'] == eff_type for e in effects):
+            effects.append({
+                "type": eff_type, 
+                "value": penalty.get('effect_val', 5), 
+                "icon": "🤢" if eff_type == "poison" else "❄️"
+            })
+            updates['active_effects'] = effects
+            
     if updates:
         update_player(player['user_id'], updates)
-    
     return updates
 
 def process_move(user_id):
     """
     The Journey Driver: Mengatur probabilitas event berdasarkan langkah (Step).
-    Jalur dipisahkan: Monster, NPC (Fungsional), Puzzle (Chest/Shrine), Environment.
     """
     player = get_player(user_id)
     kills = player.get("kills", 0)
-    cycle = player.get("cycle", 1)
     steps = player.get('step_in_cycle', 0) + 1
     current_loc, just_moved = update_location_if_needed(player)
     
-    # 1. TRIGGER BOSS UTAMA
-    is_boss = False
-    if kills > 20: is_boss = True 
-    elif kills >= 15 and random.randint(1, 100) <= (kills - 14) * 15: is_boss = True
-
-    if is_boss:
+    # 1. TRIGGER BOSS UTAMA (Threshold Kills)
+    if kills >= 25 and steps > 5:
         update_player(user_id, {"step_in_cycle": 0})
         return ("boss", None, f"🌑 **DOMINION OF {current_loc.upper()}**\nSang Penjaga dimensi ini telah bangkit!")
 
@@ -117,51 +106,49 @@ def process_move(user_id):
     # Tentukan hazard berdasarkan lokasi
     loc_hazard = "GELAP" if "Abyss" in current_loc or "Hall" in current_loc else "RACUN" if "Mire" in current_loc else "DINGIN"
 
-    # --- PENENTUAN EVENT BERDASARKAN PROBABILITAS (ROLL) ---
     roll = random.random()
 
-    # FASE 1: PENGENALAN (Langkah 1-10)
-    if steps <= 10:
-        if roll < 0.15: return ("npc", get_random_npc_event(), "👤 Seseorang berdiri di antara kabut...")
-        if roll < 0.40: return ("monster", None, f"👾 {random.choice(MONSTER_WARNINGS)}")
-        return ("safe", None, random.choice(NARRATIVES["safe"]))
+    # --- PENENTUAN EVENT ---
 
-    # FASE 2: DESPAIR & HAZARDS (Langkah 11-25)
-    elif 11 <= steps <= 25:
-        # Pengecekan Hazard Lingkungan (Setiap 5 langkah)
-        if steps % 5 == 0:
-            penalty_applied = apply_trap_or_hazard(player, "hazard", loc_hazard)
-            protected = check_environment_protection(player, loc_hazard)
-            
-            if protected:
-                return ("hazard", {"type": loc_hazard, "safe": True}, f"🛡️ Berkat perlengkapanmu, kamu berhasil melewati area {loc_hazard} dengan aman.")
-            else:
-                return ("hazard", {"type": loc_hazard, "safe": False}, f"⚠️ {NARRATIVES['danger_start'].get(loc_hazard, 'Lingkungan terasa mematikan!')}")
+    # A. AREA AMAN / REST AREA (Setelah perjalanan panjang)
+    if steps >= 35:
+        update_player(user_id, {'step_in_cycle': 0, 'min_boss_slain': False})
+        return ("rest_area", None, "🏕️ **CAMPFIRE.** Kau menemukan tempat perlindungan. Energi dan jiwamu perlahan pulih.")
 
-        if roll < 0.15: 
-            # EVENT PUZZLE (Chest/Shrine)
-            target = random.choice(["chest", "shrine", "monolith"])
-            return (target, None, f"✨ Di depanmu terdapat sebuah **{target.upper()}** kuno yang tersegel.")
-        
-        if roll < 0.35: 
-            # TRAP (Jebakan Maut)
-            apply_trap_or_hazard(player, "trap")
-            return ("deadly", {"type": "trap"}, "🏹 **JEBAKAN!** Mekanisme kuno terpicu saat kau melangkah! (-HP)")
-            
-        if roll < 0.65: return ("monster", None, f"⚔️ **PENYERGAPAN.** {random.choice(MONSTER_WARNINGS)}")
-        
-        return ("safe", None, "Lantai bergetar, namun tidak ada yang muncul. Untuk sekarang.")
+    # B. HAZARD LINGKUNGAN (Peluang muncul saat eksplorasi)
+    if roll < 0.15:
+        protected = check_environment_protection(player, loc_hazard)
+        h_data = hazards.get_hazard_data(loc_hazard)
+        if not protected:
+            apply_hazard_penalty(player, loc_hazard)
+            return ("hazard", {"id": loc_hazard, "safe": False}, f"⚠️ **{h_data['name']}**\n{h_data['danger_msg']}")
+        else:
+            return ("hazard", {"id": loc_hazard, "safe": True}, f"🛡️ **{h_data['name']}**\n{h_data['safe_msg']}")
 
-    # FASE 3: KLIMAKS & MINI BOSS (Langkah 26-30)
-    elif 26 <= steps <= 30:
-        if steps == 29 and not player.get('miniboss_slain_cycle', False):
-            mb = get_random_mini_boss()
-            return ("miniboss", {"data": mb}, f"🚨 **PINTU TERKUNCI.**\n{mb['name']} menjaganya dengan nyawa!")
-        
-        if roll < 0.40: return ("monster", None, "⚔️ Musuh berdatangan tanpa henti!")
-        return ("safe", None, "Pintu gerbang terlihat di kejauhan...")
+    # C. DEADLY EVENTS (Jebakan Maut / Stat Check)
+    if roll < 0.25 and steps > 10:
+        event_id = random.choice(list(deadly.DEADLY_EVENTS.keys()))
+        ev = deadly.get_deadly_data(event_id)
+        return ("deadly", {"id": event_id}, f"💀 **{ev['name']}**\n{ev['desc']}")
 
-    # FASE 4: REST AREA (31+)
-    else:
-        update_player(user_id, {'step_in_cycle': 0, 'miniboss_slain_cycle': False})
-        return ("rest_area", None, "🏕️ **CAMPFIRE.** Kau rubuh di dekat api unggun. Energi dan jiwamu perlahan pulih.")
+    # D. LANDMARKS (Lokasi Interaktif)
+    if roll < 0.35:
+        lm_id = random.choice(list(landmarks.LANDMARKS.keys()))
+        lm = landmarks.get_landmark_data(lm_id)
+        return ("landmark", {"id": lm_id}, f"🏛️ **{lm['name']}**\n{lm['desc']}")
+
+    # E. NPC INTERACTIONS
+    if roll < 0.50:
+        # Acak kategori NPC
+        npc_cat = random.choice(["story", "guide", "gamble", "quiz"])
+        msg = "👤 Seseorang berdiri di antara kabut..."
+        if npc_cat == "story": msg = "📖 Seorang pencerita tua memanggilmu."
+        elif npc_cat == "gamble": msg = "🎲 Kau mendengar suara koin berdenting."
+        return ("npc", {"category": npc_cat}, msg)
+
+    # F. MONSTER ENCOUNTER (Default Encounter)
+    if roll < 0.85:
+        return ("monster", None, f"⚔️ **PERNYERGAPAN!** {random.choice(MONSTER_WARNINGS)}")
+
+    # G. SAFE TRAVEL (Narasi Saja)
+    return ("safe", None, random.choice(NARRATIVES.get("safe", ["Langkahmu bergema di lorong sunyi."])))
