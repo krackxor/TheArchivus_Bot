@@ -1,11 +1,18 @@
 # game/logic/menu_handler.py
 
-from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from game.items import get_item
 from game.systems.progression import calculate_max_exp
 
+# ==============================================================================
+# 1. HELPER UI & TEXT GENERATION
+# ==============================================================================
+
 def create_progress_bar(current, maximum, length=10):
-    """Membuat visual progress bar sederhana."""
+    """
+    Membuat visual progress bar sederhana menggunakan emoji.
+    Contoh output: 🔵🔵🔵🔵⚪⚪⚪⚪⚪⚪
+    """
     if maximum <= 0: return "⚪" * length
     filled_length = int(length * current / maximum)
     # Pastikan tidak melebihi panjang maksimal
@@ -14,7 +21,10 @@ def create_progress_bar(current, maximum, length=10):
     return bar
 
 def generate_profile_text(player, stats):
-    """Merender teks profil dengan desain UI yang bersih untuk Mobile."""
+    """
+    Merender teks profil pemain dengan desain UI yang bersih untuk Mobile.
+    Menggabungkan data pemain dasar dan total stat tempurnya.
+    """
     level = player.get('level', 1)
     exp = player.get('exp', 0)
     max_exp = calculate_max_exp(level)
@@ -41,13 +51,22 @@ def generate_profile_text(player, stats):
         f"💰 `{player.get('gold', 0):,} Gold` | 💀 `{player.get('kills', 0)} Kills` \n"
     )
     
+    # Notifikasi jika pemain memiliki poin stat (SP) yang belum dipakai
     if sp > 0:
         text += f"\n✨ **STAT POINTS: {sp}**\n_Ketuk tombol + di bawah untuk upgrade!_"
     
     return text
 
+
+# ==============================================================================
+# 2. MENU PROFIL & INVENTORY (INLINE KEYBOARD)
+# ==============================================================================
+
 def get_profile_main_menu(player):
-    """Tombol navigasi profil dengan layout yang rapi."""
+    """
+    Membuat layout tombol navigasi untuk menu profil utama.
+    Menampilkan tombol upgrade stat jika pemain memiliki SP (Stat Points).
+    """
     buttons = []
     sp = player.get('stat_points', 0)
     
@@ -59,7 +78,7 @@ def get_profile_main_menu(player):
             InlineKeyboardButton(text="💨 +SPD", callback_data="addstat_speed")
         ])
     
-    # Baris 2 & 3: Management
+    # Baris 2 & 3: Management Inventory & Peralatan
     buttons.append([
         InlineKeyboardButton(text="🎒 TAS PERALATAN", callback_data="menu_inventory"),
         InlineKeyboardButton(text="🧪 RAMUAN", callback_data="menu_consumables")
@@ -70,17 +89,21 @@ def get_profile_main_menu(player):
         InlineKeyboardButton(text="🔨 BENGKEL", callback_data="menu_repair")
     ])
     
-    # Baris Terakhir: Tutup
+    # Baris Terakhir: Tutup Menu untuk membersihkan layar chat
     buttons.append([InlineKeyboardButton(text="❌ TUTUP MENU", callback_data="close_menu_profile")])
     
     return buttons
 
 def get_inventory_menu(player):
-    """Layout Tas Equipment."""
+    """
+    Membuat layout tombol untuk tas pemain (Khusus Equipment/Peralatan).
+    Memfilter barang-barang yang bisa dipakai (equipable).
+    """
     buttons = []
     inventory = player.get('inventory', [])
     equipable_types = ['weapon', 'offhand', 'shield', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
     
+    # Filter hanya item yang bertipe perlengkapan
     equipables = [i for i in inventory if get_item(i) and get_item(i).get('type') in equipable_types]
 
     if not equipables:
@@ -89,22 +112,29 @@ def get_inventory_menu(player):
         row = []
         for item_id in equipables:
             item = get_item(item_id)
+            # Beri ikon pedang jika senjata, perisai jika selain senjata
             icon = "⚔️" if item['type'] == 'weapon' else "🛡️"
             row.append(InlineKeyboardButton(text=f"{icon} {item['name']}", callback_data=f"equip_{item_id}"))
+            
+            # Susun 2 tombol per baris agar rapi di HP
             if len(row) == 2:
                 buttons.append(row)
                 row = []
-        if row: buttons.append(row)
+        if row: buttons.append(row) # Masukkan sisa tombol
 
+    # Tombol navigasi kembali ke profil utama
     buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
     return buttons
 
 def get_consumable_menu(player):
-    """Layout Tas Ramuan dengan Stacking."""
+    """
+    Membuat layout tombol khusus untuk ramuan/consumables.
+    Menerapkan sistem stacking (menghitung jumlah barang yang sama).
+    """
     buttons = []
     inventory = player.get('inventory', [])
     
-    # Count stacking
+    # Hitung jumlah (Stacking) item yang sama
     counts = {}
     for i in inventory:
         it = get_item(i)
@@ -117,7 +147,10 @@ def get_consumable_menu(player):
         row = []
         for i_id, count in counts.items():
             it = get_item(i_id)
+            # Format: 🧪 Nama Potion (Jumlah x)
             row.append(InlineKeyboardButton(text=f"🧪 {it['name']} ({count}x)", callback_data=f"useitem_{i_id}"))
+            
+            # Susun 2 tombol per baris
             if len(row) == 2:
                 buttons.append(row)
                 row = []
@@ -127,7 +160,10 @@ def get_consumable_menu(player):
     return buttons
 
 def get_profile_menu(player):
-    """Layout Lepas Equipment dengan status durabilitas."""
+    """
+    Membuat layout tombol untuk melepas (unequip) gear yang sedang dipakai.
+    Menampilkan status durabilitas item dengan indikator warna.
+    """
     buttons = []
     equipped = player.get('equipped', {})
     durability = player.get('equipment_durability', {})
@@ -139,7 +175,7 @@ def get_profile_menu(player):
             item = get_item(item_id)
             if item:
                 d = durability.get(slot, 50)
-                # Visual Indicator untuk Durabilitas
+                # Visual Indicator untuk Durabilitas (Hijau=Aman, Kuning=Peringatan, Merah=Rusak)
                 emoji = "🟢" if d > 20 else "🟡" if d > 5 else "🔴"
                 buttons.append([
                     InlineKeyboardButton(text=f"{emoji} {slot.upper()}: {item['name']} ({d}/50)", callback_data=f"unequip_{slot}")
@@ -148,9 +184,16 @@ def get_profile_menu(player):
     buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
     return buttons
 
-# === TAMBAHAN BARU ===
+
+# ==============================================================================
+# 3. GLOBAL KEYBOARDS (DIGUNAKAN DI BANYAK FILE)
+# ==============================================================================
+
 def get_main_reply_keyboard(player=None):
-    """Menghasilkan tombol navigasi bawah layar (Arah, Meditasi, Profil)."""
+    """
+    Menghasilkan tombol navigasi bawah layar (Reply Keyboard).
+    Digunakan untuk Eksplorasi, Meditasi, dan membuka Profil Utama.
+    """
     keyboard = [
         [KeyboardButton(text="⬆️ Utara")],
         [KeyboardButton(text="⬅️ Barat"), KeyboardButton(text="Timur ➡️")],
@@ -158,3 +201,24 @@ def get_main_reply_keyboard(player=None):
         [KeyboardButton(text="🧘 Meditasi"), KeyboardButton(text="📊 Profil & Tas")]
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+
+def get_stance_keyboard(is_boss=False):
+    """
+    Menghasilkan tombol aksi pertempuran (Inline Keyboard).
+    Digunakan oleh file exploration.py dan combat.py saat in_combat.
+    """
+    row1 = [
+        InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
+        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill")
+    ]
+    row2 = [
+        InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
+        InlineKeyboardButton(text="💨 Menghindar", callback_data="stance_dodge")
+    ]
+    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="stance_item")]
+    
+    # Jika menghadapi Boss, pemain tidak diberikan opsi kabur
+    if not is_boss: 
+        row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
+        
+    return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
