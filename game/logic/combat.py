@@ -1,17 +1,17 @@
 # game/logic/combat.py
 
 """
-CORE COMBAT ENGINE - The Archivus (ADVANCED & REFACTORED EDITION)
+CORE COMBAT ENGINE - The Archivus (PURE TURN-BASED EDITION)
 Sistem Pertarungan Berbasis Data: 
-Mendukung Mitigasi Damage Rasio, Turn-Based Logic, 
+Mendukung Mitigasi Damage Rasio, Turn-Based Logic Button, 
 Modular Status Effects, dan Immersive Battle Logging.
 """
 import time
 import random
+import html
 
-# --- IMPORT SYSTEM (MODULAR ARCHITECTURE) ---
+# --- IMPORT SYSTEM ---
 from game.entities.monsters import get_random_monster, get_random_mini_boss, get_random_main_boss
-from game.puzzles.manager import get_random_puzzle
 
 # === KONFIGURASI ELEMEN & STATUS ===
 ELEMENTAL_CHART = {
@@ -47,17 +47,14 @@ def apply_turn_status_effects(entity, is_player=True):
         val = effect.get('value', 0)
         
         if eff_type == 'poison':
-            # Racun: Mengurangi HP berdasarkan persentase atau nilai tetap
             max_hp = entity.get('max_hp' if is_player else 'monster_max_hp', 100)
             dmg = max(1, int(max_hp * 0.05))
             hp_change -= dmg
             logs.append(f"{STATUS_ICONS['poison']}-{dmg}")
         elif eff_type == 'burn':
-            # Burn: Damage tetap
             hp_change -= val
             logs.append(f"{STATUS_ICONS['burn']}-{val}")
         elif eff_type == 'regen':
-            # Regen: Memulihkan HP
             hp_change += val
             logs.append(f"{STATUS_ICONS['regen']}+{val}")
 
@@ -78,28 +75,27 @@ def get_compact_bar(current, maximum, length=8, bar_type="hp"):
         
     return f"{color * filled}{'⬜' * empty} `{int(current)}/{int(maximum)}`"
 
-def render_live_battle(player, monster, log_msg="Menunggu tindakanmu..."):
-    """Render UI utama pertarungan (Refactored for Cleanliness)."""
+def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
+    """Render UI utama pertarungan (Bersih dari Puzzle)."""
     p_status = "".join([STATUS_ICONS.get(e['type'], "") for e in player.get('active_effects', [])])
     m_status = "".join([STATUS_ICONS.get(e['type'], "") for e in monster.get('monster_effects', [])])
 
+    safe_log = html.escape(log_msg)
+
     text = (
-        f"⚔️ **BATTLE: {monster['monster_name'].upper()}** {m_status}\n"
+        f"⚔️ <b>BATTLE: {monster['monster_name'].upper()}</b> {m_status}\n"
         f"HP: {get_compact_bar(monster['monster_hp'], monster['monster_max_hp'], bar_type='hp')}\n"
-        f"🛡️ Elem: `{monster['monster_element'].title()}`\n"
+        f"🛡️ Elem: <code>{monster['monster_element'].title()}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **{player.get('name', 'Weaver')}** {p_status}\n"
+        f"👤 <b>{player.get('name', 'Weaver')}</b> {p_status}\n"
         f"HP: {get_compact_bar(player['hp'], player['max_hp'], bar_type='hp')}\n"
         f"MP: {get_compact_bar(player.get('mp', 0), player.get('max_mp', 50), bar_type='mp')}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📜 **BATTLE LOG:**\n_{log_msg}_\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🧩 **PUZZLE SEALS:**\n`{monster['question']}`\n"
-        f"⏳ Sisa Waktu: `{monster['timer']}s`"
+        f"📜 <b>BATTLE LOG:</b>\n<i>{safe_log}</i>"
     )
     return text
 
-# === MESIN KALKULASI DAMAGE (MITIGASI RASIO) ===
+# === MESIN KALKULASI DAMAGE ===
 def calculate_damage(attacker, defender, is_attacker_player=True):
     """
     RUMUS: Damage = ATK * (ATK / (ATK + DEF))
@@ -107,16 +103,15 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
     """
     log = []
     
-    # Ambil statistik dari player atau data monster
     atk_stats = attacker.get('stats', attacker) if is_attacker_player else attacker
     def_stats = defender.get('stats', defender) if not is_attacker_player else defender
 
     # 1. Check Dodge
     dodge_chance = def_stats.get("dodge", 0.05)
     if random.random() < dodge_chance:
-        return 0, "💨 *MISS!* Serangan meleset."
+        return 0, "💨 <i>MISS!</i> Serangan meleset."
 
-    # 2. Base Damage Calculation (Mitigasi Rasio)
+    # 2. Base Damage Calculation
     atk_type = atk_stats.get("attack_type", "physical")
     if atk_type == "physical":
         atk_val = atk_stats.get("p_atk", 10)
@@ -125,35 +120,32 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
         atk_val = atk_stats.get("m_atk", 10)
         def_val = def_stats.get("m_def", 5)
 
-    # Formula Mitigasi: Mencegah damage 1 jika DEF tinggi, mencegah OP jika ATK tinggi
-    # Damage = ATK^2 / (ATK + DEF + 1)
     base_dmg = (atk_val ** 2) / (atk_val + def_val + 1)
-    
-    # Variance (0.9x - 1.1x) untuk variasi damage
     base_dmg *= random.uniform(0.9, 1.1)
 
     # 3. Elemental & Crit
     multiplier = 1.0
     atk_element = atk_stats.get("element", attacker.get("element", "none")).lower()
     
-    # Cek kelemahan elemen
     def_weakness = def_stats.get("monster_weakness" if not is_attacker_player else "weakness", "none").lower()
     if atk_element == def_weakness and atk_element != "none":
         multiplier *= 1.5
-        log.append("🔥 *WEAKNESS!*")
+        log.append("🔥 <i>WEAKNESS!</i>")
 
-    # Critical Hit
     if random.random() < atk_stats.get("crit_chance", 0.05):
         multiplier *= atk_stats.get("crit_damage", 1.5)
-        log.append("💥 *CRITICAL!*")
+        log.append("💥 <i>CRITICAL!</i>")
 
     final_dmg = max(1, int(base_dmg * multiplier))
-    log_msg = " ".join(log) if log else "⚔️ *HIT!*"
+    log_msg = " ".join(log) if log else "⚔️ <i>HIT!</i>"
     return final_dmg, log_msg
 
 # === GENERATOR PERTEMPURAN ===
 def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False):
-    """Merakit data pertarungan dengan Scaling & Dynamic Timer."""
+    """
+    Meskipun namanya masih generate_battle_puzzle (agar tidak error di main.py),
+    fungsinya sekarang murni merakit data stats musuh tanpa teka-teki.
+    """
     if is_boss:
         m_data = get_random_main_boss()
     elif is_miniboss:
@@ -161,18 +153,10 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
     else:
         m_data = get_random_monster(tier_level)
 
-    # Scaling HP (Cycle Based) agar musuh makin kuat tiap cycle
+    # Scaling HP (Cycle Based)
     cycle = player.get('cycle', 1)
     hp_scaling = 1 + (cycle * 0.15)
     
-    # Dynamic Timer (Berdasarkan Speed Monster)
-    m_speed = m_data.get("speed", 5)
-    # Kecepatan monster mengurangi waktu yang tersedia bagi pemain
-    final_timer = max(10, int(35 - (m_speed * 1.2) + (tier_level * 1.5)))
-
-    # Ambil teka-teki acak sesuai tier
-    puzzle_data = get_random_puzzle(tier_level)
-
     return {
         "monster_name": m_data["name"],
         "monster_hp": int(m_data["base_hp"] * hp_scaling),
@@ -189,32 +173,18 @@ def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=Fals
         "dodge": m_data.get("dodge_chance", 0.05),
         "crit_chance": m_data.get("crit_chance", 0.05),
         "crit_damage": m_data.get("crit_damage", 1.5),
-        "question": puzzle_data["question"],
-        "answer": str(puzzle_data["answer"]).strip().lower(),
-        "timer": final_timer,
         "tier": tier_level,
         "is_boss": is_boss,
         "exp_reward": m_data.get("exp", 10),
         "gold_reward": m_data.get("gold", 5),
-        "drops": m_data.get("drops", []),
-        "generated_time": time.time()
+        "drops": m_data.get("drops", [])
     }
-
-def validate_answer(user_answer, correct_answer, generated_time, time_limit):
-    """Validasi jawaban dengan pengecekan waktu presisi."""
-    time_taken = time.time() - generated_time
-    if time_taken > time_limit:
-        return (False, True, time_taken) # (Salah, Timeout, Waktu)
-    
-    is_correct = str(user_answer).strip().lower() == str(correct_answer).strip().lower()
-    return (is_correct, False, time_taken)
 
 def process_loot(monster_drops):
     """Sistem Looting Berbasis Chance."""
     obtained = []
     for item in monster_drops:
         if isinstance(item, dict):
-            # Cek probabilitas drop (0.0 - 1.0)
             if random.random() <= item.get("chance", 1.0):
                 obtained.append(item["id"])
         else:
