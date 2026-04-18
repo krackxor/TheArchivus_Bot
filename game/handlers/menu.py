@@ -14,7 +14,8 @@ from game.logic.menu_handler import (
     get_profile_main_menu, generate_profile_text
 )
 from game.systems.shop import process_purchase, get_shop_keyboard
-from game.systems.achievements import update_quest_progress
+# Sinkronisasi dengan sistem Quest Modular
+from game.data.quests import update_quest_progress
 from game.items import get_item
 
 # Inisialisasi Router
@@ -83,7 +84,11 @@ async def equipment_handler(callback: CallbackQuery):
         success, msg = equip_item(p, item_id)
         
         # Simpan perubahan ke database
-        update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p.get('current_job')})
+        update_player(user_id, {
+            'inventory': p['inventory'], 
+            'equipped': p['equipped'], 
+            'current_job': p.get('current_job')
+        })
         await callback.answer(msg)
         
         # Refresh tampilan tas
@@ -94,7 +99,11 @@ async def equipment_handler(callback: CallbackQuery):
         success, msg = unequip_item(p, slot)
         
         # Simpan perubahan ke database
-        update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p.get('current_job')})
+        update_player(user_id, {
+            'inventory': p['inventory'], 
+            'equipped': p['equipped'], 
+            'current_job': p.get('current_job')
+        })
         await callback.answer(msg)
         
         # Refresh tampilan gear terpakai
@@ -118,15 +127,20 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
     if p.get('gold', 0) < cost: 
         return await callback.answer(f"❌ Emasmu tidak cukup! Butuh {cost} Gold.", show_alert=True)
         
-    # Eksekusi Perbaikan & Update Stats
-    p['equipment_durability'] = new_durability
+    # Eksekusi Perbaikan
     p['gold'] -= cost
-    new_stats = calculate_total_stats(p)
+    p['equipment_durability'] = new_durability
+    
+    # Trigger Quest: Perawatan Gear (repair_gear)
+    p, quest_msgs = update_quest_progress(p, "repair_gear", 1)
+    
+    # Update Stats terbaru
+    p['stats'] = calculate_total_stats(p)
     
     update_player(user_id, {
         "gold": p['gold'], 
         "equipment_durability": new_durability,
-        "stats": new_stats
+        "active_quests": p.get('active_quests', [])
     })
     
     repair_msg = (
@@ -135,13 +149,16 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
         f"💬 *'Nah, benda ini bisa membelah kulit iblis lagi.'*\n\n"
         f"🛠️ **Diperbaiki:** {count} buah\n"
         f"💰 **Biaya:** -{cost} Gold\n"
-        f"✨ **Kondisi:** 100% (Semua Gear Kokoh)\n"
+        f"✨ **Kondisi:** 100% (Gear Kokoh)\n"
     )
+    
+    if quest_msgs:
+        repair_msg += "\n" + "\n".join(quest_msgs)
     
     kb = get_profile_main_menu(p)
     try:
         await callback.message.edit_text(repair_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-    except:
+    except Exception:
         pass
     await callback.answer("✅ Seluruh peralatan berhasil diperbaiki!")
 
@@ -158,19 +175,23 @@ async def shop_purchase_handler(callback: CallbackQuery):
     success, msg = process_purchase(p, item_id)
     
     if success:
-        quest_notif = update_quest_progress(p, "buy_items", 1)
+        # Trigger Quest: Pelanggan Setia (buy_items)
+        p, quest_msgs = update_quest_progress(p, "buy_items", 1)
         
         update_player(user_id, {
             "gold": p['gold'], 
             "inventory": p['inventory'],
-            "daily_quests": p.get('daily_quests', [])
+            "active_quests": p.get('active_quests', [])
         })
         
-        alert_mode = True if quest_notif else False
-        success_msg = f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!{quest_notif}"
-        await callback.answer(success_msg, show_alert=alert_mode)
+        # Gabungkan pesan sukses toko dengan notifikasi quest
+        full_msg = f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!"
+        if quest_msgs:
+            full_msg += "\n" + "\n".join(quest_msgs)
+            
+        await callback.answer(full_msg, show_alert=True if quest_msgs else False)
         
-        # Refresh tampilan toko agar saldo Gold terupdate
+        # Refresh tampilan toko
         try:
             await callback.message.edit_reply_markup(
                 reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall'))
@@ -188,7 +209,7 @@ async def shop_purchase_handler(callback: CallbackQuery):
 async def use_item_handler(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     
-    # CEGAH PENGGUNAAN ITEM JIKA SEDANG BERTARUNG (Diarahkan ke combat.py nanti)
+    # Cegah penggunaan item jika sedang bertarung
     if current_state == GameState.in_combat:
         return await callback.answer("⚠️ Gunakan ramuan melalui tombol 🎒 Item di layar pertarungan!", show_alert=True)
 
@@ -204,8 +225,8 @@ async def use_item_handler(callback: CallbackQuery, state: FSMContext):
     if not success:
         return await callback.answer(msg, show_alert=True)
 
-    # Tambah progres misi
-    quest_notif = update_quest_progress(p_new, "use_items", 1)
+    # Trigger Quest: Pecandu Ramuan (use_items)
+    p_new, quest_msgs = update_quest_progress(p_new, "use_items", 1)
 
     # CEK SPESIAL: Pemicu Quiz (Buku / Scroll)
     item_data = get_item(item_id)
@@ -216,19 +237,24 @@ async def use_item_handler(callback: CallbackQuery, state: FSMContext):
         await state.set_state(GameState.in_event)
         await state.update_data(event_data=puzzle)
         
-        return await callback.message.answer(
-            f"{quest_notif}\n📖 {msg}\n\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*",
-            parse_mode="Markdown"
-        )
+        q_text = f"📖 {msg}\n"
+        if quest_msgs: q_text += "\n".join(quest_msgs) + "\n"
+        q_text += f"\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*"
+        
+        return await callback.message.answer(q_text, parse_mode="Markdown")
 
-    # Simpan efek item (Heal/Energy) ke database
+    # Simpan status terbaru
     update_player(user_id, {
         'hp': p_new['hp'], 
         'mp': p_new['mp'], 
         'energy': p_new.get('energy', 100),
         'inventory': p_new['inventory'], 
         'active_effects': p_new.get('active_effects', []),
-        'daily_quests': p_new.get('daily_quests', [])
+        'active_quests': p_new.get('active_quests', [])
     })
     
-    await callback.message.answer(f"{msg}\n{quest_notif}", parse_mode="Markdown")
+    final_alert = msg
+    if quest_msgs:
+        final_alert += "\n" + "\n".join(quest_msgs)
+        
+    await callback.message.answer(final_alert, parse_mode="Markdown")
