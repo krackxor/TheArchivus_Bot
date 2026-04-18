@@ -141,10 +141,9 @@ def calculate_damage(attacker, defender, is_attacker_player=True):
     return final_dmg, log_msg
 
 # === GENERATOR PERTEMPURAN ===
-def generate_battle_puzzle(player, tier_level=1, is_boss=False, is_miniboss=False):
+def generate_battle_data(player, tier_level=1, is_boss=False, is_miniboss=False):
     """
-    Meskipun namanya masih generate_battle_puzzle (agar tidak error di main.py),
-    fungsinya sekarang murni merakit data stats musuh tanpa teka-teki.
+    Merakit data stats musuh untuk pertarungan.
     """
     if is_boss:
         m_data = get_random_main_boss()
