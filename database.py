@@ -52,7 +52,7 @@ def validate_player_data(player_doc, user_id):
         "miniboss_slain_cycle": False,
         "energy": 100,
         "max_energy": 100,
-        "debuffs": [],
+        "active_effects": [], # Perubahan dari "debuffs" ke "active_effects" untuk kompatibilitas combat.py baru
         "level": 1,
         "exp": 0,
         "exp_needed": 100,
@@ -62,7 +62,9 @@ def validate_player_data(player_doc, user_id):
         "active_resin": None,
         "resin_duration": 0,
         "has_companion": False,
-        "companion_duration": 0
+        "companion_duration": 0,
+        "equipment_durability": {}, # Tambahan untuk sistem durabilitas
+        "permanent_bonus": {} # Tambahan untuk sistem Altar/Pact
     }
 
     for field, default_value in default_fields.items():
@@ -106,7 +108,7 @@ def get_player(user_id, username="Weaver"):
             # Survival Stats
             "energy": 100,
             "max_energy": 100,
-            "debuffs": [], # Contoh: ["poisoned", "dizzy"]
+            "active_effects": [], # Menggantikan debuffs untuk integrasi combat
             
             # Progression System
             "level": 1,
@@ -116,8 +118,10 @@ def get_player(user_id, username="Weaver"):
             # Inventory & 8-Slot Equipment System
             "inventory": [],
             "equipped": {}, # Berisi slot: weapon, armor, head, mask, dll
+            "equipment_durability": {},
             "current_job": "Novice Weaver",
             "artifacts": [], # PERMANENT PROGRESSION (Tidak hilang saat mati)
+            "permanent_bonus": {}, # Stats permanen dari Pact/Altar
             
             # Endless System & Driver
             "cycle": 1,
@@ -224,12 +228,13 @@ def reset_player_death(user_id, cause):
     new_exp = max(0, player.get('exp', 0) - exp_penalty)
     
     saved_artifacts = player.get('artifacts', [])
+    saved_bonus = player.get('permanent_bonus', {}) # Bonus dari Pacts tetap ada
     
     updates = {
         "hp": player.get("max_hp", 100),
         "mp": player.get("max_mp", 50),
         "energy": player.get("max_energy", 100),
-        "debuffs": [],
+        "active_effects": [],
         "step_counter": 0,
         "step_in_cycle": 0,
         "miniboss_slain_cycle": False,
@@ -238,8 +243,10 @@ def reset_player_death(user_id, cause):
         "kills": 0,
         "inventory": [],  # ITEM HILANG
         "equipped": {},   # PERLENGKAPAN YANG DIPAKAI JUGA HILANG (KEMBALI KE NOL)
+        "equipment_durability": {},
         "current_job": "Novice Weaver", # KEMBALI KE KELAS AWAL
         "artifacts": saved_artifacts, # AMAN!
+        "permanent_bonus": saved_bonus, # AMAN!
         "monster_streak": 0,
         "steps_since_event": 0,
         "current_combo": 0,
@@ -266,7 +273,7 @@ Jiwa Weaver hancur berkeping-keping...
 
 **Sisa Kekuatan yang Terjaga:**
 • ✨ Atribut & Stat Points (Permanen)
-• 💎 Relik Kuno
+• 💎 Relik Kuno & Bonus Kontrak
 • 🔄 Cycle: {cycle} | 📊 Level: {player.get('level', 1)}
 
 "Archivus menarikmu kembali... namun jejak langkahmu tidak terhapus sepenuhnya."
