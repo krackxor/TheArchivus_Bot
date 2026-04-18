@@ -41,7 +41,7 @@ from game.items import get_item
 from utils.helper_ui import (
     create_hp_bar, create_mp_bar, create_energy_bar, create_status_card, create_combat_header,
     create_achievement_notification, create_loot_drop, create_level_up_animation,
-    create_combo_indicator, create_daily_quest_card, create_boss_warning,
+    create_combo_indicator, create_boss_warning,
     create_death_screen, create_location_transition, create_inventory_display
 )
 
@@ -263,7 +263,7 @@ async def move_handler(message: Message, state: FSMContext):
         )
     # EVENT NPC / CHEST YANG MEMBUTUHKAN PUZZLE BISA DIHANDLE DI SINI NANTINYA
     # elif event_type == "chest":
-    #     await state.set_state(GameState.in_event)
+    #    await state.set_state(GameState.in_event)
     else:
         await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
