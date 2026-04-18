@@ -194,25 +194,25 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
             
             p = p_new
             data_st = await state.get_data()
-            puzzle = data_st.get("puzzle")
-            m_name = puzzle.get('monster_name', 'Musuh')
+            enemy_data = data_st.get("enemy_data")
+            m_name = enemy_data.get('monster_name', 'Musuh')
             
             # Monster Counter Attack
-            m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
             p['hp'] -= m_dmg
-            result_msg = f"🎒 **PAKAI RAMUAN:** {msg}\n👾 **BALASAN:** {m_name} menyerang! (-{m_dmg} HP)"
+            result_msg = f"🎒 <b>PAKAI RAMUAN:</b> {msg}\n👾 <b>BALASAN:</b> {m_name} menyerang! (-{m_dmg} HP)"
             
             # Tick Status Effects
-            m_hpc, m_logs = apply_turn_status_effects(puzzle, is_player=False)
+            m_hpc, m_logs = apply_turn_status_effects(enemy_data, is_player=False)
             p_hpc, p_logs = apply_turn_status_effects(p, is_player=True)
-            puzzle['monster_hp'] = max(0, puzzle['monster_hp'] + m_hpc)
+            enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hpc)
             p['hp'] = max(0, p['hp'] + p_hpc)
             
             current_combo = data_st.get("current_combo", 0) + 1
             update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', [])})
             
             full_log = f"{result_msg}\n" + " ".join(m_logs + p_logs)
-            await execute_end_of_turn(callback.message, state, user_id, p, puzzle, full_log, current_combo, data_st.get("battle_msg_id"))
+            await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, data_st.get("battle_msg_id"))
             
         else:
             # PENGGUNAAN ITEM DI LUAR COMBAT
@@ -245,17 +245,21 @@ async def move_handler(message: Message, state: FSMContext):
         is_miniboss = (event_type == "miniboss")
         tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
         
-        # Init combat data
-        puzzle = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
+        # Init combat data (NAMA VARIABEL SUDAH DIUBAH MENJADI enemy_data)
+        enemy_data = generate_battle_data(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         
         await state.set_state(GameState.in_combat)
-        combat_ui = render_live_battle(p, puzzle, f"⚠️ {narration}")
+        
+        # Bersihkan text markdown jika ada agar tidak bentrok dengan HTML
+        safe_narration = narration.replace("**", "")
+        combat_ui = render_live_battle(p, enemy_data, f"⚠️ <b>{safe_narration}</b>")
+        
         # Kirim menggunakan HTML Parse Mode
         sent_msg = await message.answer(combat_ui, parse_mode="HTML", reply_markup=get_stance_keyboard(is_boss))
         
         await state.update_data(
             battle_msg_id=sent_msg.message_id,
-            puzzle=puzzle, 
+            enemy_data=enemy_data, 
             current_combo=0
         )
     else:
@@ -280,25 +284,25 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
 
     # Ambil Data Combat
     state_data = await state.get_data()
-    puzzle = state_data.get("puzzle")
+    enemy_data = state_data.get("enemy_data")
     battle_msg_id = state_data.get("battle_msg_id")
     
-    if not puzzle:
+    if not enemy_data:
         return await callback.answer("Data musuh tidak ditemukan.", show_alert=True)
         
     p['stats'] = calculate_total_stats(p)
-    m_name = puzzle.get('monster_name', 'Musuh')
+    m_name = enemy_data.get('monster_name', 'Musuh')
     result_msg = ""
     current_combo = state_data.get("current_combo", 0) + 1
 
     # --- 2. EKSEKUSI AKSI PEMAIN ---
     if action == "attack": # (1:1 Turn)
-        p_dmg, p_log = calculate_damage(p, puzzle, is_attacker_player=True)
-        puzzle['monster_hp'] -= p_dmg
+        p_dmg, p_log = calculate_damage(p, enemy_data, is_attacker_player=True)
+        enemy_data['monster_hp'] -= p_dmg
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
         
-        m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
         p['hp'] -= m_dmg
         result_msg = (
             f"⚔️ <b>SERANG:</b> {p_log} (-{p_dmg} HP){wpn_msg}\n"
@@ -308,13 +312,13 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     elif action == "skill": # (1:2 Turn)
         temp_p = p.copy()
         temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
-        p_dmg, p_log = calculate_damage(temp_p, puzzle, is_attacker_player=True)
-        puzzle['monster_hp'] -= p_dmg
+        p_dmg, p_log = calculate_damage(temp_p, enemy_data, is_attacker_player=True)
+        enemy_data['monster_hp'] -= p_dmg
         broken_weapons = reduce_equipment_durability(user_id, target_slots=['weapon'], damage=2)
         wpn_msg = f" ⚠️ <i>Senjata retak!</i>" if broken_weapons else ""
         
-        m_dmg1, m_log1 = calculate_damage(puzzle, p, is_attacker_player=False)
-        m_dmg2, m_log2 = calculate_damage(puzzle, p, is_attacker_player=False)
+        m_dmg1, m_log1 = calculate_damage(enemy_data, p, is_attacker_player=False)
+        m_dmg2, m_log2 = calculate_damage(enemy_data, p, is_attacker_player=False)
         total_m_dmg = m_dmg1 + m_dmg2
         p['hp'] -= total_m_dmg
         result_msg = (
@@ -326,7 +330,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         heal_amount = int(p.get('max_hp', 100) * 0.15)
         p['hp'] = min(p.get('max_hp', 100), p['hp'] + heal_amount)
         
-        m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+        m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
         reduced_dmg = max(1, int(m_dmg * 0.2)) 
         p['hp'] -= reduced_dmg
         broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
@@ -351,7 +355,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
                 f"🎯 {m_name} menyerang angin dan <b>kehilangan gilirannya</b>!"
             )
         else:
-            m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
             reduced_dmg = max(1, int(m_dmg * 0.7)) 
             p['hp'] -= reduced_dmg
             broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
@@ -363,19 +367,19 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
         if random.random() < chance:
             await state.set_state(GameState.exploring)
             update_player(user_id, {'current_combo': 0})
-            try: await callback.message.edit_text("🏃💨 *KABUR!*", parse_mode="Markdown")
+            try: await callback.message.edit_text("🏃💨 <b>KABUR!</b>", parse_mode="HTML")
             except: pass
             return await callback.message.answer("🏃💨 Kamu berhasil melarikan diri ke dalam kegelapan.", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
         else:
-            m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
+            m_dmg, m_log = calculate_damage(enemy_data, p, is_attacker_player=False)
             p['hp'] -= m_dmg
             result_msg = f"🧱 <b>GAGAL KABUR:</b> Jalan diblokir!\n👾 <b>BALASAN:</b> {m_name} menebas punggungmu (-{m_dmg} HP)"
 
     # --- 3. TICK STATUS EFFECTS (BUFF/DEBUFF) ---
-    m_hp_change, m_status_logs = apply_turn_status_effects(puzzle, is_player=False)
+    m_hp_change, m_status_logs = apply_turn_status_effects(enemy_data, is_player=False)
     p_hp_change, p_status_logs = apply_turn_status_effects(p, is_player=True)
     
-    puzzle['monster_hp'] = max(0, puzzle['monster_hp'] + m_hp_change)
+    enemy_data['monster_hp'] = max(0, enemy_data['monster_hp'] + m_hp_change)
     p['hp'] = max(0, p['hp'] + p_hp_change)
     
     update_player(user_id, {"hp": p['hp'], "mp": p['mp'], "inventory": p['inventory'], "active_effects": p.get('active_effects', [])})
@@ -384,22 +388,22 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     full_log = f"{result_msg}\n{status_log_final}"
 
     # Eksekusi fase Check Death & Rendering UI
-    await execute_end_of_turn(callback.message, state, user_id, p, puzzle, full_log, current_combo, battle_msg_id)
+    await execute_end_of_turn(callback.message, state, user_id, p, enemy_data, full_log, current_combo, battle_msg_id)
 
 
 # === HELPER: FASE END OF TURN & CHECK DEATH ===
-async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int, p: dict, puzzle: dict, full_log: str, current_combo: int, battle_msg_id: int):
+async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int, p: dict, enemy_data: dict, full_log: str, current_combo: int, battle_msg_id: int):
     """Menangani logika kematian musuh, kematian pemain, atau ronde berlanjut."""
-    m_name = puzzle.get('monster_name', 'Musuh')
+    m_name = enemy_data.get('monster_name', 'Musuh')
     
     # KEMATIAN MUSUH
-    if puzzle['monster_hp'] <= 0:
-        tier = puzzle.get('tier', 1)
-        is_boss = puzzle.get('is_boss', False)
+    if enemy_data['monster_hp'] <= 0:
+        tier = enemy_data.get('tier', 1)
+        is_boss = enemy_data.get('is_boss', False)
         
         base_gold = 500 if is_boss else (int(tier) * 25)
         total_gold = base_gold + int(base_gold * (current_combo * 0.1))
-        base_exp = puzzle.get('exp_reward', 10 * tier)
+        base_exp = enemy_data.get('exp_reward', 10 * tier)
         total_exp = base_exp + int(base_exp * (current_combo * 0.1))
         
         new_exp = p.get('exp', 0) + total_exp
@@ -413,7 +417,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
             update_player(user_id, {'max_hp': new_max_hp, 'max_mp': new_max_mp, 'hp': new_max_hp, 'mp': new_max_mp})
             level_up_msg = f"\n\n🆙 <b>LEVEL UP!</b> Kamu telah mencapai Level {new_level}! (+Max HP & MP)"
 
-        drops = process_loot(puzzle.get('drops', []))
+        drops = process_loot(enemy_data.get('drops', []))
         inv = p.get('inventory', [])
         inv.extend(drops)
         
@@ -424,7 +428,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         
         await state.set_state(GameState.exploring)
         
-        # Format HTML murni untuk kemenangan (Tanpa sanitasi Markdown lagi)
+        # Format HTML murni untuk kemenangan
         safe_drops = ", ".join(drops).replace("_", " ").title() if drops else "Tidak ada"
         
         victory_text = (
@@ -452,9 +456,9 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         
     # MUSUH MASIH HIDUP, LANJUT RONDE
     else:
-        await state.update_data(puzzle=puzzle, current_combo=current_combo, action_type=None)
+        await state.update_data(enemy_data=enemy_data, current_combo=current_combo, action_type=None)
         
-        next_msg = render_live_battle(p, puzzle, f"✅ {full_log}")
+        next_msg = render_live_battle(p, enemy_data, f"✅ {full_log}")
         
         if battle_msg_id:
             try:
@@ -463,7 +467,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
                     message_id=battle_msg_id, 
                     text=next_msg, 
                     parse_mode="HTML", 
-                    reply_markup=get_stance_keyboard(puzzle.get('is_boss', False))
+                    reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
                 )
             except TelegramRetryAfter as e:
                 # Flood control handling: Jangan edit, biarkan saja untuk ronde ini
@@ -477,7 +481,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
                             message_id=battle_msg_id, 
                             text=next_msg, 
                             parse_mode=None, # Nonaktifkan formatting
-                            reply_markup=get_stance_keyboard(puzzle.get('is_boss', False))
+                            reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
                         )
                     except: pass
 
@@ -485,7 +489,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
 # === EVENT PUZZLE (NON-COMBAT / EKSPLORASI) ===
 @dp.message(GameState.in_event)
 async def event_puzzle_handler(message: Message, state: FSMContext):
-    """Placeholder untuk event puzzle di eksplorasi."""
+    """Placeholder untuk event teka-teki saat eksplorasi."""
     pass
 
 
