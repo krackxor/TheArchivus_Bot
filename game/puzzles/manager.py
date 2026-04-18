@@ -10,51 +10,46 @@ import random
 import logging
 
 # Impor modul genre teka-teki
-# Pastikan file lore.py, math.py, dan words.py memiliki fungsi get_puzzle()
 from game.puzzles import lore, math, words
 
 def get_random_puzzle(tier_level=1, monster_element="none", win_streak=0):
     """
     Mengambil teka-teki secara acak dari genre yang tersedia.
-    Sinkron dengan combat.py dan event eksplorasi.
-    
-    Returns:
-        dict: {"question": str, "answer": str, "genre": str}
     """
     
     # List modul genre yang tersedia
     genres = [lore, math, words]
     
-    # Pilih modul secara acak
+    # Jika tier tinggi, kita bisa mengatur probabilitas atau jenis kuis di sini
     selected_module = random.choice(genres)
     
     try:
         # Panggil fungsi get_puzzle() dari modul yang terpilih
-        # Fungsi ini harus mengembalikan dict: {"question": "...", "answer": "..."}
+        # lore.py sekarang mengembalikan format: {"question": "...", "answer": "..."}
         puzzle = selected_module.get_puzzle()
         
-        # Tambahkan label genre untuk mempercantik UI di combat/event
+        # Tambahkan label genre untuk mempercantik UI
         if selected_module == lore:
-            puzzle["genre"] = "Lore"
+            puzzle["genre"] = "Lore & Strategy"
         elif selected_module == math:
-            puzzle["genre"] = "Math"
+            puzzle["genre"] = "Logic & Math"
         else:
-            puzzle["genre"] = "Words"
+            puzzle["genre"] = "Words & Riddles"
             
         return puzzle
         
     except Exception as e:
-        logging.error(f"Terjadi kesalahan saat mengambil puzzle dari {selected_module}: {e}")
-        # Fallback Puzzle jika file genre error atau belum lengkap
+        logging.error(f"Gagal mengambil puzzle dari {selected_module}: {e}")
+        # Fallback jika ada file yang error
         return {
-            "question": "Sebutkan kata kunci kuno untuk lewat: 'ARCHIVUS'",
+            "question": "Sebutkan kata kunci kuno: 'ARCHIVUS'",
             "answer": "archivus",
             "genre": "System"
         }
 
 def validate_puzzle_answer(user_answer, correct_answer):
     """
-    Utility sederhana untuk memvalidasi jawaban.
+    Utility untuk memvalidasi jawaban secara case-insensitive.
     """
     return str(user_answer).strip().lower() == str(correct_answer).strip().lower()
 
@@ -63,26 +58,26 @@ def validate_puzzle_answer(user_answer, correct_answer):
 # ==============================================================================
 def generate_puzzle(tier=1):
     """
-    Fungsi jembatan yang dibutuhkan oleh handlers/menu.py dan event_handler.py.
-    Mengambil data dari get_random_puzzle lalu memformatnya agar sesuai 
-    dengan format Event Sistem Utama.
+    Fungsi jembatan yang dibutuhkan oleh handlers/event.py dan event_handler.py.
+    Memformat data agar sesuai dengan format Event Sistem Utama.
     """
-    # Ambil puzzle mentah dari sistem genre-mu
+    # Ambil puzzle mentah
     raw_puzzle = get_random_puzzle(tier_level=tier)
     
-    # Ambil jawaban (string) dan ubah ke huruf kecil untuk validasi
-    correct_answer = raw_puzzle.get("answer", "").lower()
+    # Ambil jawaban dan pastikan formatnya string lower-case
+    correct_answer = str(raw_puzzle.get("answer", "")).lower()
     
     # Bungkus menjadi format event_data yang dipahami oleh FSM (State Machine)
-    # process_event_outcome mengecek kunci 'answers' sebagai sebuah List
+    # Sangat Penting: 'answers' harus berupa LIST [] agar tidak error saat loop check
     event_data = {
         "type": "quiz",
         "tier": tier,
         "genre": raw_puzzle.get("genre", "Mystery"),
-        "question": f"[{raw_puzzle.get('genre', 'Mystery')}] {raw_puzzle.get('question', '')}",
-        "answers": [correct_answer], # Diubah menjadi list agar tidak error saat divalidasi
-        "gold_reward": tier * 50,    # Reward dinamis berdasarkan tier
-        "exp_reward": tier * 50
+        # Format tampilan kuis di chat
+        "question": raw_puzzle.get('question', ''),
+        "answers": [correct_answer],  # List agar kompatibel dengan sistem validasi multi-answer
+        "gold_reward": tier * 50,     # Reward Gold: Tier 1 = 50, Tier 2 = 100, dst
+        "exp_reward": tier * 30       # Reward EXP
     }
     
     return event_data
