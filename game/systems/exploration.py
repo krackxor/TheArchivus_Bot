@@ -57,8 +57,11 @@ def check_environment_protection(player, hazard_id):
     return required_item in inventory or required_item in equipped
 
 def apply_hazard_penalty(player, hazard_id):
-    """Fungsi Penalti: Memproses dampak negatif dari lingkungan."""
+    """Fungsi Penalti: Memproses dampak negatif dari lingkungan (dengan Durasi)."""
     hazard_data = hazards.get_hazard_data(hazard_id)
+    if not hazard_data:
+        return {}
+        
     penalty = hazard_data.get('penalty', {})
     updates = {}
     
@@ -70,14 +73,15 @@ def apply_hazard_penalty(player, hazard_id):
     if 'energy_loss' in penalty:
         updates['energy'] = max(0, player.get('energy', 100) - penalty['energy_loss'])
         
-    # 3. Status Effects (Poison, etc)
+    # 3. Status Effects (Poison, etc) dengan durasi 3 putaran
     if 'status_effect' in penalty:
         effects = player.get('active_effects', [])
         eff_type = penalty['status_effect']
-        if not any(e['type'] == eff_type for e in effects):
+        if not any(e.get('type') == eff_type for e in effects):
             effects.append({
                 "type": eff_type, 
                 "value": penalty.get('effect_val', 5), 
+                "duration": 3, # Durasi 3 giliran agar tidak bocor selamanya
                 "icon": "🤢" if eff_type == "poison" else "❄️"
             })
             updates['active_effects'] = effects
@@ -119,23 +123,26 @@ def process_move(user_id):
     if roll < 0.15:
         protected = check_environment_protection(player, loc_hazard)
         h_data = hazards.get_hazard_data(loc_hazard)
-        if not protected:
-            apply_hazard_penalty(player, loc_hazard)
-            return ("hazard", {"id": loc_hazard, "safe": False}, f"⚠️ **{h_data['name']}**\n{h_data['danger_msg']}")
-        else:
-            return ("hazard", {"id": loc_hazard, "safe": True}, f"🛡️ **{h_data['name']}**\n{h_data['safe_msg']}")
+        if h_data:
+            if not protected:
+                apply_hazard_penalty(player, loc_hazard)
+                return ("hazard", {"id": loc_hazard, "safe": False}, f"⚠️ **{h_data['name']}**\n{h_data['danger_msg']}")
+            else:
+                return ("hazard", {"id": loc_hazard, "safe": True}, f"🛡️ **{h_data['name']}**\n{h_data['safe_msg']}")
 
     # C. DEADLY EVENTS (Jebakan Maut / Stat Check)
     if roll < 0.25 and steps > 10:
         event_id = random.choice(list(deadly.DEADLY_EVENTS.keys()))
         ev = deadly.get_deadly_data(event_id)
-        return ("deadly", {"id": event_id}, f"💀 **{ev['name']}**\n{ev['desc']}")
+        if ev:
+            return ("deadly", {"id": event_id}, f"💀 **{ev['name']}**\n{ev['desc']}")
 
     # D. LANDMARKS (Lokasi Interaktif)
     if roll < 0.35:
         lm_id = random.choice(list(landmarks.LANDMARKS.keys()))
         lm = landmarks.get_landmark_data(lm_id)
-        return ("landmark", {"id": lm_id}, f"🏛️ **{lm['name']}**\n{lm['desc']}")
+        if lm:
+            return ("landmark", {"id": lm_id}, f"🏛️ **{lm['name']}**\n{lm['desc']}")
 
     # E. NPC INTERACTIONS
     if roll < 0.50:
@@ -151,4 +158,8 @@ def process_move(user_id):
         return ("monster", None, f"⚔️ **PERNYERGAPAN!** {random.choice(MONSTER_WARNINGS)}")
 
     # G. SAFE TRAVEL (Narasi Saja)
-    return ("safe", None, random.choice(NARRATIVES.get("safe", ["Langkahmu bergema di lorong sunyi."])))
+    safe_narration = "Langkahmu bergema di lorong sunyi."
+    if NARRATIVES and "safe" in NARRATIVES and NARRATIVES["safe"]:
+        safe_narration = random.choice(NARRATIVES["safe"])
+        
+    return ("safe", None, safe_narration)
