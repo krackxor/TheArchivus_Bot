@@ -6,6 +6,8 @@ Berisi lokasi interaktif permanen di peta yang memberikan buff,
 pembersihan kutukan, atau interaksi puzzle khusus.
 """
 
+import random
+
 LANDMARKS = {
     "landmark_altar_cleansing": {
         "name": "Altar Pembersihan",
@@ -58,6 +60,55 @@ LANDMARKS = {
         "requirement": "item_botol_kosong"
     }
 }
+
+# --- LOGIKA INTERAKSI LANDMARK ---
+
+def process_landmark_interaction(player, landmark_id):
+    """
+    Logika untuk mengeksekusi efek dari landmark terhadap pemain.
+    Mengembalikan: (success_status, message)
+    """
+    landmark = LANDMARKS.get(landmark_id)
+    if not landmark:
+        return False, "❌ Landmark tidak ditemukan."
+
+    # 1. Cek Syarat Item (Requirement)
+    req_item = landmark.get('requirement')
+    if req_item and req_item not in player.get('inventory', []):
+        return False, f"❌ Kamu membutuhkan {req_item.replace('item_', '').replace('_', ' ')} untuk berinteraksi di sini."
+
+    # 2. Eksekusi Efek Berdasarkan Jenisnya
+    effect = landmark.get('effect')
+    
+    if effect == "clear_debuffs":
+        # Menghapus semua status efek negatif
+        player['status_effects'] = []
+        
+    elif effect == "restore_mp":
+        # Memulihkan MP ke nilai maksimal
+        player['mp'] = player.get('max_mp', 100)
+        
+    elif effect == "buff_luck":
+        # Memberikan bonus keberuntungan permanen/sementara
+        if 'stats' not in player:
+            player['stats'] = {}
+        player['stats']['luck'] = player['stats'].get('luck', 0) + 5
+        
+    elif effect == "random_loot":
+        # Logika penggalian dengan risiko kemunculan musuh (Ambush)
+        if random.random() < landmark.get('danger_chance', 0):
+            return "ambush", "⚠️ Sesuatu yang busuk bangkit dari tanah! Persiapkan senjatamu!"
+        
+        # Berikan item acak ke dalam inventory
+        if 'inventory' not in player:
+            player['inventory'] = []
+        player['inventory'].append("item_old_relic")
+        
+    elif effect == "trigger_puzzle":
+        # Menandai bahwa pemain harus menghadapi kuis/puzzle khusus
+        return "puzzle", landmark['msg']
+
+    return True, landmark['msg']
 
 def get_landmark_data(landmark_id):
     """Mengambil data landmark berdasarkan ID."""
