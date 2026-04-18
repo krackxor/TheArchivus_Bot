@@ -18,11 +18,10 @@ STORY_NPCS = {
             "Jangan pernah mempercayai bayangan yang tidak mengikuti gerakan tubuhmu di area Abyss.",
             "Konon, jika kau berhasil mengumpulkan semua 'Pecahan Memori', kau bisa menjahit kembali takdir yang robek."
         ],
-        # Hadiah atau tantangan spesifik dari Chronicler (Penulis)
         "event_pool": {
-            "gifts": ["tenda", "potion_mana"], # Dia suka kasih alat catat/mana
+            "gifts": ["tenda", "potion_mana"],
             "tips": ["Mantra 'Revelatio' bisa mengungkap pintu rahasia.", "Gunakan Holy melawan Shadow."],
-            "quiz_chance": 60 # Dia lebih suka kasih kuis/pengetahuan
+            "quiz_chance": 60
         }
     },
 
@@ -40,9 +39,9 @@ STORY_NPCS = {
             "Setiap kali kau mati, sebagian dari jiwamu tertinggal di sini, memperkuat dinding dimensi ini."
         ],
         "event_pool": {
-            "gifts": ["potion_heal", "gold_pouch"], # Dia kasih darah/harta lama
+            "gifts": ["potion_heal", "gold_ pouch"],
             "tips": ["Di bawah danau beracun ada pedang legendaris.", "Jangan menatap mata patung yang tersenyum."],
-            "quiz_chance": 30 # Dia lebih suka kasih berkah/items
+            "quiz_chance": 30
         }
     },
 
@@ -60,14 +59,41 @@ STORY_NPCS = {
             "Siklus (Cycle) ini akan terus menguat setiap kali kau berhasil membunuh Sang Penjaga."
         ],
         "event_pool": {
-            "gifts": ["tenda", "potion_heal"], # Dia kasih alat bertahan hidup
+            "gifts": ["tenda", "potion_heal"],
             "tips": ["Lari jika mata pria bungkuk itu merah.", "Zirah berat lemah terhadap serangan Blunt."],
             "quiz_chance": 50
         }
     }
 }
 
-# --- FUNGSIONALITAS ---
+# --- FUNGSIONALITAS INTERAKSI ---
+
+def process_story_interaction(player, npc_id):
+    """
+    Memproses sistem gacha interaksi berdasarkan pool NPC.
+    Mengembalikan: (action_type, data)
+    """
+    npc = STORY_NPCS.get(npc_id)
+    if not npc:
+        return "error", "Sosok itu menghilang ditiup angin."
+
+    pool = npc.get("event_pool", {})
+    roll = random.randint(1, 100)
+
+    # 1. Cek Peluang Kuis (Berdasarkan quiz_chance NPC)
+    if roll <= pool.get("quiz_chance", 40):
+        return "quiz", None
+
+    # 2. Cek Peluang Hadiah Item (20% setelah kuis)
+    elif roll <= 80:
+        gift_id = random.choice(pool.get("gifts", ["potion_heal"]))
+        return "gift", gift_id
+
+    # 3. Cek Peluang Lore / Tips (Sisa peluang)
+    else:
+        # Mengambil lore_episodes atau tips spesifik
+        content = random.choice(npc.get("lore_episodes") + pool.get("tips", []))
+        return "lore", content
 
 def get_story_npc(npc_id):
     """Mengambil data NPC pencerita berdasarkan ID."""
