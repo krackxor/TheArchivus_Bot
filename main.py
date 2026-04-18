@@ -795,6 +795,30 @@ async def event_puzzle_handler(message: Message, state: FSMContext):
     await state.set_state(GameState.exploring)
 
 
+# === HELPER: QUEST PROGRESS TRACKER ===
+def update_quest_progress(player: dict, goal_type: str, amount: int = 1) -> str:
+    """
+    Mengupdate progress quest harian pemain.
+    Returns: Pesan notifikasi jika ada quest yang selesai.
+    """
+    player_quests = player.get('daily_quests', [])
+    notif_msg = ""
+    
+    for q in player_quests:
+        if q['status'] == "active" and q['goal_type'] == goal_type:
+            q['current'] += amount
+            # Cek apakah target tercapai
+            if q['current'] >= q['goal_value']:
+                q['current'] = q['goal_value']
+                q['status'] = "completed"
+                # Berikan Hadiah Langsung ke Player Object
+                player['gold'] += q.get('reward_gold', 0)
+                player['exp'] += q.get('reward_exp', 0)
+                notif_msg += f"\n🎯 **QUEST SELESAI:** {q['icon']} {q['name']} (+{q['reward_gold']}G)"
+                
+    return notif_msg
+
+
 @dp.message(F.text == "/help")
 async def help_handler(message: Message):
     help_text = (
