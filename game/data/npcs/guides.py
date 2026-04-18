@@ -50,6 +50,28 @@ GUIDE_NPCS = {
     }
 }
 
+# --- LOGIKA INTERAKSI GUIDE ---
+
+def process_guide_interaction(player, npc_id):
+    """
+    Memproses konsekuensi dari mengikuti petunjuk arah NPC.
+    Mengembalikan: (result_type, message)
+    """
+    npc = GUIDE_NPCS.get(npc_id)
+    if not npc:
+        return "error", "❌ NPC Guide tidak ditemukan."
+
+    if npc['is_evil']:
+        # Jika guide jahat, arahkan ke event buruk (Trap/Ambush)
+        direction = npc['fake_direction']
+        message = f"⚠️ Kamu mengikuti arah {direction}... {npc['clue']} Ternyata itu jebakan!"
+        return "trap", message
+    else:
+        # Jika guide jujur, perjalanan terasa lebih aman
+        direction = npc['correct_direction']
+        message = f"✅ Kamu mengikuti arah {direction}. {npc['clue']} Perjalanan terasa lebih tenang."
+        return "safe", message
+
 def get_guide_data(npc_id):
     """Mengambil data NPC penunjuk jalan berdasarkan ID."""
     return GUIDE_NPCS.get(npc_id)
