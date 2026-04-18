@@ -78,14 +78,22 @@ def get_shop_keyboard(location="The Whispering Hall"):
         catalog_entry = SHOP_CATALOG.get(code)
         if not catalog_entry: continue
             
-        # Jika itu equipment (seperti iron_sword), ambil data tambahan dari MASTER_ITEM_DB
+        # Ambil ID asli yang merujuk ke database item (jika ada)
         item_id = catalog_entry.get("item_id", code)
         item_data = get_item(item_id)
         
+        # Format tombol berdasarkan tipe item
         if item_data:
-            icon = "⚔️" if item_data.get('type') == 'weapon' else "🛡️" if item_data.get('type') == 'armor' else "📦"
-            button_text = f"{icon} {item_data['name']} - 💰 {catalog_entry['cost']}"
+            if item_data.get('type') == 'weapon':
+                icon = "⚔️"
+            elif item_data.get('type') in ['armor', 'head', 'shield', 'offhand', 'boots', 'gloves', 'mask']:
+                icon = "🛡️"
+            else:
+                icon = "📦"
+            
+            button_text = f"{icon} {item_data.get('name', 'Unknown Item')} - 💰 {catalog_entry['cost']}"
         else:
+            # Fallback untuk item yang tidak ada di MASTER_ITEM_DB (misal: keys/story items)
             button_text = f"📦 {catalog_entry.get('name', code)} - 💰 {catalog_entry['cost']}"
             
         keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"buy_{code}")])
@@ -120,6 +128,6 @@ def process_purchase(user_id, callback_data):
     
     # 4. Ambil nama untuk notifikasi
     item_data = get_item(item_id)
-    item_name = item_data['name'] if item_data else item_id.replace("_", " ").title()
+    item_name = item_data['name'] if item_data else catalog_item.get('name', item_id.replace("_", " ").title())
     
     return True, f"✅ Berhasil membeli *{item_name}*!\nBarang sudah masuk ke 🎒 Tasmu."
