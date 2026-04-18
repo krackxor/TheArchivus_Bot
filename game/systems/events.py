@@ -70,35 +70,19 @@ RANDOM_EVENTS = {
 }
 
 # === LOOT TABLES ===
-LOOT_TABLE_COMMON = [
-    {"id": "food_ration", "name": "🍞 Roti Kering", "type": "food", "effect": "energy_30", "rarity": "common"},
-    {"id": "potion_heal", "name": "🧪 Minor HP Potion", "type": "potion", "effect": "heal_30", "rarity": "common"},
-    {"type": "gold", "value": 25}
-]
-
-LOOT_TABLE_UNCOMMON = [
-    {"id": "potion_heal_major", "name": "🧪 Major HP Potion", "type": "potion", "effect": "heal_80", "rarity": "uncommon"},
-    {"id": "potion_mana", "name": "🔮 Tetesan Memori", "type": "potion", "effect": "mp_40", "rarity": "uncommon"},
-    {"id": "buy_key_iron", "name": "🔑 Iron Key", "type": "utility", "rarity": "uncommon"},
-    {"id": "cure_poison", "name": "🌿 Antidote", "type": "potion", "effect": "cure_poison", "rarity": "uncommon"}
-]
-
-LOOT_TABLE_RARE = [
-    {"id": "repair_all_kit", "name": "⚒️ Repair Kit", "type": "utility", "rarity": "rare"},
-    {"id": "mana_crystal", "name": "🔮 Mana Crystal", "type": "utility", "rarity": "rare"},
-    {"type": "gold", "value": 150}
-]
-
+# Format disesuaikan: Hanya string ID item agar tidak crash saat masuk ke inventory pemain
+LOOT_TABLE_COMMON = ["food_ration", "potion_heal"]
+LOOT_TABLE_UNCOMMON = ["potion_heal_major", "potion_mana", "buy_key_iron", "cure_poison"]
+LOOT_TABLE_RARE = ["repair_all_kit", "buy_key_magic"]
 LOOT_TABLE_EPIC = ["phoenix_tear", "weaver_diary", "lucky_charm"]
 LOOT_TABLE_LEGENDARY = ["keeper_heart", "void_orb"]
 
 def roll_loot_drop(tier_level=1, is_boss=False):
-    """Fungsi untuk memanggil hasil jarahan (Loot)."""
+    """Fungsi untuk memanggil hasil jarahan (Loot) Item."""
     drops = []
     
     if is_boss:
         drops.append(random.choice(LOOT_TABLE_RARE))
-        drops.append({"type": "gold", "value": random.randint(300, 500)})
         if random.random() < 0.50: drops.append(random.choice(LOOT_TABLE_EPIC))
         if random.random() < 0.10: drops.append(random.choice(LOOT_TABLE_LEGENDARY))
     else:
@@ -150,7 +134,7 @@ def process_event_outcome(event, choice_index=0):
         for outcome in event['outcomes']:
             cumulative += outcome['prob']
             if roll <= cumulative:
-                return {**outcome, 'duration': event['duration']}
+                return {**outcome, 'duration': event.get('duration', 3)}
                 
     return None
 
@@ -163,7 +147,7 @@ EASTER_EGGS = {
     },
     "step_666": {
         "trigger": "step_counter_666",
-        "reward": {"item": "mana_crystal"},
+        "reward": {"item": "buy_key_magic"},
         "message": "😈 **Langkah ke-666...**\nBayanganmu tersenyum. Sebuah *Mana Crystal* muncul di kakimu."
     }
 }
