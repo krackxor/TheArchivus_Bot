@@ -28,6 +28,7 @@ from game.logic.skills import (
 from game.logic.stats import calculate_total_stats
 from game.logic.inventory_manager import equip_item, unequip_item, process_repair_all, use_consumable_item
 from game.logic.menu_handler import get_inventory_menu, get_profile_menu, get_consumable_menu, get_profile_main_menu, generate_profile_text
+from game.logic.event_handler import get_event_interaction_kb, handle_event_interaction
 
 # === OLD ARCHITECTURE IMPORTS ===
 from game.systems.exploration import process_move  
