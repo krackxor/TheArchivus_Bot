@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 # === ROOT IMPORTS ===
 from database import client, get_player, update_player, auto_seed_content, reset_player_death, add_history, tick_buffs
@@ -43,7 +43,7 @@ from utils.helper_ui import (
     create_achievement_notification, create_loot_drop, create_level_up_animation,
     create_combo_indicator, create_boss_warning,
     create_death_screen, create_location_transition, create_inventory_display,
-    create_daily_quest_card # Tambahkan ini jika belum ada
+    create_daily_quest_card
 )
 
 dp = Dispatcher()
@@ -248,7 +248,7 @@ async def move_handler(message: Message, state: FSMContext):
         is_miniboss = (event_type == "miniboss")
         tier_level = 5 if is_boss else min(5, max(1, (p['kills'] // 5) + 1))
         
-        # Init combat data (Hanya data statistik, tanpa perlu teka-teki)
+        # Init combat data
         puzzle = generate_battle_puzzle(p, tier_level, is_boss=is_boss, is_miniboss=is_miniboss)
         puzzle['question'] = "Pilih aksimu dari menu di bawah!"
         puzzle['timer'] = "--" 
@@ -262,14 +262,11 @@ async def move_handler(message: Message, state: FSMContext):
             puzzle=puzzle, 
             current_combo=0
         )
-    # EVENT NPC / CHEST YANG MEMBUTUHKAN PUZZLE BISA DIHANDLE DI SINI NANTINYA
-    # elif event_type == "chest":
-    #    await state.set_state(GameState.in_event)
     else:
         await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
 
-# === PUSAT LOGIKA COMBAT TURN-BASED (100% PURE BUTTON CLICK) ===
+# === PUSAT LOGIKA COMBAT TURN-BASED ===
 @dp.callback_query(F.data.startswith("stance_"))
 async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     if await state.get_state() != GameState.in_combat:
@@ -287,7 +284,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
 
     # Ambil Data Combat
     state_data = await state.get_data()
-    puzzle = state_data.get("puzzle") # Saat ini berperan murni sebagai 'Enemy Data'
+    puzzle = state_data.get("puzzle")
     battle_msg_id = state_data.get("battle_msg_id")
     
     if not puzzle:
@@ -298,7 +295,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     result_msg = ""
     current_combo = state_data.get("current_combo", 0) + 1
 
-    # --- 2. EKSEKUSI AKSI PEMAIN (TANPA TEKA-TEKI) ---
+    # --- 2. EKSEKUSI AKSI PEMAIN ---
     if action == "attack": # (1:1 Turn)
         p_dmg, p_log = calculate_damage(p, puzzle, is_attacker_player=True)
         puzzle['monster_hp'] -= p_dmg
@@ -312,7 +309,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
             f"👾 **BALASAN:** {m_log} Kamu -{m_dmg} HP."
         )
         
-    elif action == "skill": # (1:2 Turn - Recovery Penalty)
+    elif action == "skill": # (1:2 Turn)
         temp_p = p.copy()
         temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
         p_dmg, p_log = calculate_damage(temp_p, puzzle, is_attacker_player=True)
@@ -344,7 +341,7 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
             f"👾 **TERTANGKIS:** Serangan {m_name} mereda (-{reduced_dmg} HP).{dur_msg}"
         )
 
-    elif action == "dodge": # (Skip Monster Turn jika berhasil)
+    elif action == "dodge":
         base_dodge_chance = 0.50
         player_dodge_stat = p['stats'].get('dodge', 0.1) 
         weight_penalty = p['stats'].get('total_weight', 0) * 0.01
@@ -430,11 +427,24 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         })
         
         await state.set_state(GameState.exploring)
-        if battle_msg_id:
-            try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"🎉 **PERTARUNGAN SELESAI** 🎉\n{m_name} telah hancur lebur.", parse_mode="Markdown")
-            except: pass
-            
-        await message.answer(f"🎉 *KEMENANGAN!*\n{full_log}\n\n✨ EXP: +{total_exp}\n💰 Gold: +{total_gold}\n🎁 Drops: {', '.join(drops) if drops else 'Tidak ada'}{level_up_msg}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        
+        # SANITASI TEXT UNTUK MENCEGAH TELEGRAM BAD REQUEST (MARKDOWN ERROR)
+        safe_log = full_log.replace("_", "-").replace("*", "")
+        safe_drops = ", ".join(drops).replace("_", " ") if drops else "Tidak ada"
+        safe_lvl_msg = level_up_msg.replace("_", "-")
+        
+        victory_text = (
+            f"🎉 *KEMENANGAN!*\n"
+            f"{safe_log}\n\n"
+            f"✨ EXP: +{total_exp}\n"
+            f"💰 Gold: +{total_gold}\n"
+            f"🎁 Drops: {safe_drops}"
+            f"{safe_lvl_msg}"
+        )
+        
+        # Kirim pesan baru untuk kemenangan (Mencegah Edit Message Flood Limit)
+        await message.answer(victory_text, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        return
     
     # KEMATIAN PEMAIN
     elif p['hp'] <= 0:
@@ -444,6 +454,7 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
             try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=f"💀 **KAU TELAH GUGUR...**", parse_mode="Markdown")
             except: pass
         await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        return
         
     # MUSUH MASIH HIDUP, LANJUT RONDE
     else:
@@ -451,22 +462,40 @@ async def execute_end_of_turn(message: Message, state: FSMContext, user_id: int,
         puzzle['timer'] = "--" 
         await state.update_data(puzzle=puzzle, current_combo=current_combo, action_type=None)
         
-        next_msg = render_live_battle(p, puzzle, f"✅ {full_log}")
+        # Sanitasi log per ronde
+        safe_log = full_log.replace("_", "-").replace("*", "")
+        next_msg = render_live_battle(p, puzzle, f"✅ {safe_log}")
         
         if battle_msg_id:
-            try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text=next_msg, parse_mode="Markdown", reply_markup=get_stance_keyboard(puzzle.get('is_boss', False)))
-            except TelegramBadRequest: pass
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id, 
+                    message_id=battle_msg_id, 
+                    text=next_msg, 
+                    parse_mode="Markdown", 
+                    reply_markup=get_stance_keyboard(puzzle.get('is_boss', False))
+                )
+            except TelegramRetryAfter as e:
+                # Flood control handling: Jangan edit, biarkan saja untuk ronde ini
+                print(f"Rate limited by Telegram. Sleep for {e.retry_after} seconds.")
+            except TelegramBadRequest as e:
+                # Fallback jika markdown tetap gagal di-parse
+                if "can't parse entities" in str(e):
+                    try:
+                        await message.bot.edit_message_text(
+                            chat_id=message.chat.id, 
+                            message_id=battle_msg_id, 
+                            text=next_msg, 
+                            parse_mode=None, # Nonaktifkan markdown
+                            reply_markup=get_stance_keyboard(puzzle.get('is_boss', False))
+                        )
+                    except: pass
 
 
 # === EVENT PUZZLE (NON-COMBAT / EKSPLORASI) ===
 @dp.message(GameState.in_event)
 async def event_puzzle_handler(message: Message, state: FSMContext):
-    """
-    Handler ini HANYA digunakan ketika pemain menemukan puzzle saat eksplorasi 
-    (misal: membuka peti harta karun atau NPC event).
-    Saat ini sebagai placeholder untuk fitur event masa depan.
-    """
-    # ... Logika teka-teki untuk membuka chest / trap akan diimplementasikan di sini
+    """Placeholder untuk event puzzle di eksplorasi."""
     pass
 
 
