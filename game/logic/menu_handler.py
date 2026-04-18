@@ -1,12 +1,15 @@
 # game/logic/menu_handler.py
 
-from aiogram.types import InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from game.items import get_item
 from game.systems.progression import calculate_max_exp
 
 def create_progress_bar(current, maximum, length=10):
     """Membuat visual progress bar sederhana."""
+    if maximum <= 0: return "⚪" * length
     filled_length = int(length * current / maximum)
+    # Pastikan tidak melebihi panjang maksimal
+    filled_length = min(length, max(0, filled_length))
     bar = "🔵" * filled_length + "⚪" * (length - filled_length)
     return bar
 
@@ -136,7 +139,7 @@ def get_profile_menu(player):
             item = get_item(item_id)
             if item:
                 d = durability.get(slot, 50)
-                # Visual Indicator untuk HP User
+                # Visual Indicator untuk Durabilitas
                 emoji = "🟢" if d > 20 else "🟡" if d > 5 else "🔴"
                 buttons.append([
                     InlineKeyboardButton(text=f"{emoji} {slot.upper()}: {item['name']} ({d}/50)", callback_data=f"unequip_{slot}")
@@ -144,3 +147,14 @@ def get_profile_menu(player):
 
     buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
     return buttons
+
+# === TAMBAHAN BARU ===
+def get_main_reply_keyboard(player=None):
+    """Menghasilkan tombol navigasi bawah layar (Arah, Meditasi, Profil)."""
+    keyboard = [
+        [KeyboardButton(text="⬆️ Utara")],
+        [KeyboardButton(text="⬅️ Barat"), KeyboardButton(text="Timur ➡️")],
+        [KeyboardButton(text="⬇️ Selatan")],
+        [KeyboardButton(text="🧘 Meditasi"), KeyboardButton(text="📊 Profil & Tas")]
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
