@@ -28,7 +28,9 @@ def calculate_total_stats(player):
     # -----------------------------------------------------------------
 
     equipped = player.get('equipped', {})
-    weapon = get_item(equipped.get('weapon'))
+    weapon_id = equipped.get('weapon')
+    offhand_id = equipped.get('artifact') # Dulu namanya artifact, sekarang dipakai sbg offhand di beberapa kasus
+    weapon = get_item(weapon_id)
     
     # Ambil data durabilitas dinamis pemain dari database
     durability_data = player.get('equipment_durability', {})
@@ -42,7 +44,7 @@ def calculate_total_stats(player):
         if not item:
             continue
 
-        # LOGIKA KHUSUS ARTIFACT: Diabaikan statnya jika senjata 2H
+        # LOGIKA KHUSUS ARTIFACT/OFFHAND: Diabaikan statnya jika senjata 2H
         if slot == 'artifact' and is_two_handed:
             continue 
 
@@ -122,5 +124,28 @@ def calculate_total_stats(player):
     else:
         stats['element'] = 'none'
         stats['attack_type'] = 'physical'
+
+    # === 7. DETEKSI TIPE SENJATA (UNTUK SISTEM SKILL) ===
+    # Ubah ID ke string huruf kecil dan amankan jika None
+    wep_id_str = str(weapon_id).lower() if weapon_id else ""
+    off_id_str = str(offhand_id).lower() if offhand_id else ""
+    
+    # Deteksi Senjata Utama (Weapon)
+    stats['weapon_type'] = "unarmed"
+    if any(k in wep_id_str for k in ["dagger", "knife", "shiv"]): 
+        stats['weapon_type'] = "dagger"
+    elif any(k in wep_id_str for k in ["bow", "crossbow"]): 
+        stats['weapon_type'] = "bow"
+    elif any(k in wep_id_str for k in ["dual", "twin"]): 
+        stats['weapon_type'] = "dual_swords"
+    elif any(k in wep_id_str for k in ["staff", "wand", "scepter"]): 
+        stats['weapon_type'] = "staff"
+    elif any(k in wep_id_str for k in ["sword", "blade", "katana", "claymore"]): 
+        stats['weapon_type'] = "sword"
+    
+    # Deteksi Senjata Kiri/Tameng (Offhand/Artifact)
+    stats['offhand_type'] = "none"
+    if any(k in off_id_str for k in ["shield", "buckler", "aegis"]): 
+        stats['offhand_type'] = "shield"
 
     return stats
