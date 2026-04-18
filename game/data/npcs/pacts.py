@@ -74,12 +74,12 @@ def apply_pact_consequences(player, option_index, entity_id):
     updates = {}
     
     # Proses Pengorbanan (Sacrifice)
+    # Langsung mengurangi nilai stat dasar pemain
     for stat, val in sacrifice.items():
         updates[stat] = player.get(stat, 0) + val
         
     # Proses Hadiah (Reward)
-    # Catatan: Jika reward berupa stats dasar (p_atk/p_def), 
-    # sebaiknya dimasukkan ke field 'permanent_bonus' agar tidak tertimpa saat ganti gear.
+    # Bonus dimasukkan ke permanent_bonus agar tidak hilang saat ganti gear
     p_bonus = player.get('permanent_bonus', {})
     for stat, val in reward.items():
         p_bonus[stat] = p_bonus.get(stat, 0) + val
