@@ -57,6 +57,46 @@ HAZARDS = {
     }
 }
 
+# --- LOGIKA INTERAKSI HAZARD ---
+
+def process_hazard_interaction(player, hazard_type):
+    """
+    Memproses dampak bahaya lingkungan terhadap pemain.
+    Mengembalikan: (is_safe, message)
+    """
+    hazard = HAZARDS.get(hazard_type)
+    if not hazard:
+        return True, "Area ini aman."
+
+    required_item = hazard['required_item']
+    
+    # Cek apakah pemain memiliki item pelindung di inventory
+    if required_item in player.get('inventory', []):
+        return True, hazard['safe_msg']
+    
+    # Jika tidak memiliki item, terapkan penalti
+    penalty = hazard['penalty']
+    
+    # Terapkan pengurangan HP
+    if 'hp_loss' in penalty:
+        player['hp'] = max(0, player.get('hp', 0) - penalty['hp_loss'])
+        
+    # Terapkan pengurangan Energy
+    if 'energy_loss' in penalty:
+        player['energy'] = max(0, player.get('energy', 100) - penalty['energy_loss'])
+        
+    # Terapkan pengurangan MP
+    if 'mp_loss' in penalty:
+        player['mp'] = max(0, player.get('mp', 0) - penalty['mp_loss'])
+        
+    # Terapkan efek status
+    if 'status_effect' in penalty:
+        if 'status_effects' not in player:
+            player['status_effects'] = []
+        player['status_effects'].append(penalty['status_effect'])
+        
+    return False, hazard['danger_msg']
+
 def get_hazard_data(hazard_type):
     """Mengambil data bahaya berdasarkan tipe (RACUN, DINGIN, dll)."""
     return HAZARDS.get(hazard_type)
