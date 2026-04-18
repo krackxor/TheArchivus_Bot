@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from game.logic.states import GameState
 from database import update_player, add_history
 from game.puzzles.manager import generate_puzzle
+from game.logic.menu_handler import get_main_reply_keyboard
 
 # Import Data Master (Gunakan try-except agar tidak crash jika file belum ada)
 try:
@@ -31,7 +32,8 @@ def get_event_interaction_kb(event_type, event_data):
         elif cat == "gamble":
             kb.append([InlineKeyboardButton(text="🎲 Adu Nasib (Judi)", callback_data="evt_npc_gamble")])
         elif cat == "story":
-            kb.append([InlineKeyboardButton(text="👂 Dengarkan Lore", callback_data="evt_npc_story")])
+            # Ini yang dipicu oleh "Seorang pencerita tua memanggilmu"
+            kb.append([InlineKeyboardButton(text="👂 Dengarkan Cerita", callback_data="evt_npc_story")])
         
         kb.append([InlineKeyboardButton(text="🚶 Abaikan", callback_data="evt_ignore")])
 
@@ -40,7 +42,6 @@ def get_event_interaction_kb(event_type, event_data):
         kb.append([InlineKeyboardButton(text="➡️ Lanjut Jalan", callback_data="evt_ignore")])
 
     elif event_type == "hazard":
-        # Jika terluka, beri tombol cepat ke tas
         if not event_data.get("safe"):
             kb.append([InlineKeyboardButton(text="🎒 Gunakan Item Pemulih", callback_data="menu_consumables")])
         kb.append([InlineKeyboardButton(text="➡️ Bertahan & Lanjut", callback_data="evt_ignore")])
@@ -54,8 +55,28 @@ async def handle_event_interaction(callback, state, player):
     data = callback.data
     user_id = player['user_id']
 
-    # 1. INTERAKSI QUIZ
-    if data == "evt_npc_quiz":
+    # 1. INTERAKSI STORY (PENCERITA TUA / LORE)
+    if data == "evt_npc_story":
+        # Gunakan Tier berdasarkan level pemain (misal: lvl 1-10 = Tier 1, dst)
+        tier = max(1, min(5, player.get('level', 1) // 10 + 1))
+        puzzle = generate_puzzle(tier=tier)
+        
+        await state.set_state(GameState.in_event)
+        await state.update_data(event_data=puzzle)
+        
+        text = (
+            "👴 **SANG PENCERITA TUA**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Ia menarik nafas dalam dan mulai berbisik tentang rahasia dunia...\n\n"
+            f"{puzzle['question']}\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "💬 *Ketik jawabanmu langsung di chat untuk menjawab...*"
+        )
+        await callback.message.edit_text(text, parse_mode="Markdown")
+        await callback.answer("Mendengarkan lore...")
+
+    # 2. INTERAKSI QUIZ UMUM (TANTANGAN KECERDASAN)
+    elif data == "evt_npc_quiz":
         puzzle = generate_puzzle(tier=random.randint(1, 3))
         await state.set_state(GameState.in_event)
         await state.update_data(event_data=puzzle)
@@ -63,15 +84,17 @@ async def handle_event_interaction(callback, state, player):
         text = (
             "📜 **TEKA-TEKI PENJAGA**\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"*{puzzle['question']}*\n"
+            f"{puzzle['question']}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "💬 *Ketik jawabanmu...*"
         )
         await callback.message.edit_text(text, parse_mode="Markdown")
 
-    # 2. INTERAKSI FUNCTIONAL (Heal/Trade)
+    # 3. INTERAKSI FUNCTIONAL (Heal/Trade)
     elif data == "evt_npc_func":
-        # Ambil satu NPC fungsional acak
+        if not FUNCTIONAL_NPCS:
+            return await callback.answer("NPC sedang tidak tersedia.", show_alert=True)
+            
         npc_id = random.choice(list(FUNCTIONAL_NPCS.keys()))
         npc = FUNCTIONAL_NPCS[npc_id]
         
@@ -83,7 +106,7 @@ async def handle_event_interaction(callback, state, player):
             else:
                 await callback.answer("❌ Gold tidak cukup!", show_alert=True)
 
-    # 3. INTERAKSI GAMBLE (Simple Coinflip)
+    # 4. INTERAKSI GAMBLE
     elif data == "evt_npc_gamble":
         bet = 50
         if player['gold'] >= bet:
@@ -96,22 +119,23 @@ async def handle_event_interaction(callback, state, player):
         else:
             await callback.answer("❌ Butuh minimal 50 Gold!", show_alert=True)
 
-    # 4. INTERAKSI LANDMARK (Looting)
+    # 5. INTERAKSI LANDMARK (Looting)
     elif data == "evt_landmark_search":
         found_gold = random.randint(20, 150)
         luck = player.get('stats', {}).get('luck', 0)
-        
-        # Bonus keberuntungan
         total_gold = found_gold + (luck * 2)
-        update_player(user_id, {"gold": player.get('gold', 0) + total_gold})
         
+        update_player(user_id, {"gold": player.get('gold', 0) + total_gold})
         await callback.message.edit_text(
             f"🔍 **PENCARIAN**\n\nKau menemukan pundi emas tersembunyi!\n💰 **+{total_gold} Gold**"
         )
 
-    # 5. IGNORE / CLOSE
+    # 6. IGNORE / CLOSE
     elif data == "evt_ignore":
+        await state.set_state(GameState.exploring)
         try:
+            # Kirim pesan baru agar tombol navigasi muncul kembali
             await callback.message.delete()
+            await callback.message.answer("🏃 Kau melanjutkan perjalanan...", reply_markup=get_main_reply_keyboard(player))
         except:
             await callback.message.edit_text("🏃 Kau memilih untuk tidak peduli dan lanjut melangkah.")
