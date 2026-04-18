@@ -6,6 +6,8 @@ Berisi bahaya lingkungan maut yang membutuhkan Stat Check untuk dilewati.
 Mekanik: Sukses (Selamat) vs Gagal (Damage Besar / Mati).
 """
 
+import random
+
 DEADLY_EVENTS = {
     "deadly_abyssal_chasm": {
         "name": "Jurang Kehampaan",
@@ -52,6 +54,55 @@ DEADLY_EVENTS = {
     }
 }
 
+# --- LOGIKA INTERAKSI DEADLY EVENT ---
+
+def process_deadly_interaction(player, event_id):
+    """
+    Memproses seluruh kejadian bahaya maut (Stat Check + Penalti).
+    Mengembalikan: (is_success, message)
+    """
+    event = get_deadly_data(event_id)
+    if not event:
+        return False, "❌ Kejadian tidak ditemukan."
+    
+    # Ambil stat pemain yang dibutuhkan untuk pengecekan
+    check_stat = event['check_stat']
+    player_stat_val = player.get('stats', {}).get(check_stat, 0)
+    
+    # Lakukan pengecekan keberhasilan
+    success = calculate_check_result(player_stat_val, event['difficulty'])
+    
+    if success:
+        return True, event['success_msg']
+    else:
+        penalty = event['fail_penalty']
+        
+        # Terapkan penalti HP (Bisa berdasarkan persentase atau nilai tetap)
+        if 'hp_percent' in penalty:
+            loss = int(player.get('hp', 0) * penalty['hp_percent'])
+            player['hp'] -= loss
+        elif 'hp_loss' in penalty:
+            player['hp'] -= penalty['hp_loss']
+            
+        # Terapkan penalti Energy
+        if 'energy_loss' in penalty:
+            player['energy'] = max(0, player.get('energy', 100) - penalty['energy_loss'])
+            
+        # Terapkan efek status jika gagal
+        if 'status' in penalty:
+            if 'status_effects' not in player:
+                player['status_effects'] = []
+            player['status_effects'].append(penalty['status'])
+            
+        # Pastikan HP tidak negatif kecuali jika bisa membunuh
+        player['hp'] = max(0, player['hp'])
+        
+        # Cek kondisi kematian pemain
+        if player['hp'] <= 0 and penalty.get('can_kill'):
+            return False, f"{event['fail_msg']} (💀 Kamu tewas dalam kejadian ini!)"
+            
+        return False, f"{event['fail_msg']} (HP -{penalty.get('hp_loss', '??')})"
+
 def get_deadly_data(event_id):
     """Mengambil data bahaya maut berdasarkan ID."""
     return DEADLY_EVENTS.get(event_id)
@@ -62,10 +113,8 @@ def get_all_deadly():
 
 def calculate_check_result(player_stat, difficulty):
     """
-    Logika Stat Check:
-    Roll acak (0-1) + bonus dari stat pemain vs difficulty.
+    Logika Stat Check: Roll acak (0-1) + bonus stat vs difficulty.
     """
-    import random
-    # Misal stat 0.1 memberikan bonus 10% pada roll
+    # Stat pemain memberikan bonus 50% dari nilainya ke roll acak
     roll = random.random() + (player_stat * 0.5)
     return roll >= difficulty
