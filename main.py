@@ -27,7 +27,7 @@ from game.logic.menu_handler import get_inventory_menu, get_profile_menu, get_co
 # === PUZZLE MANAGER ===
 from game.puzzles.manager import get_random_puzzle
 
-# === OLD ARCHITECTURE IMPORTS (YANG MASIH DIPAKAI) ===
+# === OLD ARCHITECTURE IMPORTS ===
 from game.systems.exploration import process_move  
 from game.systems.shop import get_shop_keyboard, process_purchase, get_rest_area_keyboard
 from game.systems.events import roll_loot_drop, process_event_outcome, check_easter_egg
@@ -46,19 +46,25 @@ from utils.helper_ui import (
 )
 
 dp = Dispatcher()
-ADMIN_ID = 123456789  # GANTI DENGAN ID TELEGRAM-MU
+ADMIN_ID = 123456789 
 
 # === DICTIONARY TRACKING TASK TIMEOUT ===
 active_timers = {}
 
 def cancel_active_timer(user_id):
-    """Membatalkan timer asinkron jika ada, untuk mencegah memory leak & double attack."""
+    """Membatalkan timer asinkron jika ada."""
     task = active_timers.pop(user_id, None)
     if task and not task.done():
         task.cancel()
 
-# === HELPER DURABILITY (ADAPTED FOR 8-SLOT SYSTEM) ===
-def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1):
+# === HELPER DURABILITY ===
+def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1, chance=0.3):
+    """
+    Sistem Durabilitas Baru: Ada peluang 30% durability berkurang saat beraksi.
+    """
+    if random.random() > chance:
+        return []
+
     p = get_player(user_id)
     equipped = p.get('equipped', {})
     inventory = p.get('inventory', [])
@@ -66,13 +72,11 @@ def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1):
     broken_items = []
     updates_needed = False
 
-    if isinstance(target_slots, str):
-        target_slots = [target_slots]
+    if isinstance(target_slots, str): target_slots = [target_slots]
 
     for slot in target_slots:
         item_id = equipped.get(slot)
         if not item_id: continue 
-
         if slot not in durability_data: durability_data[slot] = 50 
             
         durability_data[slot] -= damage
@@ -93,7 +97,7 @@ def reduce_equipment_durability(user_id, target_slots=['weapon'], damage=1):
 
     return broken_items
 
-# === ENHANCED KEYBOARDS ===
+# === KEYBOARDS ===
 def get_main_reply_keyboard(player=None):
     keyboard = [
         [KeyboardButton(text="⬆️ Utara")],
@@ -122,12 +126,6 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
     try:
         timer = puzzle['timer']
         if str(timer) == "--": return 
-
-        for warning in [30, 15, 5]:
-            if timer > warning:
-                await asyncio.sleep(timer - warning)
-                timer = warning
-                
         await asyncio.sleep(timer)
         
         current_state = await state.get_state()
@@ -138,11 +136,11 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
         if current_state == GameState.in_combat and active_puzzle.get("generated_time") == puzzle["generated_time"]:
             p = get_player(user_id)
             p['stats'] = calculate_total_stats(p)
+            m_name = puzzle.get('monster_name', 'Musuh')
             
             raw_dmg, atk_log = calculate_damage(puzzle, p, is_attacker_player=False)
-            
-            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
-            dur_msg = f" ⚠️ *Pelindung hancur!*" if broken_armors else ""
+            broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2, chance=1.0)
+            dur_msg = f"\n⚠️ *Pelindung hancur:* {', '.join(broken_armors)}" if broken_armors else ""
                 
             new_hp = p['hp'] - raw_dmg
             update_player(user_id, {"hp": new_hp, "current_combo": 0})
@@ -150,12 +148,10 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
             
             if new_hp <= 0:
                 await state.set_state(GameState.exploring)
-                stats = {'cycle': p.get('cycle', 1), 'kills': p['kills'], 'gold_lost': p['gold']}
-                death_msg = create_death_screen("Waktu habis di pertarungan", stats)
                 msg_text = reset_player_death(user_id, "death_combat")
                 try: await message.bot.edit_message_text(chat_id=message.chat.id, message_id=battle_msg_id, text="💀 **KAU TELAH GUGUR...**", parse_mode="Markdown")
                 except: pass
-                await message.answer(death_msg + "\n\n" + msg_text, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+                await message.answer(f"💀 Dikalahkan oleh {m_name}\n\n{msg_text}", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
             else:
                 new_q = get_random_puzzle(puzzle.get('tier', 1))
                 puzzle['question'] = new_q['question']
@@ -167,10 +163,9 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
                 safe_puzzle['question'] = "Pilih aksi untuk mengungkap segel teka-teki!"
                 safe_puzzle['timer'] = "--"
                 
-                # NARASI TIMEOUT YANG LEBIH IMMERSIVE
                 log_msg = (
-                    f"⏳ **WAKTU HABIS:** Segel teka-teki tertutup kembali!\n"
-                    f"👾 **SERANGAN FATAL:** {puzzle['monster_name']} menerjangmu saat kamu bingung! (-{raw_dmg} HP){dur_msg}"
+                    f"⏳ **WAKTU HABIS!** Segel tertutup!\n"
+                    f"👾 **SERANGAN {m_name.upper()}:** {atk_log} (-{raw_dmg} HP){dur_msg}"
                 )
                 next_msg = render_live_battle(p, safe_puzzle, log_msg)
                 
@@ -179,11 +174,11 @@ async def combat_timeout_task(message: Message, state: FSMContext, puzzle: dict,
                 
                 active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
 
-    except asyncio.CancelledError:
-        return
+    except asyncio.CancelledError: return
     finally:
         if user_id in active_timers and active_timers[user_id] == asyncio.current_task():
             active_timers.pop(user_id, None)
+
 
 # === COMMAND HANDLERS ===
 @dp.message(CommandStart())
@@ -196,7 +191,7 @@ async def start_handler(message: Message, state: FSMContext):
     await state.set_state(GameState.exploring)
     welcome_msg = (
         f"━━━━━━━━━━━━━━━━━━━━\n📜 *THE ARCHIVUS* 📜\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"Selamat datang, {username}\n \nKau telah memasuki dimensi\ntanpa ujung ini sebagai\n"
+        f"Selamat datang, {username}\n\nKau telah memasuki dimensi\ntanpa ujung ini sebagai\n"
         f"*{player.get('current_job', 'Novice Weaver')}*.\n━━━━━━━━━━━━━━━━━━━━\n"
         f"Cycle: {player.get('cycle', 1)} | Level: {player.get('level', 1)}\n"
         f"{create_hp_bar(player.get('hp',100), player.get('max_hp',100))}\n"
@@ -205,7 +200,6 @@ async def start_handler(message: Message, state: FSMContext):
     )
     await message.answer(welcome_msg, reply_markup=get_main_reply_keyboard(player), parse_mode="Markdown")
 
-# INTEGRASI MENU HANDLER
 @dp.message(GameState.exploring, F.text == "📊 Profil & Tas")
 async def profile_bag_handler(message: Message):
     p = get_player(message.from_user.id)
@@ -214,20 +208,18 @@ async def profile_bag_handler(message: Message):
     kb = get_profile_main_menu(p)
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
 
-# === PANDAI BESI (BLACKSMITH) CALLBACK ===
+
+# === BLACKSMITH CALLBACK ===
 @dp.callback_query(F.data == "menu_repair")
 async def blacksmith_callback_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     p = get_player(user_id)
     new_durability, cost, count = process_repair_all(p)
     
-    if count == 0:
-        return await callback.answer("Aethelred: 'Gear-mu masih tajam. Pergi sana!'", show_alert=True)
-    if p.get('gold', 0) < cost:
-        return await callback.answer(f"Aethelred: 'Emasmu kurang! Butuh {cost}G.'", show_alert=True)
+    if count == 0: return await callback.answer("Aethelred: 'Gear-mu masih tajam. Pergi sana!'", show_alert=True)
+    if p.get('gold', 0) < cost: return await callback.answer(f"Aethelred: 'Emasmu kurang! Butuh {cost}G.'", show_alert=True)
         
     update_player(user_id, {"gold": p['gold'] - cost, "equipment_durability": new_durability})
-    
     repair_msg = (
         f"⚒️ **BENGKEL AETHELRED** ⚒️\n━━━━━━━━━━━━━━━━━━━━\n"
         f"💬 *'Nah, sekarang benda ini bisa membelah kulit iblis lagi.'*\n\n"
@@ -237,7 +229,7 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
     await callback.answer("Berhasil diperbaiki!")
 
 
-# === ROUTER TOMBOL INVENTORY (DARI MENU HANDLER) ===
+# === INVENTORY CALLBACKS ===
 @dp.callback_query(F.data.startswith("menu_") | F.data.startswith("equip_") | F.data.startswith("unequip_") | F.data.startswith("useitem_"))
 async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -246,43 +238,31 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
     p['stats'] = calculate_total_stats(p)
 
     if data == "menu_inventory":
-        kb = get_inventory_menu(p)
-        await callback.message.edit_text("🎒 **Isi Tas (Equipment):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-    
+        await callback.message.edit_text("🎒 **Isi Tas (Equipment):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
     elif data == "menu_consumables":
-        kb = get_consumable_menu(p)
-        await callback.message.edit_text("🧪 **Daftar Ramuan (Consumables):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-
+        await callback.message.edit_text("🧪 **Daftar Ramuan:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_consumable_menu(p)), parse_mode="Markdown")
     elif data == "menu_profile":
-        kb = get_profile_menu(p)
-        await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-
+        await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
     elif data == "menu_main_profile":
-        text = generate_profile_text(p, p['stats'])
-        kb = get_profile_main_menu(p)
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-
+        await callback.message.edit_text(generate_profile_text(p, p['stats']), reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_main_menu(p)), parse_mode="Markdown")
     elif data.startswith("equip_"):
         item_id = data.replace("equip_", "")
         _, msg = equip_item(p, item_id)
         update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p['current_job']})
         await callback.answer(msg)
         await callback.message.edit_text("🎒 **Isi Tas:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
-
     elif data.startswith("unequip_"):
         slot = data.replace("unequip_", "")
         _, msg = unequip_item(p, slot)
         update_player(user_id, {'inventory': p['inventory'], 'equipped': p['equipped'], 'current_job': p['current_job']})
         await callback.answer(msg)
         await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
-
     elif data.startswith("useitem_"):
         item_id = data.replace("useitem_", "")
-        current_state = await state.get_state()
-        if current_state == GameState.in_combat:
+        if await state.get_state() == GameState.in_combat:
             await state.update_data(selected_item_id=item_id, action_type="item")
-            data_st = await state.get_data()
-            puzzle = data_st.get("puzzle")
+            d_st = await state.get_data()
+            puzzle = d_st.get("puzzle")
             puzzle['generated_time'] = time.time()
             await state.update_data(puzzle=puzzle)
             await callback.message.edit_text(render_live_battle(p, puzzle, f"Persiapan menenggak ramuan...\n👇 CEPAT JAWAB TEKA-TEKI! 👇"), parse_mode="Markdown")
@@ -293,12 +273,12 @@ async def inventory_button_handler(callback: CallbackQuery, state: FSMContext):
                 await callback.answer(msg, show_alert=True)
                 await callback.message.edit_text("🧪 **Daftar Ramuan:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_consumable_menu(p_new)), parse_mode="Markdown")
 
+
 # === MOVEMENT & EXPLORATION ===
 @dp.message(F.text.in_(["⬆️ Utara", "⬅️ Barat", "Timur ➡️", "⬇️ Selatan"]))
 async def move_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    current_state = await state.get_state()
-    if current_state in [GameState.in_combat, GameState.in_event, GameState.in_rest_area]:
+    if await state.get_state() in [GameState.in_combat, GameState.in_event, GameState.in_rest_area]:
         return await message.answer("Selesaikan dulu urusanmu di depan sebelum bergerak maju!")
         
     await state.set_state(GameState.exploring)
@@ -327,45 +307,30 @@ async def move_handler(message: Message, state: FSMContext):
         combat_ui = render_live_battle(p, safe_puzzle, f"⚠️ {narration}")
         sent_msg = await message.answer(combat_ui, parse_mode="Markdown", reply_markup=get_stance_keyboard(is_boss))
         
-        await state.update_data(
-            battle_msg_id=sent_msg.message_id,
-            puzzle=puzzle, 
-            combat_start_hp=p['hp'], 
-            current_combo=p.get('current_combo', 0),
-            action_type=None
-        )
-        
+        await state.update_data(battle_msg_id=sent_msg.message_id, puzzle=puzzle, combat_start_hp=p['hp'], current_combo=0, action_type=None)
         cancel_active_timer(user_id) 
         active_timers[user_id] = asyncio.create_task(combat_timeout_task(message, state, puzzle, user_id))
-        
     else:
         await message.answer(f"{narration}\n⚡ Energi: {new_energy}/100", reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
 
 
-# === ROUTER TOMBOL AKSI PERTARUNGAN (STANCE) ===
+# === COMBAT STANCE ROUTER ===
 @dp.callback_query(F.data.startswith("stance_"))
 async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
-    current_state = await state.get_state()
-    
-    if current_state is None or "in_combat" not in current_state:
-        return await callback.answer("⚠️ Sesi pertarungan ini sudah kedaluwarsa. Silakan jalan mencari musuh baru!", show_alert=True)
+    if await state.get_state() != GameState.in_combat:
+        return await callback.answer("⚠️ Sesi pertarungan ini sudah kedaluwarsa.", show_alert=True)
         
-    data = callback.data
-    user_id = callback.from_user.id
-    action = data.replace("stance_", "") 
-    p = get_player(user_id)
+    action = callback.data.replace("stance_", "") 
+    p = get_player(callback.from_user.id)
     
     if action == "item":
         kb = get_consumable_menu(p)
-        if not kb or len(kb) <= 1: 
-            return await callback.answer("Tas ramuanmu kosong!", show_alert=True)
+        if not kb or len(kb) <= 1: return await callback.answer("Tas ramuanmu kosong!", show_alert=True)
         return await callback.message.edit_text("🎒 **PILIH RAMUAN:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
     state_data = await state.get_data()
     puzzle = state_data.get("puzzle")
-    
-    if not puzzle:
-        return await callback.answer("Data musuh tidak ditemukan.", show_alert=True)
+    if not puzzle: return await callback.answer("Data musuh tidak ditemukan.", show_alert=True)
         
     await state.update_data(action_type=action)
     p['stats'] = calculate_total_stats(p)
@@ -373,25 +338,17 @@ async def combat_stance_handler(callback: CallbackQuery, state: FSMContext):
     puzzle['generated_time'] = time.time()
     await state.update_data(puzzle=puzzle) 
     
-    action_names = {
-        "attack": "⚔️ MENYERANG",
-        "run": "🏃 KABUR",
-        "block": "🛡️ BERTAHAN",
-        "dodge": "💨 MENGHINDAR",
-        "skill": "🔮 CAST SKILL"
-    }
+    action_names = {"attack": "⚔️ MENYERANG", "run": "🏃 KABUR", "block": "🛡️ BERTAHAN", "dodge": "💨 MENGHINDAR", "skill": "🔮 CAST SKILL"}
     selected_action = action_names.get(action, "AKSI")
     
     combat_ui = render_live_battle(p, puzzle, f"{selected_action} DIPILIH!\n\n👇 **SELANJUTNYA: KETIK JAWABAN TEKA-TEKI INI DI CHAT!** 👇")
-    
     try:
         await callback.message.edit_text(combat_ui, parse_mode="Markdown", reply_markup=None)
         await callback.answer(f"Segel terbuka! Cepat jawab!")
-    except TelegramBadRequest:
-        pass
+    except TelegramBadRequest: pass
 
 
-# === PUSAT LOGIKA JAWABAN PUZZLE (NARASI IMMERSIVE) ===
+# === PUSAT LOGIKA COMBAT TURN-BASED (1:1, 1:2, SKIP TURN) ===
 @dp.message(GameState.in_combat)
 async def combat_answer_handler(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -402,17 +359,16 @@ async def combat_answer_handler(message: Message, state: FSMContext):
     
     if not puzzle or puzzle.get('generated_time') is None:
         try: await message.delete()
-        except TelegramBadRequest: pass
-        warn_msg = await message.answer("⚠️ **Tunggu dulu!** Kamu harus menekan tombol aksi (Serang/Block/Kabur) sebelum menjawab teka-teki!", parse_mode="Markdown")
+        except: pass
+        warn_msg = await message.answer("⚠️ **Tunggu dulu!** Pilih tombol aksi dulu sebelum menjawab!", parse_mode="Markdown")
         await asyncio.sleep(3) 
         try: await warn_msg.delete()
         except: pass
         return
 
     cancel_active_timer(user_id)
-    
     try: await message.delete()
-    except TelegramBadRequest: pass 
+    except: pass 
 
     effective_timer = 9999 if str(puzzle.get('timer')) == "--" else puzzle['timer']
     is_correct, is_timeout, time_taken = validate_answer(message.text, puzzle['answer'], puzzle['generated_time'], effective_timer)
@@ -428,7 +384,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
     if is_correct:
         current_combo += 1
         
-        # --- 1. AKSI ATTACK ---
+        # --- 1. AKSI ATTACK (1:1) ---
         if action == "attack":
             p_dmg, p_log = calculate_damage(p, puzzle, is_attacker_player=True)
             puzzle['monster_hp'] -= p_dmg
@@ -441,10 +397,10 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             
             result_msg = (
                 f"⚔️ **SERANGANMU:** {p_log} {m_name} terkena tebasanmu! (-{p_dmg} HP){wpn_msg}\n"
-                f"👾 **BALASAN {m_name.upper()}:** {m_log} Kamu kehilangan -{m_dmg} HP."
+                f"👾 **BALASAN {m_name.upper()}:** {m_log} Kamu -{m_dmg} HP."
             )
             
-        # --- 2. AKSI SKILL ---
+        # --- 2. AKSI SKILL (1:2 - Recovery Penalty) ---
         elif action == "skill":
             temp_p = p.copy()
             temp_p['stats']['m_atk'] = int(temp_p['stats']['m_atk'] * 1.8)
@@ -460,11 +416,11 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             p['hp'] -= total_m_dmg
             
             result_msg = (
-                f"🔮 **SKILL BURST:** {p_log} Tubuh {m_name} terkoyak sihirmu! (-{p_dmg} HP){wpn_msg}\n"
-                f"⚠️ **RECOVERY PENALTY:** Kamu kelelahan! {m_name} menyerang brutal 2x berturut-turut! (-{total_m_dmg} HP)"
+                f"🔮 **SKILL BURST:** {p_log} Sihirmu mengenai telak! (-{p_dmg} HP){wpn_msg}\n"
+                f"⚠️ **RECOVERY PENALTY:** Kamu kelelahan! {m_name} menyerang 2x! (-{total_m_dmg} HP)"
             )
 
-        # --- 3. AKSI BLOCK ---
+        # --- 3. AKSI BLOCK (Damage Reduction) ---
         elif action == "block":
             heal_amount = int(p.get('max_hp', 100) * 0.15)
             p['hp'] = min(p.get('max_hp', 100), p['hp'] + heal_amount)
@@ -477,11 +433,11 @@ async def combat_answer_handler(message: Message, state: FSMContext):
             dur_msg = f" ⚠️ *Pelindungmu retak!*" if broken_armors else ""
             
             result_msg = (
-                f"🛡️ **BERTAHAN:** Kamu fokus menangkis, memulihkan stamina (+{heal_amount} HP).\n"
+                f"🛡️ **BERTAHAN:** Fokus menangkis (+{heal_amount} HP).\n"
                 f"👾 **SERANGAN TERTANGKIS:** {m_name} hanya memberikan -{reduced_dmg} HP padamu.{dur_msg}"
             )
 
-        # --- 4. AKSI DODGE ---
+        # --- 4. AKSI DODGE (Skip Monster Turn) ---
         elif action == "dodge":
             base_dodge_chance = 0.50
             player_dodge_stat = p['stats'].get('dodge', 0.1) 
@@ -492,23 +448,21 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                 restore_mp = int(p.get('max_mp', 50) * 0.20)
                 p['mp'] = min(p.get('max_mp', 50), p.get('mp', 0) + restore_mp)
                 result_msg = (
-                    f"💨 **PERFECT DODGE:** Gerakanmu secepat kilat (+{restore_mp} MP).\n"
-                    f"🎯 {m_name} menyerang udara kosong dan **kehilangan gilirannya**!"
+                    f"💨 **PERFECT DODGE:** Secepat kilat (+{restore_mp} MP).\n"
+                    f"🎯 {m_name} menyerang angin dan **kehilangan gilirannya**!"
                 )
             else:
                 m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
                 reduced_dmg = max(1, int(m_dmg * 0.7)) 
                 p['hp'] -= reduced_dmg
-                
                 broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=1)
                 dur_msg = f" ⚠️ *Pelindung menahan benturan!*" if broken_armors else ""
-                
                 result_msg = (
-                    f"🧱 **GAGAL MENGHINDAR:** Perlengkapanmu terlalu berat!\n"
+                    f"🧱 **GAGAL MENGHINDAR:** Terlalu lambat!\n"
                     f"👾 **TERKENA HIT:** Serangan {m_name} bersarang di tubuhmu (-{reduced_dmg} HP).{dur_msg}"
                 )
 
-        # --- 5. AKSI ITEM ---
+        # --- 5. AKSI ITEM (1:1) ---
         elif action == "item":
             item_id = data.get("selected_item_id")
             success, item_msg, p_new = use_consumable_item(p, item_id)
@@ -521,7 +475,7 @@ async def combat_answer_handler(message: Message, state: FSMContext):
                     f"👾 **CELAH TERBUKA:** {m_name} menerjang saat kau menenggak ramuan! (-{m_dmg} HP)"
                 )
             else:
-                result_msg = "❌ Gagal menggunakan item! Tasmu kosong atau item tidak valid."
+                result_msg = "❌ Gagal menggunakan item!"
 
         # --- 6. AKSI KABUR ---
         elif action == "run":
@@ -549,13 +503,13 @@ async def combat_answer_handler(message: Message, state: FSMContext):
         m_dmg, m_log = calculate_damage(puzzle, p, is_attacker_player=False)
         p['hp'] -= int(m_dmg * 1.5)
         
-        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2)
+        broken_armors = reduce_equipment_durability(user_id, target_slots=['armor', 'head'], damage=2, chance=1.0)
         dur_msg = f" ⚠️ *Pelindungmu hancur!*" if broken_armors else ""
             
         update_player(user_id, {'current_combo': 0, 'hp': p['hp']})
         result_msg = (
             f"❌ **FOKUS HANCUR:** Segel teka-teki gagal dipecahkan!\n"
-            f"💥 **CRITICAL STRIKE:** {m_name} melancarkan serangan tanpa ampun! (-{int(m_dmg * 1.5)} HP){dur_msg}"
+            f"💥 **CRITICAL STRIKE:** {m_name} melancarkan serangan brutal! (-{int(m_dmg * 1.5)} HP){dur_msg}"
         )
 
     # === TICK STATUS EFFECTS (BUFF/DEBUFF) ===
