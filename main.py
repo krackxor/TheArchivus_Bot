@@ -12,7 +12,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 # === ROOT IMPORTS ===
 from database import client, get_player, update_player, auto_seed_content, reset_player_death, add_history, tick_buffs
-from states import GameState
+from game.logic.states import GameState
 from config import BOT_TOKEN
 
 # === NEW ARCHITECTURE IMPORTS (LOGIC FOLDER) ===
