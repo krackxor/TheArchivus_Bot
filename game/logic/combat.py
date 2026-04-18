@@ -8,7 +8,6 @@ Modular Status Effects, dan Immersive Battle Logging.
 """
 import time
 import random
-import html
 
 # --- IMPORT SYSTEM ---
 from game.entities.monsters import get_random_monster, get_random_mini_boss, get_random_main_boss
@@ -80,8 +79,6 @@ def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
     p_status = "".join([STATUS_ICONS.get(e['type'], "") for e in player.get('active_effects', [])])
     m_status = "".join([STATUS_ICONS.get(e['type'], "") for e in monster.get('monster_effects', [])])
 
-    safe_log = html.escape(log_msg)
-
     text = (
         f"⚔️ <b>BATTLE: {monster['monster_name'].upper()}</b> {m_status}\n"
         f"HP: {get_compact_bar(monster['monster_hp'], monster['monster_max_hp'], bar_type='hp')}\n"
@@ -91,7 +88,7 @@ def render_live_battle(player, monster, log_msg="Pilih aksimu..."):
         f"HP: {get_compact_bar(player['hp'], player['max_hp'], bar_type='hp')}\n"
         f"MP: {get_compact_bar(player.get('mp', 0), player.get('max_mp', 50), bar_type='mp')}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📜 <b>BATTLE LOG:</b>\n<i>{safe_log}</i>"
+        f"📜 <b>BATTLE LOG:</b>\n{log_msg}"
     )
     return text
 
