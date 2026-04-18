@@ -2,8 +2,10 @@
 
 """
 MASTER DATA QUEST - The Archivus (Expanded Edition)
-Daftar misi harian yang mencakup berbagai aspek gameplay: Combat, Lore, Ekonomi, dan Survival.
+Daftar misi harian yang mencakup berbagai aspek gameplay dengan sistem tracker otomatis.
 """
+
+import random
 
 DAILY_QUESTS_POOL = {
     # --- KATEGORI: COMBAT (Monster) ---
@@ -49,28 +51,8 @@ DAILY_QUESTS_POOL = {
         "reward_exp": 200,
         "icon": "📖"
     },
-    "q_scholar_2": {
-        "id": "q_scholar_2",
-        "name": "Sang Archivist",
-        "desc": "Jawab 7 Quiz dengan benar tanpa salah lebih dari 3 kali.",
-        "goal_type": "answer_quiz",
-        "goal_value": 7,
-        "reward_gold": 600,
-        "reward_exp": 500,
-        "icon": "🧠"
-    },
 
     # --- KATEGORI: ECONOMY (Belanja & Toko) ---
-    "q_spender_1": {
-        "id": "q_spender_1",
-        "name": "Pelanggan Setia",
-        "desc": "Beli 3 item di Rest Area (Toko).",
-        "goal_type": "buy_items",
-        "goal_value": 3,
-        "reward_gold": 100,
-        "reward_exp": 50,
-        "icon": "💰"
-    },
     "q_gold_digger": {
         "id": "q_gold_digger",
         "name": "Kolektor Emas",
@@ -80,28 +62,6 @@ DAILY_QUESTS_POOL = {
         "reward_gold": 300,
         "reward_exp": 200,
         "icon": "🪙"
-    },
-
-    # --- KATEGORI: SKILL MASTERY (Teknik Tempur) ---
-    "q_warrior_1": {
-        "id": "q_warrior_1",
-        "name": "Ahli Teknik",
-        "desc": "Gunakan Skill sebanyak 10 kali saat bertarung.",
-        "goal_type": "use_skills",
-        "goal_value": 10,
-        "reward_gold": 250,
-        "reward_exp": 200,
-        "icon": "🔮"
-    },
-    "q_combo_king": {
-        "id": "q_combo_king",
-        "name": "Rantai Kematian",
-        "desc": "Lakukan serangan Combo sebanyak 15 kali.",
-        "goal_type": "perform_combo",
-        "goal_value": 15,
-        "reward_gold": 400,
-        "reward_exp": 300,
-        "icon": "🔗"
     },
 
     # --- KATEGORI: SURVIVAL (Eksplorasi & Perbaikan) ---
@@ -124,59 +84,50 @@ DAILY_QUESTS_POOL = {
         "reward_gold": 100,
         "reward_exp": 50,
         "icon": "⚒️"
-    },
-    "q_rest_day": {
-        "id": "q_rest_day",
-        "name": "Tidur Nyenyak",
-        "desc": "Gunakan fitur Istirahat di Rest Area sebanyak 3 kali.",
-        "goal_type": "rest_action",
-        "goal_value": 3,
-        "reward_gold": 150,
-        "reward_exp": 100,
-        "icon": "💤"
-    },
-
-    # --- KATEGORI: COLLECTION (Looting) ---
-    "q_looter": {
-        "id": "q_looter",
-        "name": "Tukang Pungut",
-        "desc": "Dapatkan 10 item dari hasil drop monster.",
-        "goal_type": "collect_drops",
-        "goal_value": 10,
-        "reward_gold": 200,
-        "reward_exp": 150,
-        "icon": "🎁"
-    },
-    "q_potion_addict": {
-        "id": "q_potion_addict",
-        "name": "Pecandu Ramuan",
-        "desc": "Gunakan 5 ramuan (HP/MP) apa saja.",
-        "goal_type": "use_items",
-        "goal_value": 5,
-        "reward_gold": 150,
-        "reward_exp": 100,
-        "icon": "🧪"
     }
 }
 
-def get_random_daily_quests(count=3):
+# --- FUNGSIONALITAS LOGIKA ---
+
+def update_quest_progress(player_data, goal_type, amount=1):
     """
-    Mengambil quest harian secara acak. 
-    Default ditingkatkan menjadi 3 quest per hari agar pemain lebih sibuk.
+    Memperbarui progres quest pemain berdasarkan aksi yang dilakukan.
+    Fungsi ini harus dipanggil di event_handler atau combat_handler.
     """
-    import random
+    quests = player_data.get("active_quests", [])
+    messages = []
     
+    for quest in quests:
+        if quest["status"] == "active" and quest["goal_type"] == goal_type:
+            quest["current"] += amount
+            
+            # Cek apakah target tercapai
+            if quest["current"] >= quest["goal_value"]:
+                quest["current"] = quest["goal_value"]
+                quest["status"] = "completed"
+                
+                # Berikan hadiah langsung ke pemain
+                player_data["gold"] += quest["reward_gold"]
+                player_data["exp"] += quest["reward_exp"]
+                
+                messages.append(
+                    f"✨ **Quest Selesai: {quest['name']}**\n"
+                    f"💰 +{quest['reward_gold']} Gold | 🎖️ +{quest['reward_exp']} EXP"
+                )
+    
+    return player_data, messages
+
+def get_random_daily_quests(count=3):
+    """Mengambil quest harian secara acak dengan inisialisasi state."""
     keys = list(DAILY_QUESTS_POOL.keys())
-    # Pastikan tidak mengambil lebih banyak dari yang tersedia
     actual_count = min(count, len(keys))
     selected_keys = random.sample(keys, actual_count)
     
     assigned_quests = []
     for k in selected_keys:
         quest_data = DAILY_QUESTS_POOL[k].copy()
-        # Data dinamis untuk player state
         quest_data["current"] = 0
-        quest_data["status"] = "active" 
+        quest_data["status"] = "active"
         assigned_quests.append(quest_data)
         
     return assigned_quests
@@ -184,3 +135,16 @@ def get_random_daily_quests(count=3):
 def get_quest_info(quest_id):
     """Mengambil data mentah satu quest berdasarkan ID."""
     return DAILY_QUESTS_POOL.get(quest_id)
+
+def check_all_quests_status(player_quests):
+    """Mengembalikan ringkasan teks untuk daftar misi pemain."""
+    if not player_quests:
+        return "Tidak ada misi aktif saat ini."
+    
+    summary = "📜 **DAFTAR MISI HARIAN**\n━━━━━━━━━━━━━━━━━━━━\n"
+    for q in player_quests:
+        status_icon = "✅" if q["status"] == "completed" else "⏳"
+        summary += f"{status_icon} **{q['name']}**\n"
+        summary += f"└ 📊 Progres: `{q['current']}/{q['goal_value']}`\n"
+        
+    return summary
