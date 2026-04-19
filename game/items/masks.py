@@ -1,10 +1,21 @@
 # game/items/masks.py
 
 """
-DATABASE MASKS (Topeng & Penutup Wajah)
-Bagian penting dari 8-Slot Equipment. Sering kali memberikan stat unik
-seperti Dodge, Speed, Magic Defense, atau menjadi syarat khusus (Requirement)
-untuk membuka Job/Class tingkat tinggi.
+====================================================================
+DATABASE MASKS (Topeng & Penutup Wajah) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Mask' (Wajah).
+Slot wajah biasanya difokuskan untuk memberikan status tambahan seperti:
+- m_def (Magic Defense)
+- dodge (Peluang Menghindar)
+- speed (Kecepatan bertindak dalam giliran combat)
+
+PANDUAN MENAMBAH ITEM BARU:
+- "id": Harus unik dan sama dengan nama key dictionary.
+- "type": Harus selalu "mask" agar dikenali oleh inventory_manager.
+- "tier": Tingkat kelangkaan (1=Biasa, 5=Legendaris).
+- "weight": Berat item. Semakin berat, biasanya mengurangi "speed".
+====================================================================
 """
 
 MASKS = {
@@ -29,7 +40,7 @@ MASKS = {
     "iron_visor": {
         "id": "iron_visor", "name": "Iron Visor", "type": "mask", "tier": 2,
         "p_def": 8, "m_def": 2, "speed": -1, "weight": 3,
-        "description": "Penutup wajah besi. Kokoh tapi sedikit membatasi pandangan."
+        "description": "Penutup wajah besi. Kokoh tapi sedikit membatasi pandangan. (Mengurangi Speed)."
     },
     "silk_veil": {
         "id": "silk_veil", "name": "Enchanted Silk Veil", "type": "mask", "tier": 2,
@@ -43,6 +54,16 @@ MASKS = {
     },
 
     # ==========================================
+    # --- UTILITY & HAZARD MASKS (TIER KHUSUS) ---
+    # ==========================================
+    # Item di bawah ini digunakan untuk menahan efek lingkungan mematikan.
+    "item_masker_gas": {
+        "id": "item_masker_gas", "name": "Masker Gas Kuno", "type": "mask", "tier": 3,
+        "p_def": 2, "m_def": 5, "speed": -1, "weight": 2,
+        "description": "Masker berat dengan filter arang. Melindungimu secara mutlak dari Miasma Beracun di area Hazard."
+    },
+
+    # ==========================================
     # --- INTERMEDIATE MASKS (TIER 3) ---
     # ==========================================
     "steel_faceplate": {
@@ -53,7 +74,7 @@ MASKS = {
     "assassin_cowl": {
         "id": "assassin_cowl", "name": "Shadow Assassin Cowl", "type": "mask", "tier": 3,
         "p_def": 5, "m_def": 6, "speed": 5, "dodge": 0.05, "weight": 1,
-        "description": "Penutup wajah para pembunuh. Melarutkan wajahmu ke dalam bayangan."
+        "description": "Penutup wajah para pembunuh. Melarutkan wajahmu ke dalam bayangan. (Bonus Dodge 5%)."
     },
     "mage_veil": {
         "id": "mage_veil", "name": "Veil of the Magi", "type": "mask", "tier": 3,
@@ -77,22 +98,22 @@ MASKS = {
     "frozen_visage": {
         "id": "frozen_visage", "name": "Frozen Visage", "type": "mask", "tier": 4,
         "m_atk": 10, "p_def": 10, "m_def": 25, "weight": 2,
-        "description": "Topeng es yang membekukan emosi pemakainya. (Syarat Blizzard Sovereign)."
+        "description": "Topeng es yang membekukan emosi pemakainya. (Syarat Job: Blizzard Sovereign)."
     },
     "eagle_eye_monocle": {
         "id": "eagle_eye_monocle", "name": "Eagle-Eye Monocle", "type": "mask", "tier": 4,
         "p_def": 2, "m_def": 8, "speed": 10, "dodge": 0.05, "weight": 0,
-        "description": "Lensa presisi tinggi untuk membidik titik fatal. (Syarat Phantom Archer)."
+        "description": "Lensa presisi tinggi untuk membidik titik fatal. (Syarat Job: Phantom Archer)."
     },
     "plague_doctor_mask": {
         "id": "plague_doctor_mask", "name": "Plague Doctor Mask", "type": "mask", "tier": 4,
         "p_def": 12, "m_def": 22, "speed": 2, "weight": 2,
-        "description": "Paruh burung berisi rempah penolak wabah. (Syarat Blood Reaper)."
+        "description": "Paruh burung berisi rempah penolak wabah. (Syarat Job: Blood Reaper)."
     },
     "holy_visor": {
         "id": "holy_visor", "name": "Radiant Holy Visor", "type": "mask", "tier": 4,
         "p_def": 18, "m_def": 18, "weight": 3,
-        "description": "Penutup wajah para ksatria suci yang bersinar dalam gelap. (Syarat Holy Templar)."
+        "description": "Penutup wajah para ksatria suci yang bersinar dalam gelap. (Syarat Job: Holy Templar)."
     },
     "demon_jaw": {
         "id": "demon_jaw", "name": "Crimson Demon Jaw", "type": "mask", "tier": 4,
@@ -121,7 +142,7 @@ MASKS = {
     "ancient_mask": {
         "id": "ancient_mask", "name": "The Ancient Mask", "type": "mask", "tier": 5,
         "p_atk": 8, "m_atk": 8, "p_def": 20, "m_def": 20, "speed": 5, "weight": 2,
-        "description": "Topeng tanpa wajah. (Syarat The Faceless, Void Sage & Dread Knight)."
+        "description": "Topeng tanpa wajah. (Syarat Job: The Faceless, Void Sage & Dread Knight)."
     },
     "abyssal_veil": {
         "id": "abyssal_veil", "name": "Veil of the Abyss", "type": "mask", "tier": 5,
@@ -136,16 +157,16 @@ MASKS = {
     "blindfold_of_sight": {
         "id": "blindfold_of_sight", "name": "Blindfold of True Sight", "type": "mask", "tier": 5,
         "p_def": 5, "m_def": 30, "speed": 15, "dodge": 0.15, "weight": 0,
-        "description": "Menutup mata jasmani untuk membuka mata batin. Hindaran meningkat drastis."
+        "description": "Menutup mata jasmani untuk membuka mata batin. Hindaran (Dodge) meningkat 15%."
     },
     "crown_of_thorns": {
         "id": "crown_of_thorns", "name": "Martyr's Crown of Thorns", "type": "mask", "tier": 5,
         "p_atk": 25, "m_atk": 25, "p_def": -10, "m_def": -10, "weight": 1,
-        "description": "Mahkota berduri yang melukai pemakainya, namun memberi kekuatan serangan yang mengerikan."
+        "description": "Mahkota berduri yang melukai pemakainya, namun memberi kekuatan serangan yang mengerikan. (Mengurangi DEF)."
     },
     "celestial_halo": {
         "id": "celestial_halo", "name": "Celestial Halo Visor", "type": "mask", "tier": 5,
         "m_atk": 20, "p_def": 25, "m_def": 30, "weight": 2,
-        "description": "Cahaya suci yang melingkari kepala, menolak segala bentuk kutukan."
+        "description": "Cahaya suci yang melingkari kepala, menolak segala bentuk sihir hitam."
     }
 }
