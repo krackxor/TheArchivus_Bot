@@ -1,27 +1,22 @@
 # game/handlers/combat.py
-"""
-CONTOH REFACTOR COMBAT HANDLER dengan UI yang lebih clean dan mobile-friendly
-File ini adalah TEMPLATE - copy relevant parts ke combat.py asli
-"""
 
 import asyncio
-import random
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from database import get_player, update_player
+# === LOGIC & DATABASE ===
+from database import get_player, update_player, reset_player_death
 from game.logic.states import GameState
 from game.logic.stats import calculate_total_stats
 from game.logic.menu_handler import get_main_reply_keyboard, get_stance_keyboard
 
-# UI BARU: Import constants untuk konsistensi
-from game.ui_constants import Icon, Text, Lang
+# === UI & CONSTANTS ===
+from game.ui_constants import Icon, Text, get_text
 from utils.helper_ui import (
     create_combat_header,
     create_combat_status,
     create_combo_indicator,
-    create_victory_screen,
     create_death_screen,
     create_loot_summary
 )
@@ -29,104 +24,113 @@ from utils.helper_ui import (
 router = Router()
 
 # ==============================================================================
-# CONTOH: REFACTOR COMBAT END SCREEN (Victory/Death)
+# 1. CORE COMBAT UI (LOG & MENUS)
 # ==============================================================================
 
-async def execute_end_of_turn_clean(message: Message, state: FSMContext, user_id: int, 
-                                    p: dict, enemy_data: dict, full_log: str, 
-                                    current_combo: int, battle_msg_id: int):
-    """
-    Versi CLEAN dari execute_end_of_turn dengan UI yang lebih ringkas
-    """
+def create_combat_action_log(lang, action_type, result_data):
+    """Membuat log combat yang ringkas dan mudah dibaca."""
+    damage = result_data.get('damage', 0)
+    
+    if action_type == "attack":
+        return f"{Icon.ATTACK} {get_text(lang, 'CMD_ATTACK')} (-{damage} {Icon.HP})"
+    elif action_type == "skill":
+        skill_name = result_data.get('skill_name', 'Skill')
+        return f"{Icon.SKILL} {skill_name} (-{damage} {Icon.HP})"
+    elif action_type == "defend":
+        mitigated = result_data.get('mitigated', 0)
+        return f"{Icon.DEFENSE} {get_text(lang, 'CMD_DEFEND')} (Blokir {mitigated} DMG)"
+    elif action_type == "dodge_success":
+        return f"{Icon.DODGE} {get_text(lang, 'CMD_DODGE')} berhasil!"
+    elif action_type == "dodge_fail":
+        return f"❌ Gagal menghindar (-{damage} {Icon.HP})"
+    elif action_type == "enemy_attack":
+        return f"{Icon.MONSTER} Musuh menyerang (-{damage} {Icon.HP})"
+    elif action_type == "poison":
+        return f"{Icon.ST_POISON} Racun (-{damage} {Icon.HP})"
+        
+    return result_data.get('message', '')
+
+# ==============================================================================
+# 2. COMBAT RESOLUTION (MENANG / MATI)
+# ==============================================================================
+
+async def execute_end_of_turn(callback: CallbackQuery, state: FSMContext, user_id: int, 
+                              p: dict, enemy_data: dict, full_log: str, 
+                              current_combo: int, battle_msg_id: int):
+    """Menangani akhir giliran: Apakah musuh mati, pemain mati, atau lanjut."""
+    lang = p.get('lang', 'id')
     
     # --- PEMAIN MENANG ---
-    if enemy_data['monster_hp'] <= 0:
-        # Proses reward
-        from game.logic.combat import finalize_battle
-        p, loot, quest_notifs = finalize_battle(p, enemy_data)
-        
-        total_exp = enemy_data['exp_reward']
+    if enemy_data.get('monster_hp', 0) <= 0:
+        # (Mock) Menggunakan logika finalize_battle dari backend
+        try:
+            from game.logic.combat import finalize_battle
+            p, loot, quest_notifs = finalize_battle(p, enemy_data)
+        except ImportError:
+            loot, quest_notifs = [], []
+            p['gold'] = p.get('gold', 0) + enemy_data.get('gold_reward', 10)
+            
+        total_exp = enemy_data.get('exp_reward', 20)
         old_level = p.get('level', 1)
         p['exp'] += total_exp
         
-        from game.systems.progression import calculate_level_from_exp
-        new_level = calculate_level_from_exp(p['exp'])
-        
+        try:
+            from game.systems.progression import calculate_level_from_exp
+            new_level = calculate_level_from_exp(p['exp'])
+        except ImportError:
+            new_level = old_level
+            
         level_up_msg = ""
         if new_level > old_level:
             p['level'] = new_level
-            level_up_msg = f"\n\n{Icon.LEVEL} **NAIK LEVEL {new_level}!**"
-        
+            p['stat_points'] += 3
+            level_up_msg = f"\n\n{Icon.LEVEL} **NAIK LEVEL {new_level}!**\n+3 Stat Points"
+            
         update_player(user_id, p)
         
-        # UI BARU: Lebih ringkas dan terstruktur
+        # UI Kemenangan
         victory_text = (
-            f"{Icon.WIN} **MENANG!**\n"
+            f"{Icon.SUCCESS} **MENANG!**\n"
             f"{Text.LINE}\n"
-            f"**{enemy_data['monster_name']}** kalah!\n\n"
-            f"{create_loot_summary(loot, enemy_data['gold_reward'], total_exp)}\n"
+            f"**{enemy_data.get('monster_name', 'Musuh')}** telah tumbang!\n\n"
+            f"{create_loot_summary(loot, enemy_data.get('gold_reward', 0), total_exp)}\n"
         )
         
-        # Tambah combo indicator jika ada
         if current_combo > 1:
             victory_text += f"{create_combo_indicator(current_combo)}\n"
-        
-        # Tambah quest notif jika ada
+            
         if quest_notifs:
-            victory_text += f"\n{Icon.QUEST} Progres misi:\n"
-            for notif in quest_notifs[:2]:  # Max 2 notif
+            victory_text += f"\n{Icon.QUEST} Progres Misi:\n"
+            for notif in quest_notifs[:2]:  # Max 2 notif agar tidak spam
                 victory_text += f"• {notif}\n"
-        
-        # Tambah level up jika ada
+                
         victory_text += level_up_msg
         
-        # Hapus battle message & reset state
-        if battle_msg_id:
-            try: 
-                await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
-            except: 
-                pass
-        
         await state.set_state(GameState.exploring)
-        await message.answer(
-            victory_text, 
-            reply_markup=get_main_reply_keyboard(p), 
-            parse_mode="Markdown"
-        )
+        if battle_msg_id:
+            try: await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=battle_msg_id)
+            except: pass
+            
+        await callback.message.answer(victory_text, reply_markup=get_main_reply_keyboard(p))
         return
 
     # --- PEMAIN MATI ---
-    elif p['hp'] <= 0:
-        from database import reset_player_death
-        death_reason = f"Dibunuh oleh {enemy_data['monster_name']}"
-        reset_player_death(user_id, death_reason)
-        
-        # UI BARU: Death screen yang lebih clean
-        death_text = create_death_screen(
-            reason=death_reason,
-            cycle=p.get('cycle', 1),
-            kills=p.get('kills', 0)
-        )
+    elif p.get('hp', 0) <= 0:
+        death_reason = f"Dibunuh oleh {enemy_data.get('monster_name', 'Entitas Gelap')}"
+        death_msg = reset_player_death(user_id, death_reason)
         
         await state.set_state(GameState.exploring)
         if battle_msg_id:
-            try: 
-                await message.bot.delete_message(chat_id=message.chat.id, message_id=battle_msg_id)
-            except: 
-                pass
-        
-        await message.answer(
-            death_text, 
-            reply_markup=get_main_reply_keyboard(p), 
-            parse_mode="Markdown"
-        )
+            try: await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=battle_msg_id)
+            except: pass
+            
+        await callback.message.answer(death_msg, reply_markup=get_main_reply_keyboard(p))
         return
         
     # --- PERTARUNGAN BERLANJUT ---
     else:
         await state.update_data(enemy_data=enemy_data, current_combo=current_combo)
         
-        # UI BARU: Combat screen yang lebih clean
         combat_ui = (
             f"{create_combat_header(enemy_data['monster_name'], enemy_data['monster_hp'], enemy_data.get('monster_max_hp', 100), enemy_data.get('is_boss', False))}\n"
             f"{Text.LINE}\n"
@@ -135,216 +139,103 @@ async def execute_end_of_turn_clean(message: Message, state: FSMContext, user_id
             f"💬 {full_log}"
         )
         
-        # Tambah combo indicator jika ada
         if current_combo > 1:
             combat_ui += f"\n{create_combo_indicator(current_combo)}"
+            
+        is_boss = enemy_data.get('is_boss', False)
         
         if battle_msg_id:
             try:
-                await message.bot.edit_message_text(
-                    chat_id=message.chat.id, 
-                    message_id=battle_msg_id, 
+                await callback.message.edit_text(
                     text=combat_ui, 
-                    parse_mode="Markdown", 
-                    reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
+                    reply_markup=get_stance_keyboard(is_boss)
                 )
             except Exception:
-                new_battle_msg = await message.answer(
-                    combat_ui, 
-                    parse_mode="Markdown", 
-                    reply_markup=get_stance_keyboard(enemy_data.get('is_boss', False))
-                )
-                await state.update_data(battle_msg_id=new_battle_msg.message_id)
-
+                pass
 
 # ==============================================================================
-# CONTOH: COMBAT LOG YANG LEBIH RINGKAS
+# 3. HANDLERS (MENANGKAP TOMBOL STANCE)
 # ==============================================================================
 
-def create_combat_action_log(action_type, result_data):
-    """
-    Membuat log combat yang ringkas dan mudah dibaca
-    """
-    if action_type == "attack":
-        damage = result_data.get('damage', 0)
-        return f"{Icon.ATTACK} Serang (-{damage} HP)"
+@router.callback_query(GameState.in_combat, F.data.startswith("stance_"))
+async def combat_action_handler(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    action = callback.data.replace("stance_", "")
     
-    elif action_type == "skill":
-        skill_name = result_data.get('skill_name', 'Skill')
-        damage = result_data.get('damage', 0)
-        return f"{Icon.SKILL} {skill_name} (-{damage} HP)"
+    data = await state.get_data()
+    enemy_data = data.get("enemy_data", {})
+    current_combo = data.get("current_combo", 0)
+    battle_msg_id = data.get("battle_msg_id", callback.message.message_id)
     
-    elif action_type == "defend":
-        mitigated = result_data.get('mitigated', 0)
-        return f"{Icon.DEFENSE} Bertahan (blokir {mitigated} damage)"
+    p = get_player(user_id)
+    lang = p.get('lang', 'id')
     
-    elif action_type == "dodge_success":
-        return f"{Icon.DODGE} Menghindar berhasil!"
-    
-    elif action_type == "dodge_fail":
-        damage = result_data.get('damage', 0)
-        return f"❌ Gagal menghindar (-{damage} HP)"
-    
-    elif action_type == "enemy_attack":
-        damage = result_data.get('damage', 0)
-        return f"👾 Musuh serang (-{damage} HP)"
-    
-    elif action_type == "poison":
-        damage = result_data.get('damage', 0)
-        return f"{Icon.POISON} Racun (-{damage} HP)"
-    
-    return result_data.get('message', '')
-
-
-# ==============================================================================
-# CONTOH: SKILL MENU YANG LEBIH CLEAN
-# ==============================================================================
-
-def get_skill_menu_keyboard_clean(player, player_stats):
-    """
-    Menu skill yang lebih clean dengan info MP cost yang jelas
-    """
-    from game.logic.skills import get_available_skills, get_effective_skill, get_cooldown_remaining
-    
-    available_skills = get_available_skills(player, player_stats)
-    keyboard = []
-    
-    for skill_id in available_skills:
-        skill = get_effective_skill(player, skill_id)
-        if not skill: 
-            continue
+    # --- JIKA PEMAIN KABUR ---
+    if action == "run":
+        if enemy_data.get('is_boss', False):
+            return await callback.answer("❌ Kamu tidak bisa kabur dari BOSS!", show_alert=True)
             
-        cooldown = get_cooldown_remaining(player, skill_id)
-        mp_cost = skill.get('mp_cost', 0)
+        # Hitung peluang kabur (Agility check)
+        escape_chance = 50 + (p.get('stats', {}).get('speed', 10) - enemy_data.get('speed', 10))
+        import random
         
-        if cooldown > 0:
-            # Skill masih cooldown
-            btn_text = f"⏳ {skill['name']} ({cooldown} turn)"
-            cb_data = "ignore_cooldown"
+        if random.randint(1, 100) <= escape_chance:
+            await state.set_state(GameState.exploring)
+            try: await callback.message.delete()
+            except: pass
+            
+            await callback.message.answer(
+                f"🏃 **BERHASIL KABUR!**\nKamu melarikan diri ke dalam kegelapan...",
+                reply_markup=get_main_reply_keyboard(p)
+            )
+            return
         else:
-            # Skill ready
-            btn_text = f"{Icon.SKILL} {skill['name']} (MP {mp_cost})"
-            cb_data = f"useskill_{skill_id}"
+            action_log = "❌ Gagal melarikan diri!"
+            enemy_dmg = max(1, enemy_data.get('p_atk', 10) - p.get('stats', {}).get('p_def', 5))
+            p['hp'] -= enemy_dmg
+            enemy_log = create_combat_action_log(lang, "enemy_attack", {"damage": enemy_dmg})
+            full_log = f"{action_log}\n{enemy_log}"
             
-        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=cb_data)])
-    
-    # Tambah info MP player di footer
-    current_mp = player.get('mp', 0)
-    max_mp = player.get('max_mp', 50)
-    keyboard.append([
-        InlineKeyboardButton(
-            text=f"{Icon.MP} MP: {current_mp}/{max_mp}", 
-            callback_data="show_mp_info"
-        )
-    ])
-    
-    keyboard.append([
-        InlineKeyboardButton(text=f"{Icon.CLOSE} Tutup", callback_data="close_popup")
-    ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+            await execute_end_of_turn(callback, state, user_id, p, enemy_data, full_log, 0, battle_msg_id)
+            return
 
-
-# ==============================================================================
-# CONTOH: ITEM MENU YANG LEBIH CLEAN
-# ==============================================================================
-
-def get_combat_consumable_menu_clean(player):
-    """
-    Menu item yang lebih clean dengan stacking dan kategori
-    """
-    from game.items import get_item
+    # --- JIKA PEMAIN MENYERANG/BERTAHAN ---
+    # Di sini Anda bisa memanggil `process_turn(p, enemy_data, action)` dari backend logic Anda.
+    # Untuk kelengkapan, ini adalah simulasi dasar logic:
     
-    buttons = []
-    inventory = player.get('inventory', [])
+    player_dmg = 0
+    enemy_dmg = 0
+    action_log = ""
     
-    # Kategorisasi dan hitung
-    potions = {}
-    for item_id in inventory:
-        item = get_item(item_id)
-        if item and item.get('type') == 'consumable':
-            if item.get('effect_type') != "trigger_quiz":
-                potions[item_id] = potions.get(item_id, 0) + 1
-    
-    if not potions:
-        buttons.append([
-            InlineKeyboardButton(text=Text.BAG_EMPTY, callback_data="close_popup")
-        ])
-    else:
-        # Sort by type: heal > mana > energy
-        priority = {'heal_hp': 0, 'restore_mp': 1, 'restore_energy': 2}
-        sorted_items = sorted(
-            potions.items(), 
-            key=lambda x: priority.get(get_item(x[0]).get('effect_type', ''), 99)
-        )
+    if action == "attack":
+        player_dmg = max(1, p.get('stats', {}).get('p_atk', 10) - enemy_data.get('p_def', 5))
+        enemy_data['monster_hp'] -= player_dmg
+        current_combo += 1
+        action_log = create_combat_action_log(lang, "attack", {"damage": player_dmg})
         
-        for item_id, count in sorted_items:
-            item = get_item(item_id)
-            effect_type = item.get('effect_type', '')
+    elif action == "block":
+        current_combo = 0
+        action_log = create_combat_action_log(lang, "defend", {"mitigated": p.get('stats', {}).get('p_def', 5)})
+        
+    elif action == "dodge":
+        current_combo = 0
+        action_log = create_combat_action_log(lang, "dodge_success", {})
+        
+    # Giliran Musuh Menyerang (Jika masih hidup)
+    enemy_log = ""
+    if enemy_data.get('monster_hp', 0) > 0:
+        if action == "block":
+            enemy_dmg = max(1, (enemy_data.get('p_atk', 10) // 2) - p.get('stats', {}).get('p_def', 5))
+        elif action == "dodge":
+            enemy_dmg = 0 # Asumsi berhasil
+        else:
+            enemy_dmg = max(1, enemy_data.get('p_atk', 10) - p.get('stats', {}).get('p_def', 5))
             
-            # Pilih ikon berdasarkan tipe
-            if effect_type == 'heal_hp':
-                icon = Icon.HP
-            elif effect_type == 'restore_mp':
-                icon = Icon.MP
-            elif effect_type == 'restore_energy':
-                icon = Icon.ENERGY
-            else:
-                icon = Icon.POTION
+        p['hp'] -= enemy_dmg
+        if enemy_dmg > 0:
+            enemy_log = create_combat_action_log(lang, "enemy_attack", {"damage": enemy_dmg})
             
-            btn_text = f"{icon} {item['name']} ({count}x)"
-            buttons.append([
-                InlineKeyboardButton(
-                    text=btn_text, 
-                    callback_data=f"combat_useitem_{item_id}"
-                )
-            ])
+    full_log = f"{action_log}\n{enemy_log}" if enemy_log else action_log
     
-    # Footer info
-    buttons.append([
-        InlineKeyboardButton(
-            text=f"{Icon.CLOSE} Tutup", 
-            callback_data="close_popup"
-        )
-    ])
-    
-    return buttons
-
-
-# ==============================================================================
-# TIPS PENGGUNAAN
-# ==============================================================================
-
-"""
-CARA MIGRASI KE UI BARU:
-
-1. Import UI constants:
-   from game.ui_constants import Icon, Text, Lang
-   from utils.helper_ui import create_*
-
-2. Ganti hardcoded emoji:
-   "⚔️" -> Icon.ATTACK
-   "💰" -> Icon.GOLD
-   
-3. Ganti separator:
-   "━━━━━━━━━━━" -> Text.LINE
-   
-4. Pakai helper functions:
-   create_combat_header()
-   create_combat_status()
-   create_loot_summary()
-   
-5. Buat log lebih ringkas:
-   "Kamu menyerang musuh dengan pedang dan memberikan damage sebesar 50" 
-   -> "⚔️ Serang (-50 HP)"
-
-6. Konsistensi bahasa:
-   "Attack" -> "Serang"
-   "Defend" -> "Bertahan"
-   "You" -> "Kamu"
-
-7. Test di mobile:
-   - Max 40 char per line
-   - Pastikan tidak terpotong
-   - Spacing cukup
-"""
+    # Resolusi Akhir Giliran
+    await execute_end_of_turn(callback, state, user_id, p, enemy_data, full_log, current_combo, battle_msg_id)
