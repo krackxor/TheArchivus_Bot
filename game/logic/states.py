@@ -4,37 +4,36 @@ from aiogram.fsm.state import State, StatesGroup
 
 class GameState(StatesGroup):
     """
-    Sistem State Terpusat (Refactored)
+    Sistem State Terpusat (Refactored) - The Archivus
     Disederhanakan menjadi 5 Core States untuk mencegah memory leak,
     race condition, dan tumpang tindih input.
     
-    Mendukung penuh sistem Turn-Based Combat, Skill Pop-up, dan Endless Exploration.
+    State ini mengontrol validitas tombol yang ditekan pemain di berbagai folder handlers/.
     """
     
     # --- 1. EXPLORING (Penjelajahan) ---
-    # State utama saat pemain berjalan (Utara, Selatan, dll).
-    # Digunakan juga saat pemain membuka Profil, Tas, atau memakai ramuan di luar pertempuran.
+    # State default saat pemain berjalan di Desa, Hutan, atau Kota.
+    # Memungkinkan akses ke tombol navigasi arah dan Menu Profil/Tas.
     exploring = State()
 
     # --- 2. IN_COMBAT (Pertarungan) ---
-    # State terkunci saat melawan Monster, Miniboss, atau Boss Utama.
-    # Selama state ini, navigasi arah dimatikan. Semua eksekusi Skill (Combo/Cooldown) diproses di sini.
+    # Terkunci saat menghadapi Monster, Miniboss, atau Boss (Castile).
+    # Tombol navigasi arah dimatikan secara sistem (FSM Filter).
     in_combat = State()
 
-    # --- 3. IN_EVENT (Interaksi Objek, NPC & Lingkungan) ---
-    # Digunakan untuk semua interaksi non-combat:
-    # - Dialog NPC (Storyteller, Guide, Requester)
-    # - Mini-game (Gambler)
-    # - Teka-teki (Quiz, Chest, Landmark)
-    # - Bahaya Lingkungan yang butuh Stat Check (Jurang/Deadly)
+    # --- 3. IN_EVENT (Interaksi & Teka-teki) ---
+    # Digunakan saat berinteraksi dengan:
+    # - NPC (Storytellers di Cafe, Peramal di Kuburan)
+    # - Puzzle (Membuka peti, membaca pesan berdarah)
+    # - Landmark (Altar Ibadah)
     in_event = State()
 
-    # --- 4. IN_REST_AREA (Area Aman) ---
-    # State saat berada di Campfire atau Kota.
-    # Memungkinkan transaksi Shop, Repair (Pandai Besi), dan pemulihan tanpa gangguan monster.
+    # --- 4. IN_REST_AREA (Area Aman & Fasilitas) ---
+    # Digunakan saat berada di Penginapan (Inn), Rest Area (Campfire), atau Toko.
+    # Memungkinkan fitur Shop dan Repair tanpa risiko diserang musuh.
     in_rest_area = State()
 
     # --- 5. DEAD (Kematian) ---
     # State saat HP mencapai 0. 
-    # Mengunci semua fungsi kecuali tombol Respawn / Mulai Cycle Baru.
+    # Mengunci seluruh fungsi permainan hingga pemain melakukan Respawn.
     dead = State()
