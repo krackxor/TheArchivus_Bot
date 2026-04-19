@@ -1,10 +1,25 @@
 # game/items/boots.py
 
 """
-DATABASE BOOTS (Sepatu & Greaves)
-Fokus utama pada kelincahan (Speed & Dodge). Sepatu zirah (Heavy Boots)
-memberikan Physical Defense (P.DEF) tinggi tapi membebani Weight pemain
-yang berujung pada pengurangan Speed secara keseluruhan.
+====================================================================
+DATABASE BOOTS (Sepatu & Greaves) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Boots' (Sepatu).
+Fokus utama pada slot ini adalah menentukan mobilitas karakter
+melalui penambahan kelincahan (Speed) dan peluang menghindar (Dodge).
+
+ATURAN BALANCE (KESEIMBANGAN):
+- Sepatu zirah (Sabatons/Greaves) memberikan Physical Defense (P_DEF) 
+  tinggi, tapi membebani berat (Weight) pemain. Hal ini berujung pada 
+  pengurangan Speed secara keseluruhan (minus speed).
+- Sepatu dari bahan ringan (kain, kulit, bayangan) memberikan bonus
+  Speed dan Dodge, tetapi sangat rentan terhadap tebasan senjata fisik.
+
+SINKRONISASI HAZARDS:
+Item berawalan 'item_' di bawah ini adalah syarat mutlak (Requirement)
+agar pemain bisa selamat melintasi anomali tanah seperti Rawa Lumpur, 
+Genangan Asam, dan Lantai Berduri pada sistem hazards.py.
+====================================================================
 """
 
 BOOTS = {
@@ -48,6 +63,28 @@ BOOTS = {
     },
 
     # ==========================================
+    # --- HAZARD PROTECTION BOOTS (TIER 3) ---
+    # ==========================================
+    # 1. Pelindung RAWA (Lumpur Penghisap)
+    "item_boots_heavy": {
+        "id": "item_boots_heavy", "name": "Heavy Gravity Boots", "type": "boots", "tier": 3,
+        "p_def": 8, "speed": -3, "weight": 6,
+        "description": "Sepatu dengan sol pemberat yang dirancang khusus untuk memijak kuat di atas lumpur hidup."
+    },
+    # 2. Pelindung ASAM (Genangan Asam Pelebur)
+    "item_sepatu_karet_tebal": {
+        "id": "item_sepatu_karet_tebal", "name": "Sepatu Karet Alkimia", "type": "boots", "tier": 3,
+        "p_def": 4, "m_def": 12, "speed": -1, "weight": 2,
+        "description": "Terbuat dari getah pohon iblis, sepatu ini sama sekali tidak bisa dilelehkan oleh genangan asam."
+    },
+    # 3. Pelindung DURI (Lantai Kaca Berduri)
+    "item_pelindung_kaki_baja": {
+        "id": "item_pelindung_kaki_baja", "name": "Pelindung Kaki Baja Solid", "type": "boots", "tier": 3,
+        "p_def": 18, "m_def": 2, "speed": -4, "weight": 8,
+        "description": "Telapak baja tebal ini akan meremukkan kaca tajam dan duri karatan menjadi debu saat diinjak."
+    },
+
+    # ==========================================
     # --- INTERMEDIATE BOOTS (TIER 3) ---
     # ==========================================
     "steel_sabatons": {
@@ -58,7 +95,7 @@ BOOTS = {
     "scout_boots": {
         "id": "scout_boots", "name": "Silent Scout Boots", "type": "boots", "tier": 3,
         "p_def": 5, "m_def": 5, "speed": 10, "dodge": 0.05, "weight": 2,
-        "description": "Dibuat dari kulit hewan langka, tidak bersuara saat melangkah. (Syarat Phantom Archer, Void Sage, Blood Reaper)."
+        "description": "Dibuat dari kulit hewan langka, tidak bersuara saat melangkah. (Syarat Job: Phantom Archer, Void Sage, Blood Reaper)."
     },
     "sage_shoes": {
         "id": "sage_shoes", "name": "Shoes of the Sage", "type": "boots", "tier": 3,
@@ -82,12 +119,12 @@ BOOTS = {
     "permafrost_treads": {
         "id": "permafrost_treads", "name": "Permafrost Treads", "type": "boots", "tier": 4,
         "m_def": 10, "speed": 8, "dodge": 0.05, "weight": 4,
-        "description": "Langkah yang meninggalkan jejak es. (Syarat Blizzard Sovereign & The Faceless)."
+        "description": "Langkah yang meninggalkan jejak es. (Syarat Job: Blizzard Sovereign & The Faceless)."
     },
     "steadfast_boots": {
         "id": "steadfast_boots", "name": "Iron-Shod Steadfast Boots", "type": "boots", "tier": 4,
         "p_def": 20, "m_def": 5, "speed": -5, "weight": 12,
-        "description": "Sangat berat, membuatmu tidak mudah goyah. (Syarat Dread Knight & Holy Templar)."
+        "description": "Sangat berat, membuatmu tidak mudah goyah. (Syarat Job: Dread Knight & Holy Templar)."
     },
     "wind_dashers": {
         "id": "wind_dashers", "name": "Wind Dasher Boots", "type": "boots", "tier": 4,
