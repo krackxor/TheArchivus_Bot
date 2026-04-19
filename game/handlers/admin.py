@@ -4,18 +4,22 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
+# === IMPORTS UTAMA ===
+from config import ADMIN_ID
 from database import get_player, update_player
 from game.items import get_item # Ditambahkan untuk validasi item
 
+# === UI & CONSTANTS ===
+from game.ui_constants import Icon, Text
+
 router = Router()
 
-# Ganti dengan ID Telegram kamu (gunakan bot @userinfobot untuk mengetahui ID-mu)
-# Tips: Di masa depan, lebih aman memindahkan ADMIN_ID ini ke file config.py
-ADMIN_ID = 123456789  
-
 def is_admin(user_id: int) -> bool:
-    """Mengecek apakah user memiliki otorisasi sebagai admin."""
-    return user_id == ADMIN_ID
+    """
+    Mengecek apakah user memiliki otorisasi sebagai admin.
+    Membandingkan sebagai string agar aman jika format di .env terbaca sebagai teks.
+    """
+    return str(user_id) == str(ADMIN_ID)
 
 # ==============================================================================
 # 0. COMMAND: /admin (Menu Bantuan Khusus Developer)
@@ -26,16 +30,16 @@ async def admin_menu_help(message: Message):
     if not is_admin(user_id): return
     
     help_text = (
-        "🛠️ **ARCHIVUS OVERSEER CONSOLE** 🛠️\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "Selamat datang, Creator. Berikut alat pengujian Anda:\n\n"
-        "💰 `/givegold [jumlah]` - Menambahkan/Mengurangi Gold\n"
-        "🎁 `/giveitem [item_id]` - Memasukkan item ke tas\n"
-        "⭐ `/giveexp [jumlah]` - Memberikan EXP instan\n"
-        "💖 `/heal` - Memulihkan 100% HP, MP, dan Energi\n"
-        "━━━━━━━━━━━━━━━━━━━━"
+        f"🛠️ **ARCHIVUS OVERSEER CONSOLE** 🛠️\n"
+        f"{Text.LINE}\n"
+        f"Selamat datang, Creator. Berikut alat pengujian Anda:\n\n"
+        f"{Icon.GOLD} `/givegold [jumlah]` - Menambahkan/Mengurangi Gold\n"
+        f"{Icon.LOOT} `/giveitem [id]` - Memasukkan item ke tas\n"
+        f"{Icon.EXP} `/giveexp [jumlah]` - Memberikan EXP instan\n"
+        f"{Icon.HP} `/heal` - Memulihkan 100% HP, MP, dan Energi\n"
+        f"{Text.LINE}"
     )
-    await message.answer(help_text, parse_mode="Markdown")
+    await message.answer(help_text)
 
 # ==============================================================================
 # 1. COMMAND: /givegold (Memberi Gold)
@@ -52,9 +56,9 @@ async def admin_give_gold(message: Message):
         new_gold = max(0, p.get('gold', 0) + amount) # Cegah minus
         
         update_player(user_id, {"gold": new_gold})
-        await message.answer(f"🛠️ [ADMIN] Saldo Gold disesuaikan. Total saat ini: **{new_gold:,} G**", parse_mode="Markdown")
+        await message.answer(f"🛠️ [ADMIN] Saldo {Icon.GOLD} disesuaikan. Total saat ini: **{new_gold:,} G**")
     except (IndexError, ValueError):
-        await message.answer("⚠️ Format salah. Gunakan: `/givegold [jumlah angka]`", parse_mode="Markdown")
+        await message.answer(f"{Icon.WARNING} Format salah. Gunakan: `/givegold [jumlah angka]`")
 
 # ==============================================================================
 # 2. COMMAND: /giveitem (Memberi Item Spesifik)
@@ -70,16 +74,16 @@ async def admin_give_item(message: Message):
         
         # Validasi: Cek apakah item benar-benar ada di database (game.items)
         if not get_item(item_id):
-            return await message.answer(f"⚠️ Item dengan ID `{item_id}` tidak ditemukan di database game.items!", parse_mode="Markdown")
+            return await message.answer(f"{Icon.WARNING} Item dengan ID `{item_id}` tidak ditemukan di database `game.items`!")
             
         p = get_player(user_id)
         inventory = p.get('inventory', [])
         inventory.append(item_id)
         
         update_player(user_id, {"inventory": inventory})
-        await message.answer(f"🛠️ [ADMIN] Berhasil menyisipkan item `{item_id}` ke dalam tas.", parse_mode="Markdown")
+        await message.answer(f"🛠️ [ADMIN] Berhasil menyisipkan item `{item_id}` ke dalam {Icon.BAG} Tas.")
     except IndexError:
-        await message.answer("⚠️ Format salah. Gunakan: `/giveitem [item_id]`", parse_mode="Markdown")
+        await message.answer(f"{Icon.WARNING} Format salah. Gunakan: `/giveitem [item_id]`")
 
 # ==============================================================================
 # 3. COMMAND: /giveexp (Menambahkan EXP Cepat)
@@ -95,9 +99,9 @@ async def admin_give_exp(message: Message):
         new_exp = p.get('exp', 0) + amount
         
         update_player(user_id, {"exp": new_exp})
-        await message.answer(f"🛠️ [ADMIN] +{amount} EXP diberikan. *(Catatan: Level up akan terpicu otomatis pada aksi pertarungan selanjutnya)*", parse_mode="Markdown")
+        await message.answer(f"🛠️ [ADMIN] `+{amount}` {Icon.EXP} EXP diberikan.\n*(Catatan: Level up akan terpicu otomatis pada aksi pertarungan selanjutnya)*")
     except (IndexError, ValueError):
-        await message.answer("⚠️ Format salah. Gunakan: `/giveexp [jumlah angka]`", parse_mode="Markdown")
+        await message.answer(f"{Icon.WARNING} Format salah. Gunakan: `/giveexp [jumlah angka]`")
 
 # ==============================================================================
 # 4. COMMAND: /heal (Memulihkan HP & MP & Energi 100%)
@@ -114,4 +118,4 @@ async def admin_heal_full(message: Message):
         "energy": 100
     })
     
-    await message.answer("🛠️ [ADMIN] Intervensi sistem: Tubuh Weaver telah dipulihkan ke 100% (HP, MP, Energi).")
+    await message.answer(f"🛠️ [ADMIN] Intervensi sistem: Tubuh Weaver telah dipulihkan ke 100% ({Icon.HP} HP, {Icon.MP} MP, {Icon.ENERGY} Energi).")
