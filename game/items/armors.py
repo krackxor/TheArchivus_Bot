@@ -1,10 +1,24 @@
 # game/items/armors.py
 
 """
-DATABASE ARMORS (Baju Zirah & Jubah Utama)
-Sumber utama Physical Defense (P.DEF). Armor berat memberikan perlindungan
-maksimal namun memiliki penalti Weight yang tinggi, mengurangi Speed dan Dodge.
-Armor tipe Robe fokus pada Magic Defense (M.DEF).
+====================================================================
+DATABASE ARMORS (Baju Zirah & Jubah Utama) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Armor' (Badan).
+Slot ini adalah penyumbang terbesar untuk Physical Defense (P_DEF).
+
+ATURAN BALANCE (KESEIMBANGAN):
+- Armor Berat (Plate/Cuirass) memberikan P_DEF maksimal namun 
+  memiliki penalti Weight yang paling tinggi di game. Hal ini akan 
+  mengurangi Speed secara drastis (Minus Speed).
+- Armor Tipe Kain (Robe/Tunic) fokus pada Magic Defense (M_DEF)
+  dan memiliki beban yang jauh lebih ringan.
+
+SINKRONISASI HAZARDS:
+Item berawalan 'item_' di bawah ini adalah syarat mutlak (Requirement)
+agar pemain bisa selamat melintasi anomali udara tajam (Angin Silet)
+pada sistem hazards.py.
+====================================================================
 """
 
 ARMORS = {
@@ -43,6 +57,16 @@ ARMORS = {
     },
 
     # ==========================================
+    # --- HAZARD PROTECTION ARMORS (TIER 3) ---
+    # ==========================================
+    # 1. Pelindung PISAU (Lorong Angin Silet)
+    "item_zirah_rantai_perak": {
+        "id": "item_zirah_rantai_perak", "name": "Zirah Rantai Perak (Chainmail)", "type": "armor", "tier": 3,
+        "p_def": 25, "m_def": 15, "speed": -2, "weight": 12,
+        "description": "Rantai baja murni yang dilapisi perak. Sanggup memercikkan dan menahan sayatan angin silet yang mematikan."
+    },
+
+    # ==========================================
     # --- INTERMEDIATE ARMORS (TIER 3) ---
     # ==========================================
     "steel_plate": {
@@ -53,7 +77,7 @@ ARMORS = {
     "assassin_garb": {
         "id": "assassin_garb", "name": "Shadow-Step Tunic", "type": "armor", "tier": 3,
         "p_def": 15, "m_def": 12, "speed": 10, "dodge": 0.05, "weight": 4,
-        "description": "Pakaian ringan untuk bergerak dalam gelap. (Syarat Phantom Archer & Blood Reaper)."
+        "description": "Pakaian ringan untuk bergerak dalam gelap. (Syarat Job: Phantom Archer & Blood Reaper)."
     },
     "sage_robe": {
         "id": "sage_robe", "name": "Robe of the Arch-Sage", "type": "armor", "tier": 3,
@@ -77,22 +101,22 @@ ARMORS = {
     "glacier_plate": {
         "id": "glacier_plate", "name": "Glacier Plate Mail", "type": "armor", "tier": 4,
         "p_def": 55, "m_def": 20, "weight": 28, "element": "ice",
-        "description": "Zirah berat dari es abadi. (Syarat The Faceless)."
+        "description": "Zirah berat dari es abadi. (Syarat Job: The Faceless)."
     },
     "blizzard_robe": {
         "id": "blizzard_robe", "name": "Blizzard Weaver Robe", "type": "armor", "tier": 4,
         "p_def": 12, "m_def": 50, "m_atk": 15, "weight": 5, "element": "ice",
-        "description": "Jubah tipis yang memancarkan hawa dingin. (Syarat Blizzard Sovereign & Void Sage)."
+        "description": "Jubah tipis yang memancarkan hawa dingin. (Syarat Job: Blizzard Sovereign & Void Sage)."
     },
     "full_plate_mail": {
         "id": "full_plate_mail", "name": "Dread Emperor Plate", "type": "armor", "tier": 4,
         "p_def": 70, "m_def": 10, "weight": 35, "element": "earth",
-        "description": "Zirah hitam legam yang sangat berat. (Syarat Dread Knight)."
+        "description": "Zirah hitam legam yang sangat berat. (Syarat Job: Dread Knight)."
     },
     "templar_plate": {
         "id": "templar_plate", "name": "Holy Templar Plate", "type": "armor", "tier": 4,
         "p_def": 60, "m_def": 30, "weight": 30, "element": "light",
-        "description": "Zirah perak bercahaya yang diberkati. (Syarat Holy Templar)."
+        "description": "Zirah perak bercahaya yang diberkati. (Syarat Job: Holy Templar)."
     },
     "dragon_hide_armor": {
         "id": "dragon_hide_armor", "name": "Dragon Hide Armor", "type": "armor", "tier": 4,
