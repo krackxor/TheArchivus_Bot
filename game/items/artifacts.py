@@ -1,9 +1,20 @@
 # game/items/artifacts.py
 
 """
-DATABASE ARTIFACTS (Offhand & Relics)
-Berfungsi sebagai Tangan Kiri (Shield/Orb) atau Jimat Pasif.
-Sangat krusial untuk melengkapi Sinergi Job.
+====================================================================
+DATABASE ARTIFACTS (Aksesoris, Alat Genggam, & Relik) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Artifact'.
+Artefak adalah perlengkapan yang sangat fleksibel. Berfungsi sebagai 
+Tangan Kiri (seperti Shield/Perisai untuk Defense) atau sebagai 
+Jimat/Aksesoris (seperti Cincin/Kalung untuk Bonus Magic & Efek Khusus).
+
+SINKRONISASI HAZARDS:
+Mayoritas item pelindung anomali lingkungan (Hazards) berbentuk alat 
+atau perhiasan, sehingga dimasukkan ke dalam file ini. 
+Pastikan 'id' item berawalan 'item_' agar sinkron persis dengan 
+kebutuhan ('required_item') di file hazards.py.
+====================================================================
 """
 
 ARTIFACTS = {
@@ -11,29 +22,81 @@ ARTIFACTS = {
     # --- DEFENSIVE / SHIELDS (Tank & Melee) ---
     # ==========================================
     "wooden_shield": {
-        "id": "wooden_shield", "name": "Crude Wooden Shield", "type": "offhand", "tier": 1,
+        "id": "wooden_shield", "name": "Crude Wooden Shield", "type": "artifact", "tier": 1,
         "p_def": 10, "weight": 5, "dodge": -0.02,
         "description": "Papan kayu yang diikat tali. Setidaknya bisa menahan gigitan serigala."
     },
     "iron_buckler": {
-        "id": "iron_buckler", "name": "Iron Buckler", "type": "offhand", "tier": 2,
+        "id": "iron_buckler", "name": "Iron Buckler", "type": "artifact", "tier": 2,
         "p_def": 18, "weight": 7, "dodge": -0.01,
         "description": "Perisai besi kecil yang ringan dan efektif untuk tangkisan cepat."
     },
     "shield_of_light": {
-        "id": "shield_of_light", "name": "Aegis of the Saint", "type": "offhand", "tier": 4,
+        "id": "shield_of_light", "name": "Aegis of the Saint", "type": "artifact", "tier": 4,
         "p_def": 30, "m_def": 20, "weight": 10,
-        "description": "Perisai suci yang bersinar redup. (Syarat Holy Templar)."
+        "description": "Perisai suci yang bersinar redup. (Syarat Job: Holy Templar)."
     },
     "mountain_wall": {
-        "id": "mountain_wall", "name": "Great Mountain Wall", "type": "offhand", "tier": 4,
+        "id": "mountain_wall", "name": "Great Mountain Wall", "type": "artifact", "tier": 4,
         "p_def": 45, "m_def": 10, "weight": 20, "speed": -5,
-        "description": "Sangat berat, tapi tak tergoyahkan. (Syarat Dread Knight)."
+        "description": "Sangat berat, tapi tak tergoyahkan. (Syarat Job: Dread Knight)."
     },
     "dragon_scale_greatshield": {
-        "id": "dragon_scale_greatshield", "name": "Dragon-Scale Greatshield", "type": "offhand", "tier": 5,
+        "id": "dragon_scale_greatshield", "name": "Dragon-Scale Greatshield", "type": "artifact", "tier": 5,
         "p_def": 55, "m_def": 25, "weight": 18,
         "description": "Dibuat dari sisik naga purba, mampu menahan api neraka sekalipun."
+    },
+
+    # ==========================================
+    # --- HAZARD PROTECTION ARTIFACTS (TIER 3) ---
+    # ==========================================
+    # 1. Pelindung GELAP (Kegelapan Abyss)
+    "item_lentera_jiwa": {
+        "id": "item_lentera_jiwa", "name": "Lentera Jiwa (Soul Lantern)", "type": "artifact", "tier": 3,
+        "m_def": 5, "weight": 1,
+        "description": "Lentera yang menyala dari sisa-sisa memori. Melindungimu dari area Kegelapan Abyss."
+    },
+    # 2. Pelindung KUTUKAN (Bisikan Terkutuk)
+    "item_kalung_suci": {
+        "id": "item_kalung_suci", "name": "Kalung Suci Templar", "type": "artifact", "tier": 3,
+        "m_def": 10, "weight": 0,
+        "description": "Kalung berkati dari emas putih. Menangkal kutukan gaib dan bisikan gila di udara."
+    },
+    # 3. Pelindung PETIR (Badai Petir Merah)
+    "item_cincin_grounding": {
+        "id": "item_cincin_grounding", "name": "Cincin Grounding", "type": "artifact", "tier": 3,
+        "p_def": 2, "weight": 0,
+        "description": "Cincin yang mampu menyerap dan menetralkan aliran listrik bertegangan tinggi."
+    },
+    # 4. Pelindung ANGIN (Angin Topan Tulang)
+    "item_jangkar_besi": {
+        "id": "item_jangkar_besi", "name": "Jangkar Besi Karatan", "type": "artifact", "tier": 3,
+        "p_def": 5, "speed": -3, "weight": 5,
+        "description": "Jangkar berat ini membuatmu tidak bisa diterbangkan oleh badai. (Mengurangi Speed)."
+    },
+    # 5. Pelindung TETESAN (Hujan Darah Mendidih)
+    "item_payung_kulit_naga": {
+        "id": "item_payung_kulit_naga", "name": "Payung Kulit Naga", "type": "artifact", "tier": 3,
+        "m_def": 8, "weight": 2,
+        "description": "Payung kokoh ini kebal terhadap cairan panas dan asam mendidih."
+    },
+    # 6. Pelindung KABUT_BUTA (Kabut Pemakan Arah)
+    "item_kompas_mata_darah": {
+        "id": "item_kompas_mata_darah", "name": "Kompas Mata Darah", "type": "artifact", "tier": 3,
+        "speed": 2, "weight": 1,
+        "description": "Mata yang terjebak di dalam kaca kompas ini selalu menatap ke arah jalan keluar yang benar."
+    },
+    # 7. Pelindung GRAVITASI (Zona Anti-Gravitasi)
+    "item_sabuk_pemberat": {
+        "id": "item_sabuk_pemberat", "name": "Sabuk Pemberat Gravitasi", "type": "artifact", "tier": 3,
+        "p_def": 3, "speed": -4, "weight": 6,
+        "description": "Menahan tubuhmu agar tetap menapak di lantai saat berada di zona anomali fisik."
+    },
+    # 8. Pelindung HALUSINASI (Taman Jamur Halusinogen)
+    "item_lonceng_kesadaran": {
+        "id": "item_lonceng_kesadaran", "name": "Lonceng Kesadaran", "type": "artifact", "tier": 3,
+        "m_def": 12, "weight": 1,
+        "description": "Suara deringnya menyakitkan telinga, namun berhasil menjaga akal sehatmu tetap sadar dari ilusi."
     },
 
     # ==========================================
@@ -47,17 +110,17 @@ ARTIFACTS = {
     "everfrost_shard": {
         "id": "everfrost_shard", "name": "Everfrost Crystal Shard", "type": "artifact", "tier": 4,
         "m_atk": 22, "m_def": 15, "weight": 2,
-        "description": "Inti es yang tidak pernah membeku sepenuhnya. (Syarat Blizzard Sovereign)."
+        "description": "Inti es yang tidak pernah membeku sepenuhnya. (Syarat Job: Blizzard Sovereign)."
     },
     "void_orb": {
         "id": "void_orb", "name": "Orb of the Abyss", "type": "artifact", "tier": 5,
         "m_atk": 35, "m_def": 20, "weight": 2,
-        "description": "Bola hitam yang menghisap cahaya di sekitarnya. (Syarat Void Sage & The Faceless)."
+        "description": "Bola hitam yang menghisap cahaya di sekitarnya. (Syarat Job: Void Sage & The Faceless)."
     },
     "soul_jar": {
         "id": "soul_jar", "name": "Ancient Soul Jar", "type": "artifact", "tier": 3,
         "m_atk": 15, "m_def": 10, "weight": 3,
-        "description": "Guci tua untuk menampung sisa-sisa jiwa. (Syarat Blood Reaper)."
+        "description": "Guci tua untuk menampung sisa-sisa jiwa. (Syarat Job: Blood Reaper)."
     },
     "phoenix_egg_relic": {
         "id": "phoenix_egg_relic", "name": "Dormant Phoenix Egg", "type": "artifact", "tier": 5,
@@ -71,12 +134,12 @@ ARTIFACTS = {
     "quiver_of_wind": {
         "id": "quiver_of_wind", "name": "Quiver of Whispering Wind", "type": "artifact", "tier": 3,
         "speed": 10, "dodge": 0.05, "weight": 2,
-        "description": "Tempat anak panah yang membuat panah terasa ringan. (Syarat Phantom Archer)."
+        "description": "Tempat anak panah yang membuat panah terasa ringan. (Syarat Job: Phantom Archer)."
     },
     "blood_gem": {
         "id": "blood_gem", "name": "Heart of the Abyss", "type": "artifact", "tier": 5,
         "p_atk": 20, "p_def": 10, "weight": 1,
-        "description": "Permata yang berdetak seperti jantung manusia. (Syarat Blood Reaper)."
+        "description": "Permata yang berdetak seperti jantung manusia. (Syarat Job: Blood Reaper)."
     },
     "shadow_pendant": {
         "id": "shadow_pendant", "name": "Living Shadow Pendant", "type": "artifact", "tier": 4,
@@ -110,7 +173,7 @@ ARTIFACTS = {
     "sacred_tome": {
         "id": "sacred_tome", "name": "Sacred Tome of Grace", "type": "artifact", "tier": 4,
         "m_atk": 15, "m_def": 25, "weight": 3,
-        "description": "Kitab suci berisi rapalan doa penyembuhan. (Syarat Holy Templar)."
+        "description": "Kitab suci berisi rapalan doa penyembuhan. (Syarat Job: Holy Templar)."
     },
     "cursed_skull": {
         "id": "cursed_skull", "name": "Skull of the Betrayer", "type": "artifact", "tier": 4,
