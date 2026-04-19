@@ -1,10 +1,22 @@
 # game/items/cloaks.py
 
 """
-DATABASE CLOAKS (Jubah & Mantel)
-Berfungsi sebagai pelindung sekunder yang sangat krusial untuk menahan 
-serangan sihir (Magic Defense) dan meningkatkan kelincahan (Dodge & Speed) 
-karena bobotnya yang ringan.
+====================================================================
+DATABASE CLOAKS (Jubah & Mantel) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Cloak' (Jubah).
+Jubah berfungsi sebagai pelindung sekunder yang sangat krusial.
+
+FOKUS STATUS JUBAH:
+- m_def (Magic Defense): Jubah adalah penahan sihir terbaik.
+- speed & dodge: Karena ringan, jubah sering kali menambah kelincahan.
+- weight: Umumnya memiliki bobot rendah (0 hingga 2), kecuali jubah 
+  baja khusus tipe ksatria.
+
+SINKRONISASI HAZARDS:
+Beberapa item di sini (berawalan 'item_') adalah pelindung mutlak 
+dari bahaya lingkungan (Suhu ekstrem, Cuaca) di file hazards.py.
+====================================================================
 """
 
 CLOAKS = {
@@ -53,6 +65,22 @@ CLOAKS = {
     },
 
     # ==========================================
+    # --- HAZARD PROTECTION CLOAKS (TIER 3) ---
+    # ==========================================
+    # 1. Pelindung DINGIN (Suhu Sub-Zero)
+    "item_mantel_bulu": {
+        "id": "item_mantel_bulu", "name": "Mantel Bulu Tebal", "type": "cloak", "tier": 3,
+        "p_def": 6, "m_def": 8, "speed": -1, "weight": 3,
+        "description": "Mantel berlapis bulu beruang. Menjagamu tetap hidup di Suhu Sub-Zero."
+    },
+    # 2. Pelindung PANAS (Lautan Api Hitam)
+    "item_jubah_asbes": {
+        "id": "item_jubah_asbes", "name": "Jubah Asbes Hitam", "type": "cloak", "tier": 3,
+        "p_def": 4, "m_def": 15, "weight": 2,
+        "description": "Ditenun dengan serat khusus yang mustahil terbakar. Melindungimu dari Lautan Api Hitam."
+    },
+
+    # ==========================================
     # --- INTERMEDIATE CLOAKS (TIER 3) ---
     # ==========================================
     "knight_cape": {
@@ -92,17 +120,17 @@ CLOAKS = {
     "frost_cloak": {
         "id": "frost_cloak", "name": "Frost-Woven Cloak", "type": "cloak", "tier": 4,
         "p_def": 8, "m_def": 25, "weight": 4,
-        "description": "Jubah tebal yang mampu menahan badai salju paling ekstrem. (Syarat Blizzard Sovereign & Dread Knight)."
+        "description": "Jubah tebal yang mampu menahan badai salju paling ekstrem. (Syarat Job: Blizzard Sovereign & Dread Knight)."
     },
     "mist_weaver_cloak": {
         "id": "mist_weaver_cloak", "name": "Mist-Weaver Cloak", "type": "cloak", "tier": 4,
         "m_def": 15, "speed": 10, "dodge": 0.12, "weight": 1,
-        "description": "Membuat siluet pemakainya tampak kabur seperti uap es. (Syarat Phantom Archer)."
+        "description": "Membuat siluet pemakainya tampak kabur seperti uap es. (Syarat Job: Phantom Archer)."
     },
     "radiant_cloak": {
         "id": "radiant_cloak", "name": "Radiant Templar Cloak", "type": "cloak", "tier": 4,
         "p_def": 15, "m_def": 30, "weight": 3,
-        "description": "Jubah emas yang membiaskan sihir gelap. (Syarat Holy Templar)."
+        "description": "Jubah emas yang membiaskan sihir gelap. (Syarat Job: Holy Templar)."
     },
     "shadow_shroud": {
         "id": "shadow_shroud", "name": "Shroud of Shadows", "type": "cloak", "tier": 4,
@@ -126,7 +154,7 @@ CLOAKS = {
     "void_mantle": {
         "id": "void_mantle", "name": "Mantle of the Void", "type": "cloak", "tier": 5,
         "m_def": 40, "dodge": 0.15, "weight": 3,
-        "description": "Jubah yang terbuat dari kegelapan murni. Sangat sulit disentuh sihir. (Syarat Void Sage & The Faceless)."
+        "description": "Jubah yang terbuat dari kegelapan murni. Sangat sulit disentuh sihir. (Syarat Job: Void Sage & The Faceless)."
     },
     "dragon_wing_cloak": {
         "id": "dragon_wing_cloak", "name": "Dragon Wing Cloak", "type": "cloak", "tier": 5,
