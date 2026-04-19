@@ -1,14 +1,24 @@
 # game/logic/stats.py
 
+"""
+STATS CALCULATOR - The Archivus
+Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
+Memperhitungkan Grip 2H, Durability, Weight Penalty, Job Bonus, 
+Active Effects, dan Permanent Bonus (Pact/Altar).
+"""
+
 from game.items import get_item
-from game.logic.job_manager import get_job_bonus
+import random
+
+# Peringatan: Pastikan file game/logic/job_manager.py sudah dibuat!
+try:
+    from game.logic.job_manager import get_job_bonus
+except ImportError:
+    # Fallback sementara jika job_manager belum diimplementasi
+    def get_job_bonus(job_name):
+        return {"p_atk_mult": 1.0, "m_atk_mult": 1.0, "p_def_mult": 1.0, "speed_bonus": 0, "dodge_bonus": 0.0}
 
 def calculate_total_stats(player):
-    """
-    Kalkulasi cerdas untuk semua stat berdasarkan 8 slot equipment.
-    Memperhitungkan Grip 2H, Durability, Weight Penalty, Job Bonus, 
-    Active Effects, dan Permanent Bonus (Pact/Altar).
-    """
     # 1. Inisialisasi Stat Dasar (dari level/base player)
     stats = {
         "p_atk": player.get('base_p_atk', 10),
@@ -17,7 +27,9 @@ def calculate_total_stats(player):
         "m_def": player.get('base_m_def', 5),
         "speed": player.get('base_speed', 10),
         "dodge": 0.50, # Base 50%
-        "total_weight": 0
+        "total_weight": 0,
+        "crit_rate": 5,
+        "crit_dmg": 150
     }
 
     # --- TAMBAHAN: Bonus Permanen dari Kontrak Darah (Pacts/Altar) ---
@@ -30,7 +42,7 @@ def calculate_total_stats(player):
     equipped = player.get('equipped', {})
     weapon_id = equipped.get('weapon')
     offhand_id = equipped.get('artifact') # Dulu namanya artifact, sekarang dipakai sbg offhand di beberapa kasus
-    weapon = get_item(weapon_id)
+    weapon = get_item(weapon_id) if weapon_id else None
     
     # Ambil data durabilitas dinamis pemain dari database
     durability_data = player.get('equipment_durability', {})
@@ -40,16 +52,15 @@ def calculate_total_stats(player):
 
     # 3. Iterasi Semua Slot untuk Menghitung Stat & Berat
     for slot, item_id in equipped.items():
+        if not item_id: continue
         item = get_item(item_id)
-        if not item:
-            continue
+        if not item: continue
 
         # LOGIKA KHUSUS ARTIFACT/OFFHAND: Diabaikan statnya jika senjata 2H
         if slot == 'artifact' and is_two_handed:
             continue 
 
         # PENALTI DURABILITY: Jika barang rusak (0), bonus stat hilang 80%
-        # Mengambil durabilitas dari record pemain, bukan data statis item
         current_durability = durability_data.get(slot, 50)
         
         durability_mult = 1.0
@@ -67,12 +78,14 @@ def calculate_total_stats(player):
         stats['m_def'] += int(item.get('m_def', 0) * durability_mult)
         stats['speed'] += int(item.get('speed', 0) * durability_mult)
         
-        # Tambahan: Jika item (misal jubah/artefak) memberi bonus dodge
+        # Tambahan: Jika item (misal jubah/artefak) memberi bonus khusus
         if 'dodge' in item:
             stats['dodge'] += (item['dodge'] * durability_mult)
+        if 'crit_rate' in item:
+            stats['crit_rate'] += (item['crit_rate'] * durability_mult)
 
     # 4. LOGIKA BALANCE: Weight vs Dodge/Speed
-    weight_penalty = stats['total_weight'] // 5
+    weight_penalty = int(stats['total_weight']) // 5
     
     stats['dodge'] = max(0.05, stats['dodge'] - (weight_penalty * 0.02))
     stats['speed'] = max(1, stats['speed'] - weight_penalty)
@@ -91,7 +104,6 @@ def calculate_total_stats(player):
     stats['dodge'] += job_bonuses['dodge_bonus']
 
     # === 6. LOGIKA BUFF/DEBUFF STAT SEMENTARA ===
-    # Memproses efek dari ramuan atau sihir yang tersimpan di player
     active_effects = player.get('active_effects', [])
     for effect in active_effects:
         eff_type = effect.get('type') # misal: 'atk_buff', 'def_debuff'
@@ -126,11 +138,9 @@ def calculate_total_stats(player):
         stats['attack_type'] = 'physical'
 
     # === 7. DETEKSI TIPE SENJATA (UNTUK SISTEM SKILL) ===
-    # Ubah ID ke string huruf kecil dan amankan jika None
     wep_id_str = str(weapon_id).lower() if weapon_id else ""
     off_id_str = str(offhand_id).lower() if offhand_id else ""
     
-    # Deteksi Senjata Utama (Weapon)
     stats['weapon_type'] = "unarmed"
     if any(k in wep_id_str for k in ["dagger", "knife", "shiv"]): 
         stats['weapon_type'] = "dagger"
@@ -143,9 +153,50 @@ def calculate_total_stats(player):
     elif any(k in wep_id_str for k in ["sword", "blade", "katana", "claymore"]): 
         stats['weapon_type'] = "sword"
     
-    # Deteksi Senjata Kiri/Tameng (Offhand/Artifact)
     stats['offhand_type'] = "none"
     if any(k in off_id_str for k in ["shield", "buckler", "aegis"]): 
         stats['offhand_type'] = "shield"
 
     return stats
+
+
+def calculate_damage(attacker_stats: dict, defender_stats: dict, is_magic: bool = False, skill_multiplier: float = 1.0) -> tuple:
+    """
+    Fungsi utilitas untuk menghitung damage akhir dalam pertarungan.
+    Mengembalikan: (final_damage: int, is_crit: bool, is_dodged: bool)
+    """
+    # 1. Cek Dodge (Menghindar)
+    dodge_chance = defender_stats.get('dodge', 0.05)
+    # Konversi float ke persen (misal 0.50 -> 50%)
+    if isinstance(dodge_chance, float):
+        dodge_chance = int(dodge_chance * 100)
+        
+    if random.randint(1, 100) <= dodge_chance:
+        return 0, False, True # Damage 0, tidak crit, BERHASIL menghindar
+
+    # 2. Tentukan Attack dan Defense
+    if is_magic or attacker_stats.get('attack_type') == 'magic':
+        atk = attacker_stats.get('m_atk', 10)
+        defense = defender_stats.get('m_def', 5)
+    else:
+        atk = attacker_stats.get('p_atk', 10)
+        defense = defender_stats.get('p_def', 5)
+        
+    # Variansi Damage (± 10%) agar damage dinamis
+    variance = random.uniform(0.9, 1.1)
+    
+    # Hitung damage kotor
+    raw_damage = (atk * skill_multiplier) - defense
+    
+    # 3. Cek Critical Hit
+    crit_rate = attacker_stats.get('crit_rate', 5)
+    is_crit = random.randint(1, 100) <= crit_rate
+    
+    if is_crit:
+        crit_mult = attacker_stats.get('crit_dmg', 150) / 100.0
+        raw_damage *= crit_mult
+        
+    # Final Kalkulasi (Minimal damage = 1 jika tidak dodge)
+    final_damage = int(max(1, raw_damage * variance))
+    
+    return final_damage, is_crit, False
