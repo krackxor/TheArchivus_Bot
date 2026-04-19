@@ -7,6 +7,7 @@ Jika kombinasi item sesuai, pemain akan mendapatkan Job/Class khusus.
 """
 
 from database import update_player
+from game.ui_constants import Icon, Text
 
 # === MASTER JOB RECIPES (RESEP CLASS) ===
 # Masukkan ID item yang akurat dari file weapons.py, armors.py, dll.
@@ -42,7 +43,7 @@ JOB_DEFINITIONS = {
         "boots": "scout_boots",
         "cloak": "void_mantle"
     },
-    "Holy Templar": {                  # --- BARU: KELAS UNTUK SKILL LIGHT / HEAL ---
+    "Holy Templar": {                  # --- KELAS UNTUK SKILL LIGHT / HEAL ---
         "weapon": "silver_longsword",  # Asumsi item 1H
         "armor": "templar_plate",
         "head": "iron_helm",
@@ -50,7 +51,7 @@ JOB_DEFINITIONS = {
         "gloves": "heavy_gauntlets",
         "boots": "steadfast_boots",
         "cloak": "radiant_cloak",
-        "artifact": "sacred_tome"      # Atau bisa pakai 'shield' jika namanya beda
+        "artifact": "sacred_tome"      # Atau bisa pakai 'shield'
     },
     "Phantom Archer": {
         "weapon": "oak_shortbow",      # Senjata 2H
@@ -80,7 +81,6 @@ JOB_DEFINITIONS = {
         "cloak": "void_mantle",
         "artifact": "void_orb"
     }
-    # Tambahkan sisa resep class lainnya di sini seiring bertambahnya item...
 }
 
 def detect_player_job(player):
@@ -89,8 +89,8 @@ def detect_player_job(player):
     Mengembalikan: (job_name, achievement_message)
     """
     equipped = player.get('equipped', {})
-    old_job = player.get('current_job', 'Novice Weaver')
-    new_job = "Novice Weaver" # Default jika tidak ada yang cocok
+    old_job = player.get('current_job', 'Novice')
+    new_job = "Novice" # Default jika tidak ada yang cocok
     achievement_msg = None
 
     # Iterasi semua resep Job di database
@@ -116,17 +116,20 @@ def detect_player_job(player):
         # Update database untuk menyimpan job baru
         update_player(player['user_id'], {'current_job': new_job})
         
-        if new_job != "Novice Weaver":
+        # Format pesan notifikasi UI Standar
+        if new_job != "Novice":
             achievement_msg = (
-                f"🌟 **SINERGI TERDETEKSI!** 🌟\n"
+                f"{Icon.SUCCESS} **SINERGI TERDETEKSI!**\n"
+                f"{Text.LINE}\n"
                 f"Kombinasi perlengkapanmu memancarkan resonansi yang kuat.\n"
                 f"Kau kini telah diakui sebagai seorang **{new_job}**!"
             )
         else:
             achievement_msg = (
-                f"⚠️ **Sinergi Terputus.**\n"
+                f"{Icon.WARNING} **Sinergi Terputus.**\n"
+                f"{Text.LINE}\n"
                 f"Kombinasi perlengkapanmu tidak lagi sempurna.\n"
-                f"Kau kembali menjadi **Novice Weaver**."
+                f"Kau kembali menjadi **Novice**."
             )
 
     return new_job, achievement_msg
@@ -134,7 +137,7 @@ def detect_player_job(player):
 def get_job_bonus(job_name):
     """
     Mengembalikan bonus stat spesifik berdasarkan Job yang aktif.
-    Dipanggil di `game/logic/stats.py`.
+    Dipanggil secara otomatis di `game/logic/stats.py`.
     """
     bonuses = {
         "p_atk_mult": 1.0,
@@ -149,7 +152,7 @@ def get_job_bonus(job_name):
     elif job_name == "Dread Knight":
         bonuses["p_def_mult"] = 1.25  # +25% Physical Defense
         bonuses["p_atk_mult"] = 1.10  # +10% Physical Attack
-    elif job_name == "Holy Templar":  # --- BARU ---
+    elif job_name == "Holy Templar":
         bonuses["p_def_mult"] = 1.20  # +20% Physical Defense
         bonuses["m_atk_mult"] = 1.15  # +15% Magic Attack (Untuk heal/skill light)
     elif job_name == "Phantom Archer":
