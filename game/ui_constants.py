@@ -1,68 +1,85 @@
 # game/ui_constants.py
 
 """
-UI CONSTANTS - The Archivus
-Standarisasi ikon, warna, dan template text untuk konsistensi UI
+UI CONSTANTS & MULTI-LANGUAGE SYSTEM - The Archivus
+Pusat standarisasi ikon, pembatas (separator), dan terjemahan bahasa.
+Mencakup elemen tempur, spesifikasi equipment, dan penanda lokasi.
 """
 
 # ============================================================================
-# IKON SISTEM (Gunakan yang sama di seluruh game)
+# 1. IKON SISTEM (VISUAL IDENTIFIERS)
 # ============================================================================
-
 class Icon:
-    # Status & Atribut
+    # --- Status Dasar & Atribut ---
     HP = "❤️"
     MP = "💧"
     ENERGY = "⚡"
     EXP = "✨"
     LEVEL = "🎖️"
     GOLD = "💰"
+    KILLS = "💀"
     
-    # Combat
+    # --- Combat & Taktik ---
     ATTACK = "⚔️"
     DEFENSE = "🛡️"
     MAGIC = "🔮"
     SPEED = "💨"
     DODGE = "🌀"
-    SKILL = "✨"
+    SKILL = "💠"
+    CRITICAL = "💥"
+    MISS = "💨"
     
-    # Items & Inventory
+    # --- Elemen Sihir & Status (Elements & Status Ailments) ---
+    EL_FIRE = "🔥"
+    EL_ICE = "❄️"
+    EL_LIGHTNING = "⚡"
+    EL_EARTH = "🪨"
+    EL_WIND = "🌪️"
+    EL_HOLY = "☀️"
+    EL_DARK = "🌑"
+    ST_POISON = "🦠"
+    ST_BLEED = "🩸"
+    ST_STUN = "😵"
+    
+    # --- Kategori Tas (Inventory Categories) ---
     BAG = "🎒"
     POTION = "🧪"
     FOOD = "🍖"
-    GEAR = "⚙️"
-    WEAPON = "⚔️"
-    ARMOR = "🛡️"
+    MATERIAL = "🧩"
+    QUEST_ITEM = "📜"
     LOOT = "🎁"
     
-    # Actions
-    MOVE = "🚶"
-    RUN = "🏃"
-    REST = "🧘"
-    REPAIR = "🔨"
-    SHOP = "🏪"
+    # --- Equipment Spesifik (Gear Types) ---
+    GEAR_SWORD = "🗡️"
+    GEAR_BOW = "🏹"
+    GEAR_STAFF = "🪄"
+    GEAR_DAGGER = "🔪"
+    GEAR_SHIELD = "🛡️"
+    GEAR_HELMET = "🪖"
+    GEAR_ARMOR = "🧥"
+    GEAR_BOOTS = "👢"
+    GEAR_RING = "💍"
+    GEAR_AMULET = "📿"
     
-    # Status Effects
-    POISON = "☠️"
-    FREEZE = "❄️"
-    BURN = "🔥"
-    BUFF = "✨"
-    DEBUFF = "💀"
+    # --- Lokasi & Bioma (World Map & Biomes) ---
+    LOC_VILLAGE = "🏘️"      # Desa
+    LOC_CITY = "🏙️"         # Kota
+    LOC_FOREST = "🌲"       # Hutan
+    LOC_SWAMP = "🌫️"        # Rawa Beracun
+    LOC_GRAVEYARD = "🪦"    # Kuburan
+    LOC_DUNGEON = "⛓️"      # Dungeon / Bawah Tanah
+    LOC_CASTILE = "🏰"      # Castile / Kastil End-game
+    LOC_CAFE = "☕"         # Kedai / Cafe (Safezone)
+    LOC_INN = "🛌"          # Penginapan
     
-    # Quest & Progress
-    QUEST = "📋"
-    COMPLETE = "✅"
-    REWARD = "🎁"
-    STAR = "⭐"
-    
-    # Environment
-    SAFE = "🌿"
-    DANGER = "⚠️"
-    BOSS = "👹"
+    # --- Entitas (Entities) ---
     NPC = "👤"
-    LOCATION = "📍"
+    MERCHANT = "⚖️"
+    MONSTER = "🐺"
+    MINIBOSS = "👹"
+    BOSS = "👑"
     
-    # UI Elements
+    # --- Sistem & Navigasi UI ---
     ARROW_UP = "⬆️"
     ARROW_DOWN = "⬇️"
     ARROW_LEFT = "⬅️"
@@ -70,179 +87,119 @@ class Icon:
     CLOSE = "❌"
     BACK = "⬅️"
     INFO = "ℹ️"
-    
-    # Special
-    DEATH = "💀"
-    WIN = "🎉"
-    COMBO = "🔥"
+    WARNING = "⚠️"
+    SUCCESS = "✅"
+    LOCK = "🔒"
+    KEY = "🗝️"
 
 
 # ============================================================================
-# TEMPLATE TEXT (Konsisten & Ringkas)
+# 2. TEMPLATE TEXT (PEMBATAS)
 # ============================================================================
-
 class Text:
-    # Separator
     LINE = "━━━━━━━━━━━━━━━━━━━━"
     LINE_SHORT = "━━━━━━━━━━━━━━"
-    
-    # Common Messages
-    NOT_ENOUGH_GOLD = "❌ Emas tidak cukup!"
-    NOT_ENOUGH_MP = "❌ MP tidak cukup!"
-    NOT_ENOUGH_ENERGY = "❌ Energi habis!"
-    ITEM_NOT_FOUND = "❌ Item tidak ditemukan!"
-    BAG_EMPTY = "📭 Tas kosong"
-    
-    # Combat Messages
-    PLAYER_WIN = "🎉 MENANG!"
-    PLAYER_LOSE = "💀 KALAH"
-    ESCAPE_SUCCESS = "🏃 Kabur berhasil!"
-    ESCAPE_FAIL = "❌ Gagal kabur!"
-    
-    # System Messages
-    SAVED = "💾 Tersimpan"
-    LOADING = "⏳ Memuat..."
-    ERROR = "⚠️ Terjadi kesalahan"
 
 
 # ============================================================================
-# LAYOUT HELPERS (Untuk Mobile)
+# 3. SISTEM MULTI-BAHASA (TRANSLATIONS)
 # ============================================================================
-
-class Layout:
-    # Max width untuk mobile (karakter)
-    MAX_WIDTH = 38
+TRANSLATIONS = {
+    "id": { # BAHASA INDONESIA (Default)
+        # Menu & UI
+        "BTN_CLOSE": "❌ Tutup Menu",
+        "BTN_BACK": "⬅️ Kembali",
+        "INVENTORY_TITLE": "Isi Tas",
+        "CONSUMABLES_TITLE": "Daftar Ramuan & Makanan",
+        "PROFILE_TITLE": "Profil & Status",
+        
+        # Lokasi
+        "AREA_VILLAGE": "Desa Berkabut",
+        "AREA_CITY": "Kota Pusat",
+        "AREA_FOREST": "Hutan Menyesatkan",
+        "AREA_SWAMP": "Rawa Kematian",
+        "AREA_GRAVEYARD": "Pemakaman Kuno",
+        "AREA_DUNGEON": "Labirin Bawah Tanah",
+        "AREA_CASTILE": "Castile Sang Penguasa",
+        
+        # Navigasi Bawah (Reply Keyboard)
+        "NAV_NORTH": "⬆️ Utara",
+        "NAV_SOUTH": "⬇️ Selatan",
+        "NAV_WEST": "⬅️ Barat",
+        "NAV_EAST": "Timur ➡️",
+        "NAV_REST": "🧘 Meditasi",
+        "NAV_PROFILE": "📊 Profil",
+        
+        # Stats & Info
+        "LEVEL": "Lvl",
+        "EXP": "EXP",
+        "STAT_POINTS_INFO": "✨ STAT POINTS: {sp}\n_Ketuk tombol + di bawah untuk upgrade!_",
+        
+        # Pesan Sistem
+        "EMPTY_BAG": "📭 Tas kosong.",
+        "NOT_ENOUGH_GOLD": "❌ Emasmu tidak cukup!",
+        "NOT_ENOUGH_ENERGY": "❌ Energimu habis! Carilah tempat beristirahat.",
+        "LOCKED_DOOR": "🔒 Pintu terkunci. Membutuhkan kunci khusus.",
+        
+        # Taktik Pertempuran
+        "CMD_ATTACK": "⚔️ Serang",
+        "CMD_SKILL": "💠 Skill",
+        "CMD_DEFEND": "🛡️ Bertahan",
+        "CMD_DODGE": "🌀 Menghindar",
+        "CMD_RUN": "🏃 Kabur"
+    },
     
-    # Spacing
-    PADDING_SMALL = "\n"
-    PADDING_MEDIUM = "\n\n"
-    PADDING_LARGE = "\n\n\n"
-    
-    @staticmethod
-    def header(title):
-        """Membuat header yang rapi"""
-        return f"{Text.LINE}\n{title}\n{Text.LINE}"
-    
-    @staticmethod
-    def section(title, content):
-        """Membuat section dengan title"""
-        return f"**{title}**\n{content}"
-    
-    @staticmethod
-    def stat_line(label, value, icon=""):
-        """Format: Icon Label: Value"""
-        return f"{icon} {label}: `{value}`"
+    "en": { # ENGLISH
+        # Menu & UI
+        "BTN_CLOSE": "❌ Close Menu",
+        "BTN_BACK": "⬅️ Back",
+        "INVENTORY_TITLE": "Inventory",
+        "CONSUMABLES_TITLE": "Consumables",
+        "PROFILE_TITLE": "Profile & Status",
+        
+        # Lokasi
+        "AREA_VILLAGE": "Misty Village",
+        "AREA_CITY": "Central City",
+        "AREA_FOREST": "Deceiving Forest",
+        "AREA_SWAMP": "Swamp of Death",
+        "AREA_GRAVEYARD": "Ancient Graveyard",
+        "AREA_DUNGEON": "Underground Labyrinth",
+        "AREA_CASTILE": "The Sovereign's Castile",
+        
+        # Navigasi Bawah (Reply Keyboard)
+        "NAV_NORTH": "⬆️ North",
+        "NAV_SOUTH": "⬇️ South",
+        "NAV_WEST": "⬅️ West",
+        "NAV_EAST": "East ➡️",
+        "NAV_REST": "🧘 Meditate",
+        "NAV_PROFILE": "📊 Profile",
+        
+        # Stats & Info
+        "LEVEL": "Lvl",
+        "EXP": "EXP",
+        "STAT_POINTS_INFO": "✨ STAT POINTS: {sp}\n_Tap the + button below to upgrade!_",
+        
+        # Pesan Sistem
+        "EMPTY_BAG": "📭 Bag is empty.",
+        "NOT_ENOUGH_GOLD": "❌ Not enough gold!",
+        "NOT_ENOUGH_ENERGY": "❌ Out of energy! Find a place to rest.",
+        "LOCKED_DOOR": "🔒 The door is locked. Needs a special key.",
+        
+        # Taktik Pertempuran
+        "CMD_ATTACK": "⚔️ Attack",
+        "CMD_SKILL": "💠 Skill",
+        "CMD_DEFEND": "🛡️ Defend",
+        "CMD_DODGE": "🌀 Dodge",
+        "CMD_RUN": "🏃 Run"
+    }
+}
 
-
-# ============================================================================
-# WARNA BAR (Progress Indicators)
-# ============================================================================
-
-class BarColor:
-    # HP Bar
-    HP_HIGH = "🟩"  # > 60%
-    HP_MID = "🟨"   # 20-60%
-    HP_LOW = "🟥"   # < 20%
-    
-    # MP Bar
-    MP = "🟦"
-    
-    # Energy Bar
-    ENERGY = "🟧"
-    
-    # EXP Bar
-    EXP = "🟪"
-    
-    # Generic
-    EMPTY = "⬜"
-    FULL = "🟩"
-
-
-# ============================================================================
-# BAHASA INDONESIA KONSISTEN
-# ============================================================================
-
-class Lang:
-    """Text dalam Bahasa Indonesia yang konsisten"""
-    
-    # Player Actions
-    ATTACK = "Serang"
-    DEFEND = "Bertahan"
-    DODGE = "Menghindar"
-    USE_SKILL = "Gunakan Skill"
-    USE_ITEM = "Gunakan Item"
-    RUN = "Kabur"
-    
-    # Directions
-    NORTH = "Utara"
-    SOUTH = "Selatan"
-    EAST = "Timur"
-    WEST = "Barat"
-    
-    # Menu
-    PROFILE = "Profil"
-    INVENTORY = "Tas"
-    EQUIPMENT = "Peralatan"
-    SKILLS = "Skill"
-    QUESTS = "Misi"
-    STATS = "Statistik"
-    
-    # Status
-    HP_FULL = "HP penuh"
-    MP_FULL = "MP penuh"
-    ENERGY_FULL = "Energi penuh"
-    
-    # Combat Results
-    CRITICAL = "Kritis!"
-    MISS = "Meleset!"
-    BLOCKED = "Ditahan!"
-    DODGED = "Dihindari!"
-    
-    # Common Phrases
-    YOU = "Kamu"
-    ENEMY = "Musuh"
-    DAMAGE = "Damage"
-    HEAL = "Pulih"
-    GAINED = "Dapat"
-    LOST = "Hilang"
-
-
-# ============================================================================
-# QUICK TEMPLATES (Siap Pakai)
-# ============================================================================
-
-def format_stat(value, max_value=None):
-    """Format angka stat dengan pemisah ribuan"""
-    if max_value:
-        return f"{int(value):,}/{int(max_value):,}"
-    return f"{int(value):,}"
-
-
-def format_currency(amount):
-    """Format gold dengan pemisah ribuan"""
-    return f"{Icon.GOLD} {int(amount):,}G"
-
-
-def format_hp(current, maximum):
-    """Format HP dengan ikon dan angka"""
-    return f"{Icon.HP} {int(current)}/{int(maximum)}"
-
-
-def format_mp(current, maximum):
-    """Format MP dengan ikon dan angka"""
-    return f"{Icon.MP} {int(current)}/{int(maximum)}"
-
-
-def format_energy(current, maximum=100):
-    """Format Energy dengan ikon dan angka"""
-    return f"{Icon.ENERGY} {int(current)}/{int(maximum)}"
-
-
-def create_separator(style="line"):
-    """Buat separator sesuai style"""
-    if style == "line":
-        return Text.LINE
-    elif style == "short":
-        return Text.LINE_SHORT
-    else:
-        return Text.LINE
+def get_text(lang_code: str, key: str, **kwargs) -> str:
+    lang_dict = TRANSLATIONS.get(lang_code, TRANSLATIONS["id"])
+    text_template = lang_dict.get(key, f"[{key}_MISSING]")
+    if kwargs:
+        try:
+            return text_template.format(**kwargs)
+        except KeyError:
+            return text_template
+    return text_template
