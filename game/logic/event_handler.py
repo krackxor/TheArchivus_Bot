@@ -21,7 +21,6 @@ def get_event_interaction_kb(event_type, event_data):
     
     if event_type == "npc":
         cat = event_data.get("category", "wanderer")
-        # Callback pool_{cat} memicu interaksi dinamis dari NPC_POOL
         kb.append([InlineKeyboardButton(text="🤝 Dekati Sosok Itu", callback_data=f"pool_{cat}")])
         kb.append([InlineKeyboardButton(text="🚶 Abaikan", callback_data="evt_ignore")])
 
@@ -44,14 +43,13 @@ async def handle_event_interaction(callback, state, player):
     data = callback.data
     user_id = player['user_id']
     
-    # A. MESIN NPC POOL (10 Kategori NPC)
+    # A. MESIN NPC POOL
     if data.startswith("pool_"):
         category = data.split("_")[1]
         npc = random.choice(NPC_POOL.get(category, NPC_POOL['wanderer']))
         text = f"👤 **{npc['name']}**\n\n_{npc['narration']}_\n"
         quest_msgs = []
 
-        # Eksekusi berdasarkan type fungsional di database
         npc_type = npc.get("type")
         
         if npc_type == "heal":
@@ -80,22 +78,25 @@ async def handle_event_interaction(callback, state, player):
             player.setdefault('inventory', []).append(item)
             text += f"\n🎁 **Dapatkan:** {item.replace('_', ' ').title()}"
 
-        # Simpan perubahan
+        # FIX: Kembalikan state ke exploring agar navigasi terbuka kembali
+        await state.set_state(GameState.exploring)
         update_player(user_id, player)
         
         final_text = text + ("\n\n" + "\n".join(quest_msgs) if quest_msgs else "")
         
-        # PERBAIKAN: Hapus pesan lama dan kirim pesan baru untuk mengembalikan keyboard navigasi
         try:
             await callback.message.delete()
         except:
             pass
         await callback.message.answer(final_text, reply_markup=get_main_reply_keyboard(player))
 
-    # B. MESIN BAHAYA MAUT (Deadly Terrains)
+    # B. MESIN BAHAYA MAUT
     elif data.startswith("exec_deadly_"):
         event_id = "_".join(data.split("_")[2:])
         success, msg = process_deadly_interaction(player, event_id)
+        
+        # FIX: Kembalikan state ke exploring
+        await state.set_state(GameState.exploring)
         update_player(user_id, player)
         
         try:
@@ -104,15 +105,17 @@ async def handle_event_interaction(callback, state, player):
             pass
         await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # C. MESIN LOKASI (Landmarks)
+    # C. MESIN LOKASI
     elif data.startswith("exec_landmark_"):
         lm_id = "_".join(data.split("_")[2:])
         res, msg = process_landmark_interaction(player, lm_id)
         
         if res == "ambush":
+            # State jangan diubah ke exploring jika terjadi ambush, tetap biarkan sistem combat yang ambil alih
             await callback.message.edit_text(f"⚠️ {msg}")
-            # Logika combat manual bisa dipicu di sini
         else:
+            # FIX: Kembalikan state ke exploring
+            await state.set_state(GameState.exploring)
             update_player(user_id, player)
             try:
                 await callback.message.delete()
@@ -120,7 +123,7 @@ async def handle_event_interaction(callback, state, player):
                 pass
             await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # D. ABAIKAN / LANJUT (TRIGGER MOVE QUEST)
+    # D. ABAIKAN / LANJUT
     elif data == "evt_ignore":
         player, quest_msgs = update_quest_progress(player, "move_steps")
         update_player(user_id, player)
@@ -130,7 +133,6 @@ async def handle_event_interaction(callback, state, player):
         if quest_msgs: 
             msg += "\n\n" + "\n".join(quest_msgs)
         
-        # Hapus tombol inline dan munculkan kembali menu navigasi bawah
         try:
             await callback.message.delete()
         except:
