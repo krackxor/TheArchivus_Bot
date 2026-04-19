@@ -26,18 +26,21 @@ def get_event_interaction_kb(event_type, event_data):
         if cat == "quiz":
             kb.append([InlineKeyboardButton(text="📜 Tantang Kecerdasan", callback_data="evt_npc_quiz")])
         else:
+            # Gunakan prefix 'pool_' untuk kategori NPC fungsional/gacha
             kb.append([InlineKeyboardButton(text="🤝 Dekati Sosok Itu", callback_data=f"pool_{cat}")])
         
         kb.append([InlineKeyboardButton(text="🚶 Abaikan", callback_data="evt_ignore")])
 
     elif event_type == "deadly":
         event_id = event_data.get("id")
+        # Pastikan event_id disertakan dengan jelas
         kb.append([InlineKeyboardButton(text="🏃 Terjang Bahaya!", callback_data=f"exec_deadly_{event_id}")])
         kb.append([InlineKeyboardButton(text="🔄 Cari Jalan Lain", callback_data="evt_ignore")])
 
     elif event_type == "landmark":
         lm_id = event_data.get("id")
-        kb.append([InlineKeyboardButton(text="🔍 Periksa/Interaksi", callback_data=f"exec_landmark_{lm_id}")])
+        # Landmark menggunakan prefix 'exec_landmark_'
+        kb.append([InlineKeyboardButton(text="🔍 Periksa Lokasi", callback_data=f"exec_landmark_{lm_id}")])
         kb.append([InlineKeyboardButton(text="➡️ Lanjut Jalan", callback_data="evt_ignore")])
 
     return InlineKeyboardMarkup(inline_keyboard=kb) if kb else None
@@ -52,14 +55,14 @@ async def handle_event_interaction(callback, state, player):
     # A. MESIN NPC POOL (Heal, Gamble, Lore, Gift)
     if data.startswith("pool_"):
         category = data.split("_")[1]
-        npc = random.choice(NPC_POOL.get(category, NPC_POOL['wanderer']))
+        npc_list = NPC_POOL.get(category, NPC_POOL['wanderer'])
+        npc = random.choice(npc_list)
+        
         text = f"👤 **{npc['name']}**\n\n_{npc['narration']}_\n"
-        quest_msgs = []
-
         npc_type = npc.get("type")
         
         if npc_type == "heal":
-            if player['gold'] >= npc['cost']:
+            if player['gold'] >= npc.get('cost', 0):
                 player['hp'] = min(player.get('max_hp', 100), player['hp'] + npc['value'])
                 player['gold'] -= npc['cost']
                 text += f"\n✨ **HP Pulih +{npc['value']}**"
@@ -67,7 +70,7 @@ async def handle_event_interaction(callback, state, player):
                 return await callback.answer("Gold tidak cukup!", show_alert=True)
 
         elif npc_type == "gamble":
-            if player['gold'] >= npc['bet']:
+            if player['gold'] >= npc.get('bet', 0):
                 win = random.random() < npc['chance']
                 reward = npc['bet'] * 2 if win else 0
                 player['gold'] = player['gold'] - npc['bet'] + reward
@@ -77,28 +80,25 @@ async def handle_event_interaction(callback, state, player):
 
         elif npc_type == "lore":
             text += f"\n\n📜 **Lore:** _{random.choice(LORE_STORIES)}_"
-            player, quest_msgs = update_quest_progress(player, "move_steps")
+            player, _ = update_quest_progress(player, "move_steps")
 
         elif npc_type == "gift":
             item = npc['gift_item']
             player.setdefault('inventory', []).append(item)
             text += f"\n🎁 **Dapatkan:** {item.replace('_', ' ').title()}"
 
-        # Akhiri interaksi dan reset state
+        # Akhiri interaksi dan reset state ke penjelajahan
         await state.set_state(GameState.exploring)
         update_player(user_id, player)
-        
-        final_text = text + ("\n\n" + "\n".join(quest_msgs) if quest_msgs else "")
         
         try:
             await callback.message.delete()
         except:
             pass
-        await callback.message.answer(final_text, reply_markup=get_main_reply_keyboard(player))
+        await callback.message.answer(text, reply_markup=get_main_reply_keyboard(player))
 
     # B. KHUSUS: MESIN QUIZ
     elif data == "evt_npc_quiz":
-        # Gunakan Tier berdasarkan level pemain atau acak
         tier = max(1, min(5, player.get('level', 1) // 10 + 1))
         puzzle = generate_puzzle(tier=tier)
         
@@ -115,7 +115,8 @@ async def handle_event_interaction(callback, state, player):
 
     # C. MESIN BAHAYA MAUT (Deadly Terrains)
     elif data.startswith("exec_deadly_"):
-        event_id = "_".join(data.split("_")[2:])
+        # Ambil ID dengan memotong prefix
+        event_id = data.replace("exec_deadly_", "")
         success, msg = process_deadly_interaction(player, event_id)
         
         await state.set_state(GameState.exploring)
@@ -129,11 +130,12 @@ async def handle_event_interaction(callback, state, player):
 
     # D. MESIN LOKASI (Landmarks)
     elif data.startswith("exec_landmark_"):
-        lm_id = "_".join(data.split("_")[2:])
+        # Ambil ID dengan memotong prefix
+        lm_id = data.replace("exec_landmark_", "")
         res, msg = process_landmark_interaction(player, lm_id)
         
         if res == "ambush":
-            # Jangan reset state jika ambush, biarkan battle_handler mengambil alih
+            # Jika ambush, biarkan battle handler atau UI combat yang bekerja
             await callback.message.edit_text(f"⚠️ {msg}")
         else:
             await state.set_state(GameState.exploring)
@@ -144,8 +146,9 @@ async def handle_event_interaction(callback, state, player):
                 pass
             await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # E. ABAIKAN / LANJUT (TRIGGER MOVE QUEST)
+    # E. ABAIKAN / LANJUT JALAN
     elif data == "evt_ignore":
+        # Setiap langkah yang diabaikan tetap menghitung progres quest langkah
         player, quest_msgs = update_quest_progress(player, "move_steps")
         update_player(user_id, player)
         
