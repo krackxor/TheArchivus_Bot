@@ -1,9 +1,19 @@
 # game/items/heads.py
 
 """
-DATABASE HEADS (Helm & Penutup Kepala)
-Memberikan perlindungan defensif utama, sering kali memiliki bobot (weight) yang
-berpengaruh pada speed/dodge pemain, atau memberikan bonus magic.
+====================================================================
+DATABASE HEADS (Helm & Penutup Kepala) - The Archivus
+====================================================================
+File ini menyimpan seluruh data item untuk slot 'Head' (Kepala).
+Slot kepala memberikan perlindungan defensif utama (P_DEF & M_DEF).
+Beberapa helm baja memiliki bobot (weight) yang sangat berat,
+yang akan mengurangi kecepatan (speed) karakter saat bertarung.
+
+SINKRONISASI HAZARDS:
+Beberapa item di sini (berawalan 'item_') adalah syarat mutlak 
+untuk selamat dari anomali lingkungan di file hazards.py.
+Pastikan 'id' item sama persis dengan 'required_item' di hazards.py.
+====================================================================
 """
 
 HEADS = {
@@ -47,6 +57,28 @@ HEADS = {
     },
 
     # ==========================================
+    # --- HAZARD PROTECTION HEADGEAR (TIER 3) ---
+    # ==========================================
+    # 1. Pelindung ILUSI (Cermin Distorsi)
+    "item_kacamata_kebenaran": {
+        "id": "item_kacamata_kebenaran", "name": "Kacamata Kebenaran", "type": "head", "tier": 3,
+        "m_def": 8, "dodge": 0.05, "weight": 1,
+        "description": "Menangkal tipu daya visual dan cermin halusinasi. Meningkatkan akurasi hindaran (Dodge 5%)."
+    },
+    # 2. Pelindung BISING (Jeritan Jiwa Tersiksa)
+    "item_penutup_telinga_lilin": {
+        "id": "item_penutup_telinga_lilin", "name": "Penutup Telinga Lilin Corpse", "type": "head", "tier": 3,
+        "m_def": 5, "weight": 0,
+        "description": "Menyumbat segala bentuk kebisingan fatal yang bisa memecahkan gendang telinga."
+    },
+    # 3. Pelindung MEMORI (Zona Penyedot Ingatan)
+    "item_ikat_kepala_timah": {
+        "id": "item_ikat_kepala_timah", "name": "Ikat Kepala Timah", "type": "head", "tier": 3,
+        "p_def": 4, "m_def": 15, "weight": 2,
+        "description": "Melapisi tempurung kepalamu, mencegah entitas luar menyedot ingatan dan kewarasanmu."
+    },
+
+    # ==========================================
     # --- INTERMEDIATE HEADS (TIER 3) ---
     # ==========================================
     "steel_helmet": {
@@ -57,12 +89,12 @@ HEADS = {
     "iron_helm": {
         "id": "iron_helm", "name": "Dread Iron Helm", "type": "head", "tier": 3,
         "p_def": 28, "m_def": 5, "weight": 10,
-        "description": "Helm baja tertutup yang memberikan rasa aman semu. (Syarat Dread Knight)."
+        "description": "Helm baja tertutup yang memberikan rasa aman semu. (Syarat Job: Dread Knight)."
     },
     "leather_hood": {
         "id": "leather_hood", "name": "Scout's Leather Hood", "type": "head", "tier": 3,
         "p_def": 12, "m_def": 10, "speed": 5, "weight": 2,
-        "description": "Penutup kepala ringan untuk menjaga penglihatan tetap tajam. (Syarat Phantom Archer)."
+        "description": "Penutup kepala ringan untuk menjaga penglihatan tetap tajam. (Syarat Job: Phantom Archer)."
     },
     "sage_circlet": {
         "id": "sage_circlet", "name": "Circlet of the Sage", "type": "head", "tier": 3,
@@ -86,12 +118,12 @@ HEADS = {
     "circlet_of_north": {
         "id": "circlet_of_north", "name": "Circlet of the North", "type": "head", "tier": 4,
         "m_atk": 15, "p_def": 8, "m_def": 25, "weight": 2,
-        "description": "Mahkota kristal yang memancarkan aura dingin abadi. (Syarat Blizzard Sovereign)."
+        "description": "Mahkota kristal yang memancarkan aura dingin abadi. (Syarat Job: Blizzard Sovereign)."
     },
     "weaver_hood": {
         "id": "weaver_hood", "name": "Oracle's Veil", "type": "head", "tier": 4,
         "m_atk": 10, "p_def": 10, "m_def": 30, "weight": 1,
-        "description": "Kain sutra yang diberkati untuk para pendeta es. (Syarat Void Sage)."
+        "description": "Kain sutra yang diberkati untuk para pendeta es. (Syarat Job: Void Sage)."
     },
     "paladin_greathelm": {
         "id": "paladin_greathelm", "name": "Paladin's Greathelm", "type": "head", "tier": 4,
