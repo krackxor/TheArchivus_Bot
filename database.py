@@ -5,20 +5,29 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 
-# Memuat variabel dari .env
+# Memuat variabel dari .env (Opsional, untuk token bot dsb)
 load_dotenv()
 
-# Koneksi ke MongoDB (Aman untuk Production / Hosting)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "the_archivus_db")
+# ====================================================================
+# KONEKSI DATABASE (DIKUNCI KE LOCAL VPS - ANTI CLOUD)
+# ====================================================================
+# Mengabaikan MONGO_URI dari .env untuk memastikan hanya menggunakan database lokal
+MONGO_URI = "mongodb://127.0.0.1:27017/"
+DB_NAME = "the_archivus_db"
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
 db = client[DB_NAME]
 
 # Koleksi (Tables)
 players_col = db["players"]
 narratives_col = db["narratives"]
 leaderboard_col = db["leaderboard"]
+
+# Koleksi Baru untuk Master Data
+items_col = db["items"]
+landmarks_col = db["landmarks"]
+npcs_col = db["npcs"]
+puzzles_col = db["puzzles"]
 
 # --- LOKASI ENDLESS (DISINKRONKAN DENGAN EXPLORATION.PY) ---
 LOCATIONS = [
@@ -325,30 +334,6 @@ def get_global_leaderboard(stat_type, limit=10):
     results = leaderboard_col.find({stat_type: {"$exists": True}}).sort(stat_type, -1).limit(limit)
     return list(results)
 
-def auto_seed_content():
-    if narratives_col.count_documents({}) == 0:
-        print("[SISTEM] Database narasi kosong. Menyuntikkan naskah awal...")
-        content = [
-            {"category": "safe_travel", "text": "Hanya suara langkah kakimu yang bergema di lorong sunyi ini."},
-            {"category": "safe_travel", "text": "Cahaya redup dari lentera Weaver-mu membelah kegelapan pekat."},
-            {"category": "safe_travel", "text": "Kamu merasakan hembusan angin dingin, tapi tidak ada jendela di sini."},
-            {"category": "safe_travel", "text": "Dinding-dinding ini seperti bernapas mengikuti ritme langkahmu."},
-            {"category": "safe_travel", "text": "Arsitektur Archivus berubah tanpa kau sadari. Jalan ini tidak sama dengan tadi."},
-            {"category": "safe_travel", "text": "Debu menari dalam cahaya lentera, membentuk pola yang hampir memiliki makna."},
-            
-            {"category": "monster_event", "text": "Tiba-tiba, bayangan di dinding memisahkan diri dan menyerang!"},
-            {"category": "monster_event", "text": "Ruang di depanmu terdistorsi. Sesuatu yang haus akan memori muncul."},
-            {"category": "monster_event", "text": "Gemuruh dari kegelapan! Entitas menghadangmu dengan auranya yang mencekik."},
-            {"category": "monster_event", "text": "Tinta hitam mengalir dari langit-langit, membentuk sosok yang mengerikan!"},
-            
-            {"category": "npc_event", "text": "Seorang sosok berjubah duduk di sudut, menatapmu dengan mata kosong."},
-            {"category": "npc_event", "text": "Suara bisikan memanggil namamu dari kegelapan di depan."},
-            {"category": "npc_event", "text": "Seseorang berdiri di tengah lorong. Tapi apa mereka benar-benar ada di sana?"},
-            {"category": "npc_event", "text": "Kau mendengar tawa samar. Sumber suaranya tidak jelas."}
-        ]
-        narratives_col.insert_many(content)
-        print(f"[SISTEM] {len(content)} Naskah berhasil disuntikkan!")
-
 def add_buff(user_id, buff_data):
     player = get_player(user_id)
     buffs = player.get('active_buffs', [])
@@ -379,6 +364,87 @@ def tick_buffs(user_id):
             
     if updates:
         update_player(user_id, updates)
+
+# ====================================================================
+# SUPER SEED SYSTEM (SINKRONISASI KE LOKAL DATABASE)
+# ====================================================================
+
+def auto_seed_content():
+    """Mengunggah SEMUA data Master dari file .py ke Database Lokal secara otomatis"""
+    print("[SISTEM] Memeriksa kelengkapan Master Data di Database Lokal...")
+
+    # 1. SEED NARASI DASAR (Dari game/data/script.py)
+    if narratives_col.count_documents({}) == 0:
+        try:
+            from game.data.script import NARRATIVES
+            if NARRATIVES:
+                narratives_col.insert_many(NARRATIVES)
+                print(f"✅ Local DB: {len(NARRATIVES)} Naskah berhasil disuntikkan dari script.py!")
+        except Exception as e:
+            print(f"⚠️ Gagal load Narasi dari script.py: {e}")
+
+    # 2. SEED SEMUA ITEMS (Equipment, Consumables, Misc, Tools)
+    if items_col.count_documents({}) == 0:
+        try:
+            from game.items.masks import MASKS
+            from game.items.heads import HEADS
+            from game.items.cloaks import CLOAKS
+            from game.items.boots import BOOTS
+            from game.items.armors import ARMORS
+            from game.items.artifacts import ARTIFACTS
+            from game.consumables.utility import UTILITIES
+            from game.consumables.items import MISC_ITEMS, CAMPING_ITEMS
+            
+            # Gabungkan dictionary dengan aman
+            all_items = {}
+            for db_dict in [MASKS, HEADS, CLOAKS, BOOTS, ARMORS, ARTIFACTS, UTILITIES, MISC_ITEMS, CAMPING_ITEMS]:
+                all_items.update(db_dict)
+                
+            if all_items:
+                items_col.insert_many(list(all_items.values()))
+                print(f"✅ Local DB: {len(all_items)} Item (Gear & Utility) Sinkron!")
+        except Exception as e:
+            print(f"⚠️ Gagal load Items: {e}")
+
+    # 3. SEED LANDMARKS
+    if landmarks_col.count_documents({}) == 0:
+        try:
+            from game.data.environment.landmarks import LANDMARKS
+            if LANDMARKS:
+                landmarks_col.insert_many(list(LANDMARKS.values()))
+                print(f"✅ Local DB: {len(LANDMARKS)} Landmark Sinkron!")
+        except Exception as e:
+            print(f"⚠️ Gagal load Landmarks: {e}")
+
+    # 4. SEED NPCS
+    if npcs_col.count_documents({}) == 0:
+        try:
+            from game.data.npc_data import NPC_POOL
+            flat_npcs = []
+            for cat, npcs in NPC_POOL.items():
+                for n in npcs:
+                    n['category'] = cat
+                    flat_npcs.append(n)
+            if flat_npcs:
+                npcs_col.insert_many(flat_npcs)
+                print(f"✅ Local DB: {len(flat_npcs)} NPC Sinkron!")
+        except Exception as e:
+            print(f"⚠️ Gagal load NPCs: {e}")
+
+    # 5. SEED PUZZLES
+    if puzzles_col.count_documents({}) == 0:
+        try:
+            from game.puzzles.manager import PUZZLE_DATABASE
+            flat_puzzles = []
+            for tier, riddles in PUZZLE_DATABASE.items():
+                for r in riddles:
+                    r['tier'] = tier
+                    flat_puzzles.append(r)
+            if flat_puzzles:
+                puzzles_col.insert_many(flat_puzzles)
+                print(f"✅ Local DB: {len(flat_puzzles)} Puzzle/Quiz Sinkron!")
+        except Exception as e:
+            print(f"⚠️ Gagal load Puzzles: {e}")
 
 if __name__ == "__main__":
     auto_seed_content()
