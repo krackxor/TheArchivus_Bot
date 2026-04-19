@@ -33,7 +33,6 @@ def get_event_interaction_kb(event_type, event_data):
 
     elif event_type == "deadly":
         event_id = event_data.get("id")
-        # Pastikan event_id disertakan dengan jelas
         kb.append([InlineKeyboardButton(text="🏃 Terjang Bahaya!", callback_data=f"exec_deadly_{event_id}")])
         kb.append([InlineKeyboardButton(text="🔄 Cari Jalan Lain", callback_data="evt_ignore")])
 
@@ -59,6 +58,7 @@ async def handle_event_interaction(callback, state, player):
         npc = random.choice(npc_list)
         
         text = f"👤 **{npc['name']}**\n\n_{npc['narration']}_\n"
+        quest_msgs = []
         npc_type = npc.get("type")
         
         if npc_type == "heal":
@@ -80,7 +80,8 @@ async def handle_event_interaction(callback, state, player):
 
         elif npc_type == "lore":
             text += f"\n\n📜 **Lore:** _{random.choice(LORE_STORIES)}_"
-            player, _ = update_quest_progress(player, "move_steps")
+            # Update progres quest untuk misi eksplorasi
+            player, quest_msgs = update_quest_progress(player, "move_steps")
 
         elif npc_type == "gift":
             item = npc['gift_item']
@@ -91,11 +92,13 @@ async def handle_event_interaction(callback, state, player):
         await state.set_state(GameState.exploring)
         update_player(user_id, player)
         
+        final_text = text + ("\n\n" + "\n".join(quest_msgs) if quest_msgs else "")
+        
         try:
             await callback.message.delete()
         except:
             pass
-        await callback.message.answer(text, reply_markup=get_main_reply_keyboard(player))
+        await callback.message.answer(final_text, reply_markup=get_main_reply_keyboard(player))
 
     # B. KHUSUS: MESIN QUIZ
     elif data == "evt_npc_quiz":
@@ -115,7 +118,6 @@ async def handle_event_interaction(callback, state, player):
 
     # C. MESIN BAHAYA MAUT (Deadly Terrains)
     elif data.startswith("exec_deadly_"):
-        # Ambil ID dengan memotong prefix
         event_id = data.replace("exec_deadly_", "")
         success, msg = process_deadly_interaction(player, event_id)
         
@@ -130,12 +132,11 @@ async def handle_event_interaction(callback, state, player):
 
     # D. MESIN LOKASI (Landmarks)
     elif data.startswith("exec_landmark_"):
-        # Ambil ID dengan memotong prefix
         lm_id = data.replace("exec_landmark_", "")
         res, msg = process_landmark_interaction(player, lm_id)
         
         if res == "ambush":
-            # Jika ambush, biarkan battle handler atau UI combat yang bekerja
+            # Jika ambush, biarkan battle handler yang bekerja (jangan reset state)
             await callback.message.edit_text(f"⚠️ {msg}")
         else:
             await state.set_state(GameState.exploring)
