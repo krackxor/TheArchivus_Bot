@@ -34,18 +34,20 @@ skills_col = db["skills"]
 
 # --- LOKASI ENDLESS (DISINKRONKAN DENGAN EXPLORATION.PY) ---
 LOCATIONS = [
-    "The Whispering Hall", 
-    "The Forsaken Mire", 
-    "The Abyssal Depth", 
-    "The Frozen Purgatory", 
-    "The Crimson Throne"
+    "village", 
+    "city", 
+    "forest", 
+    "swamp", 
+    "graveyard",
+    "dungeon",
+    "castile"
 ]
 
 def validate_player_data(player_doc, user_id):
     """Memastikan dokumen pemain lama mendapatkan field-field baru tanpa error."""
     updates = {}
     default_fields = {
-        "equipped": {}, "current_job": "Novice Weaver",
+        "equipped": {}, "current_job": "Novice",
         "base_p_atk": 10, "base_m_atk": 10, "base_p_def": 5, "base_m_def": 5, "base_speed": 10,
         "stat_points": 0, "artifacts": [], "unlocked_lores": [],
         "step_in_cycle": 0, "miniboss_slain_cycle": False,
@@ -54,7 +56,8 @@ def validate_player_data(player_doc, user_id):
         "inventory": [], "active_buffs": [], "active_resin": None,
         "resin_duration": 0, "has_companion": False, "companion_duration": 0,
         "equipment_durability": {}, "permanent_bonus": {}, 
-        "skill_usages": {}, "skill_cooldowns": {}, "last_skill_used": None
+        "skill_usages": {}, "skill_cooldowns": {}, "last_skill_used": None,
+        "lang": "id" # Ditambahkan untuk sinkronisasi dengan ui_constants
     }
 
     for field, default_value in default_fields.items():
@@ -67,20 +70,19 @@ def validate_player_data(player_doc, user_id):
 
     return player_doc
 
-
 def get_player(user_id, username="Weaver"):
     """Mengambil data pemain atau membuat baru jika belum ada"""
     player = players_col.find_one({"user_id": user_id})
     
     if not player:
         new_player = {
-            "user_id": user_id, "username": username,
+            "user_id": user_id, "username": username, "lang": "id",
             "hp": 100, "max_hp": 100, "mp": 50, "max_mp": 50, "gold": 0,
             "kills": 0, "boss_kills": 0, "base_p_atk": 10, "base_m_atk": 10,
             "base_p_def": 5, "base_m_def": 5, "base_speed": 10, "stat_points": 0,
             "energy": 100, "max_energy": 100, "active_effects": [], 
             "level": 1, "exp": 0, "exp_needed": 100, "inventory": [],
-            "equipped": {}, "equipment_durability": {}, "current_job": "Novice Weaver",
+            "equipped": {}, "equipment_durability": {}, "current_job": "Novice",
             "artifacts": [], "permanent_bonus": {}, "skill_usages": {},
             "skill_cooldowns": {}, "last_skill_used": None,
             "cycle": 1, "location": LOCATIONS[0], "history": [],
@@ -144,7 +146,7 @@ def reset_player_death(user_id, cause):
         "energy": player.get("max_energy", 100), "active_effects": [],
         "step_counter": 0, "step_in_cycle": 0, "miniboss_slain_cycle": False,
         "gold": new_gold, "exp": new_exp, "kills": 0, "inventory": [],
-        "equipped": {}, "equipment_durability": {}, "current_job": "Novice Weaver",
+        "equipped": {}, "equipment_durability": {}, "current_job": "Novice",
         "artifacts": saved_artifacts, "permanent_bonus": saved_bonus,
         "skill_cooldowns": {}, "last_skill_used": None, "skill_usages": saved_skill_usages,
         "monster_streak": 0, "steps_since_event": 0, "current_combo": 0,
@@ -163,14 +165,13 @@ Jiwa Weaver hancur berkeping-keping...
 **Penalti Kematian:**
 • 💰 Gold: -{gold_lost} ({gold_loss_percent * 100:.0f}%)
 • ⭐ EXP: -{exp_penalty} (20%)
-• 🎒 Semua Equipment (Tas & Terpakai) lebur menjadi debu.
-• 🎖️ Gelarmu kembali menjadi **Novice Weaver**.
+• 🎒 Semua Equipment lebur menjadi debu.
+• 🎖️ Gelarmu kembali menjadi **Novice**.
 
 **Sisa Kekuatan yang Terjaga:**
-• ✨ Atribut & Stat Points (Permanen)
-• 💎 Relik Kuno & Bonus Kontrak
-• 🔮 Mastery Skill (Level Evolusi Skill tidak hilang)
-• 🔄 Cycle: {cycle} | 📊 Level: {player.get('level', 1)}
+• ✨ Atribut & Stat Points
+• 💎 Relik Kuno & Bonus
+• 🔮 Mastery Skill
 """
     players_col.update_one({"user_id": user_id}, {"$inc": {"death_count": 1}})
     return death_message
@@ -235,42 +236,29 @@ def auto_seed_content():
     if narratives_col.count_documents({}) == 0:
         try:
             from game.data.script import NARRATIVES
-            narratives_col.insert_many(NARRATIVES)
-            print(f"✅ Local DB: {len(NARRATIVES)} Naskah disuntikkan!")
+            narratives_col.insert_many([{"type": k, "data": v} for k, v in NARRATIVES.items()])
+            print(f"✅ Local DB: Naskah disuntikkan!")
         except Exception as e:
             print(f"⚠️ Abaikan jika file narasi belum ada: {e}")
 
-    # 2. SEED SEMUA ITEMS (15 Kategori File)
+    # 2. SEED SEMUA ITEMS (Path disesuaikan ke folder equipment & consumables)
     if items_col.count_documents({}) == 0:
         try:
-            from game.items.weapons import WEAPON_DATABASE
-            from game.items.armors import ARMOR_DATABASE
-            from game.items.masks import MASKS
-            from game.items.heads import HEADS
-            from game.items.cloaks import CLOAKS
-            from game.items.boots import BOOTS
-            from game.items.gloves import GLOVES
-            from game.items.artifacts import ARTIFACTS
-            
-            from game.consumables.utility import UTILITIES
-            from game.consumables.items import MISC_ITEMS, CAMPING_ITEMS
-            from game.consumables.food import FOOD_ITEMS
-            from game.consumables.hp import HP_POTIONS
-            from game.consumables.mp import MP_POTIONS
-            from game.consumables.special import SPECIAL_ITEMS
+            from game.items.equipment.weapons import WEAPON_DATABASE
+            from game.items.equipment.armors import ARMOR_DATABASE
+            from game.items.equipment.artifacts import ARTIFACTS
+            from game.items.consumables.hp import HP_POTIONS
+            # (Tambahkan import lainnya di sini sesuai file yang sudah Anda buat)
             
             all_items = {}
-            for db_dict in [
-                WEAPON_DATABASE, ARMOR_DATABASE, MASKS, HEADS, CLOAKS, BOOTS, GLOVES, ARTIFACTS, 
-                UTILITIES, MISC_ITEMS, CAMPING_ITEMS, FOOD_ITEMS, HP_POTIONS, MP_POTIONS, SPECIAL_ITEMS
-            ]:
+            for db_dict in [WEAPON_DATABASE, ARMOR_DATABASE, ARTIFACTS, HP_POTIONS]:
                 if db_dict: all_items.update(db_dict)
                 
             if all_items:
                 items_col.insert_many(list(all_items.values()))
-                print(f"✅ Local DB: {len(all_items)} Item (Gear, Senjata, Potion, dll) Sinkron!")
+                print(f"✅ Local DB: {len(all_items)} Item Sinkron!")
         except Exception as e:
-            print(f"⚠️ Ada file item yang belum terbuat/kosong: {e}")
+            print(f"⚠️ Ada file item yang belum terbuat: {e}")
 
     # 3. SEED LANDMARKS
     if landmarks_col.count_documents({}) == 0:
@@ -281,89 +269,32 @@ def auto_seed_content():
         except Exception as e:
             pass
 
-    # 4. SEED HAZARDS & DEADLY ZONES
-    if hazards_col.count_documents({}) == 0:
-        try:
-            from game.data.environment.hazards import HAZARDS
-            from game.data.environment.deadly import DEADLY_ZONES
-            
-            all_hazards = {**HAZARDS, **DEADLY_ZONES}
-            if all_hazards:
-                hazards_col.insert_many(list(all_hazards.values()))
-                print(f"✅ Local DB: {len(all_hazards)} Hazards & Deadly Zones Sinkron!")
-        except Exception as e:
-            print(f"⚠️ File Hazard/Deadly belum lengkap: {e}")
-
-    # 5. SEED MONSTERS & BOSSES
+    # 4. SEED MONSTERS & BOSSES (Path disesuaikan ke game.entities)
     if monsters_col.count_documents({}) == 0:
         try:
-            from game.data.monster_data import MONSTER_POOL
-            from game.data.miniboss_data import MINIBOSS_POOL
-            from game.data.mainboss_data import MAINBOSS_POOL
+            from game.entities.monsters import MONSTER_POOL
             
             flat_monsters = []
-            for m_dict in [MONSTER_POOL, MINIBOSS_POOL, MAINBOSS_POOL]:
-                if m_dict:
-                    for category, m_list in m_dict.items():
-                        for m in m_list:
-                            m['tier_category'] = category
-                            flat_monsters.append(m)
+            if MONSTER_POOL:
+                for category, m_list in MONSTER_POOL.items():
+                    for m in m_list:
+                        m['tier_category'] = category
+                        flat_monsters.append(m)
                             
             if flat_monsters:
                 monsters_col.insert_many(flat_monsters)
                 print(f"✅ Local DB: {len(flat_monsters)} Monster & Boss Sinkron!")
         except Exception as e:
-            print(f"⚠️ File Monster/Boss belum lengkap: {e}")
+            print(f"⚠️ File Monster belum lengkap: {e}")
 
-    # 6. SEED NPCS
+    # 5. SEED NPCS & QUIZZES (Path disesuaikan)
     if npcs_col.count_documents({}) == 0:
         try:
-            from game.data.npc_data import NPC_POOL
-            flat_npcs = []
-            for cat, npcs in NPC_POOL.items():
-                for n in npcs:
-                    n['category'] = cat
-                    flat_npcs.append(n)
-            if flat_npcs:
-                npcs_col.insert_many(flat_npcs)
-                print(f"✅ Local DB: {len(flat_npcs)} NPC Sinkron!")
+            from game.data.npcs.quizzes import PUZZLE_NPCS
+            npcs_col.insert_many(list(PUZZLE_NPCS.values()))
+            print(f"✅ Local DB: {len(PUZZLE_NPCS)} NPC Puzzle Sinkron!")
         except Exception as e:
             pass
-
-    # 7. SEED PUZZLES
-    if puzzles_col.count_documents({}) == 0:
-        try:
-            from game.puzzles.manager import PUZZLE_DATABASE
-            flat_puzzles = []
-            for tier, riddles in PUZZLE_DATABASE.items():
-                for r in riddles:
-                    r['tier'] = tier
-                    flat_puzzles.append(r)
-            if flat_puzzles:
-                puzzles_col.insert_many(flat_puzzles)
-                print(f"✅ Local DB: {len(flat_puzzles)} Puzzle/Quiz Sinkron!")
-        except Exception as e:
-            pass
-
-    # 8. SEED JOBS / CLASSES (Koreksi Path: game.logic)
-    if jobs_col.count_documents({}) == 0:
-        try:
-            from game.logic.job_manager import JOB_DATABASE 
-            if JOB_DATABASE:
-                jobs_col.insert_many(list(JOB_DATABASE.values()))
-                print(f"✅ Local DB: {len(JOB_DATABASE)} Jobs/Class Sinkron!")
-        except Exception as e:
-            print(f"⚠️ File Job belum lengkap: {e}")
-
-    # 9. SEED SKILLS (Koreksi Path: game.logic)
-    if skills_col.count_documents({}) == 0:
-        try:
-            from game.logic.skills import SKILL_DATABASE
-            if SKILL_DATABASE:
-                skills_col.insert_many(list(SKILL_DATABASE.values()))
-                print(f"✅ Local DB: {len(SKILL_DATABASE)} Skills Sinkron!")
-        except Exception as e:
-            print(f"⚠️ File Skills belum lengkap: {e}")
 
     print("🚀 SINKRONISASI VPS TOTAL SELESAI!")
 
