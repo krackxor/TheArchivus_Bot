@@ -14,17 +14,26 @@ from game.logic.menu_handler import (
     get_profile_main_menu, generate_profile_text
 )
 from game.systems.shop import process_purchase, get_shop_keyboard
-# Sinkronisasi dengan sistem Quest Modular
-from game.data.quests import update_quest_progress
 from game.items import get_item
 
-# Inisialisasi Router
+# Sinkronisasi dengan sistem Quest Modular (Sesuai exploration.py)
+try:
+    from game.systems.achievements import update_quest_progress
+except ImportError:
+    from game.data.quests import update_quest_progress
+
+# === UI & CONSTANTS ===
+from game.ui_constants import Icon, Text, get_text, TRANSLATIONS
+
 router = Router()
+
+# Daftar pemicu untuk tombol Profil (ID & EN)
+PROFILE_KEYS = [TRANSLATIONS["id"]["NAV_PROFILE"], TRANSLATIONS["en"]["NAV_PROFILE"]]
 
 # ==============================================================================
 # 1. BUKA MENU PROFIL (DARI TOMBOL BAWAH)
 # ==============================================================================
-@router.message(GameState.exploring, F.text == "📊 Profil & Tas")
+@router.message(GameState.exploring, F.text.in_(PROFILE_KEYS))
 async def profile_bag_handler(message: Message):
     user_id = message.from_user.id
     p = get_player(user_id)
@@ -36,7 +45,7 @@ async def profile_bag_handler(message: Message):
     text = generate_profile_text(p, p['stats'])
     kb = get_profile_main_menu(p)
     
-    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
 # ==============================================================================
@@ -47,26 +56,30 @@ async def menu_navigation_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
     p = get_player(user_id)
+    lang = p.get('lang', 'id')
     p['stats'] = calculate_total_stats(p)
 
     if data == "menu_inventory":
-        await callback.message.edit_text("🎒 **Isi Tas (Equipment):**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
+        title = f"{Icon.BAG} **{get_text(lang, 'INVENTORY_TITLE')}:**"
+        await callback.message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)))
     
     elif data == "menu_consumables":
-        await callback.message.edit_text("🧪 **Daftar Ramuan:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_consumable_menu(p)), parse_mode="Markdown")
+        title = f"{Icon.POTION} **{get_text(lang, 'CONSUMABLES_TITLE')}:**"
+        await callback.message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=get_consumable_menu(p)))
     
     elif data == "menu_profile":
-        await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
+        title = f"{Icon.GEAR} **Equipment Terpakai:**"
+        await callback.message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)))
     
     elif data == "menu_main_profile":
-        await callback.message.edit_text(generate_profile_text(p, p['stats']), reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_main_menu(p)), parse_mode="Markdown")
+        await callback.message.edit_text(generate_profile_text(p, p['stats']), reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_main_menu(p)))
     
     elif data == "close_menu_profile":
         try:
             await callback.message.delete()
-            await callback.answer("Menu ditutup")
+            await callback.answer(get_text(lang, 'BTN_CLOSE'))
         except Exception:
-            await callback.message.edit_text("✨ Fokus kembali ke penjelajahan...")
+            await callback.message.edit_text(f"{Icon.SUCCESS} Fokus kembali ke penjelajahan...")
             await callback.answer()
 
 
@@ -78,6 +91,7 @@ async def equipment_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
     p = get_player(user_id)
+    lang = p.get('lang', 'id')
 
     if data.startswith("equip_"):
         item_id = data.replace("equip_", "")
@@ -92,7 +106,8 @@ async def equipment_handler(callback: CallbackQuery):
         await callback.answer(msg)
         
         # Refresh tampilan tas
-        await callback.message.edit_text("🎒 **Isi Tas:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)), parse_mode="Markdown")
+        title = f"{Icon.BAG} **{get_text(lang, 'INVENTORY_TITLE')}:**"
+        await callback.message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=get_inventory_menu(p)))
         
     elif data.startswith("unequip_"):
         slot = data.replace("unequip_", "")
@@ -107,7 +122,8 @@ async def equipment_handler(callback: CallbackQuery):
         await callback.answer(msg)
         
         # Refresh tampilan gear terpakai
-        await callback.message.edit_text("👕 **Equipment Terpakai:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)), parse_mode="Markdown")
+        title = f"{Icon.GEAR} **Equipment Terpakai:**"
+        await callback.message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=get_profile_menu(p)))
 
 
 # ==============================================================================
@@ -117,6 +133,7 @@ async def equipment_handler(callback: CallbackQuery):
 async def blacksmith_callback_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
     p = get_player(user_id)
+    lang = p.get('lang', 'id')
     
     # Hitung biaya dan jumlah perbaikan
     new_durability, cost, count = process_repair_all(p)
@@ -125,7 +142,7 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
         return await callback.answer("⚒️ Aethelred: 'Gear-mu masih tajam dan kokoh. Pergi sana!'", show_alert=True)
     
     if p.get('gold', 0) < cost: 
-        return await callback.answer(f"❌ Emasmu tidak cukup! Butuh {cost} Gold.", show_alert=True)
+        return await callback.answer(get_text(lang, 'NOT_ENOUGH_GOLD'), show_alert=True)
         
     # Eksekusi Perbaikan
     p['gold'] -= cost
@@ -145,19 +162,19 @@ async def blacksmith_callback_handler(callback: CallbackQuery):
     
     repair_msg = (
         f"⚒️ **BENGKEL AETHELRED**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{Text.LINE}\n"
         f"💬 *'Nah, benda ini bisa membelah kulit iblis lagi.'*\n\n"
-        f"🛠️ **Diperbaiki:** {count} buah\n"
-        f"💰 **Biaya:** -{cost} Gold\n"
-        f"✨ **Kondisi:** 100% (Gear Kokoh)\n"
+        f"🛠️ **Diperbaiki:** `{count} buah`\n"
+        f"{Icon.GOLD} **Biaya:** `-{cost} Gold`\n"
+        f"{Icon.SUCCESS} **Kondisi:** `100% (Gear Kokoh)`\n"
     )
     
     if quest_msgs:
-        repair_msg += "\n" + "\n".join(quest_msgs)
+        repair_msg += f"\n{Icon.QUEST} **Progres Misi:**\n" + "\n".join(quest_msgs)
     
     kb = get_profile_main_menu(p)
     try:
-        await callback.message.edit_text(repair_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+        await callback.message.edit_text(repair_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except Exception:
         pass
     await callback.answer("✅ Seluruh peralatan berhasil diperbaiki!")
@@ -185,7 +202,7 @@ async def shop_purchase_handler(callback: CallbackQuery):
         })
         
         # Gabungkan pesan sukses toko dengan notifikasi quest
-        full_msg = f"✅ Berhasil membeli {item_id.replace('_', ' ').title()}!"
+        full_msg = f"{Icon.SUCCESS} Berhasil membeli {item_id.replace('_', ' ').title()}!"
         if quest_msgs:
             full_msg += "\n" + "\n".join(quest_msgs)
             
@@ -194,7 +211,7 @@ async def shop_purchase_handler(callback: CallbackQuery):
         # Refresh tampilan toko
         try:
             await callback.message.edit_reply_markup(
-                reply_markup=get_shop_keyboard(p, location=p.get('location', 'The Whispering Hall'))
+                reply_markup=get_shop_keyboard(p, location=p.get('location', 'village'))
             )
         except Exception:
             pass
@@ -231,17 +248,20 @@ async def use_item_handler(callback: CallbackQuery, state: FSMContext):
     # CEK SPESIAL: Pemicu Quiz (Buku / Scroll)
     item_data = get_item(item_id)
     if item_data and item_data.get("effect_type") == "trigger_quiz":
-        from game.puzzles.manager import generate_puzzle
-        puzzle = generate_puzzle(tier=item_data.get("tier", 2))
-        
-        await state.set_state(GameState.in_event)
-        await state.update_data(event_data=puzzle)
-        
-        q_text = f"📖 {msg}\n"
-        if quest_msgs: q_text += "\n".join(quest_msgs) + "\n"
-        q_text += f"\n━━━━━━━━━━━━━━━━━━━━\n❓ **PERTANYAAN:**\n{puzzle['question']}\n━━━━━━━━━━━━━━━━━━━━\n*Ketik jawabanmu...*"
-        
-        return await callback.message.answer(q_text, parse_mode="Markdown")
+        try:
+            from game.puzzles.manager import generate_puzzle
+            puzzle = generate_puzzle(tier=item_data.get("tier", 2))
+            
+            await state.set_state(GameState.in_event)
+            await state.update_data(event_data=puzzle)
+            
+            q_text = f"📖 {msg}\n"
+            if quest_msgs: q_text += "\n".join(quest_msgs) + "\n"
+            q_text += f"\n{Text.LINE}\n❓ **PERTANYAAN:**\n{puzzle['question']}\n{Text.LINE}\n*Ketik jawabanmu...*"
+            
+            return await callback.message.answer(q_text)
+        except ImportError:
+            pass
 
     # Simpan status terbaru
     update_player(user_id, {
@@ -257,4 +277,4 @@ async def use_item_handler(callback: CallbackQuery, state: FSMContext):
     if quest_msgs:
         final_alert += "\n" + "\n".join(quest_msgs)
         
-    await callback.message.answer(final_alert, parse_mode="Markdown")
+    await callback.message.answer(final_alert)
