@@ -3,28 +3,18 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from game.items import get_item
 from game.systems.progression import calculate_max_exp
+from game.ui_constants import Icon, Text, get_text
+
+# Impor Helper UI terpusat
+from utils.helper_ui import create_hp_bar, create_mp_bar, create_energy_bar, create_exp_bar
 
 # ==============================================================================
-# 1. HELPER UI & TEXT GENERATION
+# 1. PROFILE TEXT GENERATION
 # ==============================================================================
-
-def create_progress_bar(current, maximum, length=10):
-    """
-    Membuat visual progress bar sederhana menggunakan emoji.
-    Contoh output: 🔵🔵🔵🔵⚪⚪⚪⚪⚪⚪
-    """
-    if maximum <= 0: return "⚪" * length
-    filled_length = int(length * current / maximum)
-    # Pastikan tidak melebihi panjang maksimal
-    filled_length = min(length, max(0, filled_length))
-    bar = "🔵" * filled_length + "⚪" * (length - filled_length)
-    return bar
 
 def generate_profile_text(player, stats):
-    """
-    Merender teks profil pemain dengan desain UI yang bersih untuk Mobile.
-    Menggabungkan data pemain dasar dan total stat tempurnya.
-    """
+    """Merender teks profil pemain dengan desain UI yang bersih dan Multi-Bahasa."""
+    lang = player.get('lang', 'id')
     level = player.get('level', 1)
     exp = player.get('exp', 0)
     max_exp = calculate_max_exp(level)
@@ -33,108 +23,90 @@ def generate_profile_text(player, stats):
     
     # Header & Basic Info
     text = (
-        f"👤 **{username.upper()}**\n"
-        f"🎖️ `Lvl.{level} {player.get('current_job', 'Novice')}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"✨ **EXP:** `{exp}/{max_exp}`\n"
-        f"{create_progress_bar(exp, max_exp)}\n\n"
+        f"{Icon.NPC} **{username.upper()}**\n"
+        f"{Icon.LEVEL} `{get_text(lang, 'LEVEL')}.{level} {player.get('current_job', 'Novice')}`\n"
+        f"{Text.LINE}\n"
+        f"{Icon.EXP} **{get_text(lang, 'EXP')}:** `{exp}/{max_exp}`\n"
+        f"{create_exp_bar(exp, max_exp)}\n\n"
         
-        f"❤️ **HP:** `{int(player.get('hp', 100))}/{int(player.get('max_hp', 100))}`\n"
-        f"💧 **MP:** `{int(player.get('mp', 0))}/{int(player.get('max_mp', 50))}`\n"
-        f"⚡ **EN:** `{int(player.get('energy', 100))}/{int(player.get('max_energy', 100))}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{Icon.HP} **HP:** {create_hp_bar(player.get('hp', 100), player.get('max_hp', 100))}\n"
+        f"{Icon.MP} **MP:** {create_mp_bar(player.get('mp', 0), player.get('max_mp', 50))}\n"
+        f"{Icon.ENERGY} **EN:** {create_energy_bar(player.get('energy', 100), player.get('max_energy', 100))}\n"
+        f"{Text.LINE}\n"
         
-        f"⚔️ **P.ATK:** `{stats.get('p_atk', 10)}`  🛡️ **P.DEF:** `{stats.get('p_def', 5)}`\n"
-        f"🔮 **M.ATK:** `{stats.get('m_atk', 10)}`  ✨ **M.DEF:** `{stats.get('m_def', 5)}`\n"
-        f"💨 **SPD:** `{stats.get('speed', 10)}`   ⚖️ **WGT:** `{stats.get('total_weight', 0)}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 `{player.get('gold', 0):,} Gold` | 💀 `{player.get('kills', 0)} Kills` \n"
+        f"{Icon.ATTACK} **P.ATK:** `{stats.get('p_atk', 10)}`  {Icon.DEFENSE} **P.DEF:** `{stats.get('p_def', 5)}`\n"
+        f"{Icon.MAGIC} **M.ATK:** `{stats.get('m_atk', 10)}`  {Icon.GEAR} **M.DEF:** `{stats.get('m_def', 5)}`\n"
+        f"{Icon.SPEED} **SPD:** `{stats.get('speed', 10)}`   ⚖️ **WGT:** `{stats.get('total_weight', 0)}`\n"
+        f"{Text.LINE}\n"
+        f"{Icon.GOLD} `{player.get('gold', 0):,} Gold` | {Icon.KILLS} `{player.get('kills', 0)} Kills` \n"
     )
     
-    # Notifikasi jika pemain memiliki poin stat (SP) yang belum dipakai
     if sp > 0:
-        text += f"\n✨ **STAT POINTS: {sp}**\n_Ketuk tombol + di bawah untuk upgrade!_"
+        text += f"\n{get_text(lang, 'STAT_POINTS_INFO', sp=sp)}"
     
     return text
 
 
 # ==============================================================================
-# 2. MENU PROFIL & INVENTORY (INLINE KEYBOARD)
+# 2. INLINE KEYBOARDS (MENUS)
 # ==============================================================================
 
 def get_profile_main_menu(player):
-    """
-    Membuat layout tombol navigasi untuk menu profil utama.
-    Menampilkan tombol upgrade stat jika pemain memiliki SP (Stat Points).
-    """
+    lang = player.get('lang', 'id')
     buttons = []
     sp = player.get('stat_points', 0)
     
-    # Baris 1: Upgrade Stat (Hanya muncul jika ada SP)
     if sp > 0:
         buttons.append([
-            InlineKeyboardButton(text="⚔️ +ATK", callback_data="addstat_p_atk"),
-            InlineKeyboardButton(text="🛡️ +DEF", callback_data="addstat_p_def"),
-            InlineKeyboardButton(text="💨 +SPD", callback_data="addstat_speed")
+            InlineKeyboardButton(text=f"{Icon.ATTACK} +ATK", callback_data="addstat_p_atk"),
+            InlineKeyboardButton(text=f"{Icon.DEFENSE} +DEF", callback_data="addstat_p_def"),
+            InlineKeyboardButton(text=f"{Icon.SPEED} +SPD", callback_data="addstat_speed")
         ])
     
-    # Baris 2 & 3: Management Inventory & Peralatan
     buttons.append([
-        InlineKeyboardButton(text="🎒 TAS PERALATAN", callback_data="menu_inventory"),
-        InlineKeyboardButton(text="🧪 RAMUAN", callback_data="menu_consumables")
+        InlineKeyboardButton(text=f"{Icon.BAG} {get_text(lang, 'INVENTORY_TITLE').upper()}", callback_data="menu_inventory"),
+        InlineKeyboardButton(text=f"{Icon.POTION} {get_text(lang, 'CONSUMABLES_TITLE').split(' ')[0].upper()}", callback_data="menu_consumables")
     ])
     
     buttons.append([
-        InlineKeyboardButton(text="👕 GEAR", callback_data="menu_profile"),
-        InlineKeyboardButton(text="🔨 BENGKEL", callback_data="menu_repair")
+        InlineKeyboardButton(text=f"{Icon.GEAR} EQUIPMENT", callback_data="menu_profile"),
+        InlineKeyboardButton(text=f"⚒️ BENGKEL", callback_data="menu_repair")
     ])
     
-    # Baris Terakhir: Tutup Menu untuk membersihkan layar chat
-    buttons.append([InlineKeyboardButton(text="❌ TUTUP MENU", callback_data="close_menu_profile")])
-    
+    buttons.append([InlineKeyboardButton(text=get_text(lang, "BTN_CLOSE"), callback_data="close_menu_profile")])
     return buttons
 
 def get_inventory_menu(player):
-    """
-    Membuat layout tombol untuk tas pemain (Khusus Equipment/Peralatan).
-    Memfilter barang-barang yang bisa dipakai (equipable).
-    """
+    lang = player.get('lang', 'id')
     buttons = []
     inventory = player.get('inventory', [])
     equipable_types = ['weapon', 'offhand', 'shield', 'armor', 'head', 'mask', 'gloves', 'boots', 'cloak', 'artifact']
     
-    # Filter hanya item yang bertipe perlengkapan
     equipables = [i for i in inventory if get_item(i) and get_item(i).get('type') in equipable_types]
 
     if not equipables:
-        buttons.append([InlineKeyboardButton(text="📭 Tas Kosong", callback_data="none")])
+        buttons.append([InlineKeyboardButton(text=get_text(lang, "EMPTY_BAG"), callback_data="none")])
     else:
         row = []
         for item_id in equipables:
             item = get_item(item_id)
-            # Beri ikon pedang jika senjata, perisai jika selain senjata
-            icon = "⚔️" if item['type'] == 'weapon' else "🛡️"
+            # Ambil ikon spesifik senjata/gear
+            icon = Icon.GEAR_SWORD if item['type'] == 'weapon' else Icon.GEAR_ARMOR
             row.append(InlineKeyboardButton(text=f"{icon} {item['name']}", callback_data=f"equip_{item_id}"))
             
-            # Susun 2 tombol per baris agar rapi di HP
             if len(row) == 2:
                 buttons.append(row)
                 row = []
-        if row: buttons.append(row) # Masukkan sisa tombol
+        if row: buttons.append(row)
 
-    # Tombol navigasi kembali ke profil utama
-    buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
+    buttons.append([InlineKeyboardButton(text=get_text(lang, "BTN_BACK"), callback_data="menu_main_profile")])
     return buttons
 
 def get_consumable_menu(player):
-    """
-    Membuat layout tombol khusus untuk ramuan/consumables.
-    Menerapkan sistem stacking (menghitung jumlah barang yang sama).
-    """
+    lang = player.get('lang', 'id')
     buttons = []
     inventory = player.get('inventory', [])
     
-    # Hitung jumlah (Stacking) item yang sama
     counts = {}
     for i in inventory:
         it = get_item(i)
@@ -142,92 +114,88 @@ def get_consumable_menu(player):
             counts[i] = counts.get(i, 0) + 1
 
     if not counts:
-        buttons.append([InlineKeyboardButton(text="📭 Tidak ada ramuan", callback_data="none")])
+        buttons.append([InlineKeyboardButton(text=get_text(lang, "EMPTY_BAG"), callback_data="none")])
     else:
         row = []
         for i_id, count in counts.items():
             it = get_item(i_id)
-            # Format: 🧪 Nama Potion (Jumlah x)
-            row.append(InlineKeyboardButton(text=f"🧪 {it['name']} ({count}x)", callback_data=f"useitem_{i_id}"))
+            # Deteksi ikon potion secara cerdas
+            icon = Icon.HP if it.get('effect_type') == 'heal_hp' else Icon.POTION
+            row.append(InlineKeyboardButton(text=f"{icon} {it['name']} ({count}x)", callback_data=f"useitem_{i_id}"))
             
-            # Susun 2 tombol per baris
             if len(row) == 2:
                 buttons.append(row)
                 row = []
         if row: buttons.append(row)
 
-    buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
+    buttons.append([InlineKeyboardButton(text=get_text(lang, "BTN_BACK"), callback_data="menu_main_profile")])
     return buttons
 
 def get_profile_menu(player):
-    """
-    Membuat layout tombol untuk melepas (unequip) gear yang sedang dipakai.
-    Menampilkan status durabilitas item dengan indikator warna.
-    """
+    lang = player.get('lang', 'id')
     buttons = []
     equipped = player.get('equipped', {})
     durability = player.get('equipment_durability', {})
 
-    if not equipped:
-        buttons.append([InlineKeyboardButton(text="📭 Tidak ada gear terpakai", callback_data="none")])
-    else:
-        for slot, item_id in equipped.items():
+    # Daftar slot yang ingin ditampilkan beserta ikonnya
+    slots = {
+        "weapon": Icon.GEAR_SWORD, "armor": Icon.GEAR_ARMOR, 
+        "head": Icon.GEAR_HELMET, "boots": Icon.GEAR_BOOTS,
+        "artifact": Icon.GEAR_AMULET
+    }
+
+    found = False
+    for slot, icon in slots.items():
+        item_id = equipped.get(slot)
+        if item_id:
             item = get_item(item_id)
             if item:
+                found = True
                 d = durability.get(slot, 50)
-                # Visual Indicator untuk Durabilitas (Hijau=Aman, Kuning=Peringatan, Merah=Rusak)
-                emoji = "🟢" if d > 20 else "🟡" if d > 5 else "🔴"
+                status_icon = "🟢" if d > 20 else "🟡" if d > 5 else "🔴"
                 buttons.append([
-                    InlineKeyboardButton(text=f"{emoji} {slot.upper()}: {item['name']} ({d}/50)", callback_data=f"unequip_{slot}")
+                    InlineKeyboardButton(text=f"{status_icon} {icon} {item['name']} ({d}/50)", callback_data=f"unequip_{slot}")
                 ])
 
-    buttons.append([InlineKeyboardButton(text="⬅️ KEMBALI", callback_data="menu_main_profile")])
+    if not found:
+        buttons.append([InlineKeyboardButton(text="📭 Gear Kosong", callback_data="none")])
+
+    buttons.append([InlineKeyboardButton(text=get_text(lang, "BTN_BACK"), callback_data="menu_main_profile")])
     return buttons
 
 
 # ==============================================================================
-# 3. GLOBAL KEYBOARDS (DIGUNAKAN DI BANYAK FILE)
+# 3. GLOBAL REPLY KEYBOARDS (BOTTOM BUTTONS)
 # ==============================================================================
 
-def get_main_reply_keyboard(player=None):
-    """
-    Menghasilkan tombol navigasi bawah layar (Reply Keyboard).
-    Digunakan untuk Eksplorasi, Meditasi, dan membuka Profil Utama.
-    """
+def get_main_reply_keyboard(player):
+    lang = player.get('lang', 'id')
     keyboard = [
-        [KeyboardButton(text="⬆️ Utara")],
-        [KeyboardButton(text="⬅️ Barat"), KeyboardButton(text="Timur ➡️")],
-        [KeyboardButton(text="⬇️ Selatan")],
-        [KeyboardButton(text="🧘 Meditasi"), KeyboardButton(text="📊 Profil & Tas")]
+        [KeyboardButton(text=get_text(lang, "NAV_NORTH"))],
+        [KeyboardButton(text=get_text(lang, "NAV_WEST")), KeyboardButton(text=get_text(lang, "NAV_EAST"))],
+        [KeyboardButton(text=get_text(lang, "NAV_SOUTH"))],
+        [KeyboardButton(text=get_text(lang, "NAV_REST")), KeyboardButton(text=get_text(lang, "NAV_PROFILE"))]
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 def get_stance_keyboard(is_boss=False):
-    """
-    Menghasilkan tombol aksi pertempuran (Inline Keyboard).
-    Digunakan oleh file exploration.py dan combat.py saat in_combat.
-    """
+    # Untuk tombol combat, kita pakai ID bahasa 'id' dulu sebagai standar tempur
     row1 = [
-        InlineKeyboardButton(text="⚔️ Serang", callback_data="stance_attack"),
-        InlineKeyboardButton(text="🔮 Skill", callback_data="stance_skill")
+        InlineKeyboardButton(text=f"{Icon.ATTACK} Serang", callback_data="stance_attack"),
+        InlineKeyboardButton(text=f"{Icon.SKILL} Skill", callback_data="stance_skill")
     ]
     row2 = [
-        InlineKeyboardButton(text="🛡️ Bertahan", callback_data="stance_block"),
-        InlineKeyboardButton(text="💨 Menghindar", callback_data="stance_dodge")
+        InlineKeyboardButton(text=f"{Icon.DEFENSE} Bertahan", callback_data="stance_block"),
+        InlineKeyboardButton(text=f"{Icon.DODGE} Menghindar", callback_data="stance_dodge")
     ]
-    row3 = [InlineKeyboardButton(text="🎒 Item", callback_data="stance_item")]
+    row3 = [InlineKeyboardButton(text=f"{Icon.BAG} Item", callback_data="stance_item")]
     
-    # Jika menghadapi Boss, pemain tidak diberikan opsi kabur
     if not is_boss: 
         row3.append(InlineKeyboardButton(text="🏃 Kabur", callback_data="stance_run"))
         
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, row3])
 
 def get_rest_area_keyboard():
-    """
-    Tombol interaksi saat berada di Rest Area (Campfire).
-    Menawarkan opsi gratis dan berbayar (Item Tenda).
-    """
     buttons = [
         [InlineKeyboardButton(text="🔥 Menyalakan Api", callback_data="rest_fire")],
         [InlineKeyboardButton(text="⛺ Pasang Tenda", callback_data="rest_tent")],
