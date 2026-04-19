@@ -12,6 +12,7 @@ from game.data.environment.hazards import process_hazard_interaction
 from game.data.environment.deadly import process_deadly_interaction
 from game.data.environment.landmarks import process_landmark_interaction
 from game.data.quests import update_quest_progress
+from game.puzzles.manager import generate_puzzle
 
 # --- 1. GENERATOR TOMBOL INTERAKSI ---
 
@@ -21,7 +22,12 @@ def get_event_interaction_kb(event_type, event_data):
     
     if event_type == "npc":
         cat = event_data.get("category", "wanderer")
-        kb.append([InlineKeyboardButton(text="🤝 Dekati Sosok Itu", callback_data=f"pool_{cat}")])
+        # Pemetaan kategori ke tombol yang sesuai
+        if cat == "quiz":
+            kb.append([InlineKeyboardButton(text="📜 Tantang Kecerdasan", callback_data="evt_npc_quiz")])
+        else:
+            kb.append([InlineKeyboardButton(text="🤝 Dekati Sosok Itu", callback_data=f"pool_{cat}")])
+        
         kb.append([InlineKeyboardButton(text="🚶 Abaikan", callback_data="evt_ignore")])
 
     elif event_type == "deadly":
@@ -43,7 +49,7 @@ async def handle_event_interaction(callback, state, player):
     data = callback.data
     user_id = player['user_id']
     
-    # A. MESIN NPC POOL
+    # A. MESIN NPC POOL (Heal, Gamble, Lore, Gift)
     if data.startswith("pool_"):
         category = data.split("_")[1]
         npc = random.choice(NPC_POOL.get(category, NPC_POOL['wanderer']))
@@ -78,7 +84,7 @@ async def handle_event_interaction(callback, state, player):
             player.setdefault('inventory', []).append(item)
             text += f"\n🎁 **Dapatkan:** {item.replace('_', ' ').title()}"
 
-        # FIX: Kembalikan state ke exploring agar navigasi terbuka kembali
+        # Akhiri interaksi dan reset state
         await state.set_state(GameState.exploring)
         update_player(user_id, player)
         
@@ -90,12 +96,28 @@ async def handle_event_interaction(callback, state, player):
             pass
         await callback.message.answer(final_text, reply_markup=get_main_reply_keyboard(player))
 
-    # B. MESIN BAHAYA MAUT
+    # B. KHUSUS: MESIN QUIZ
+    elif data == "evt_npc_quiz":
+        # Gunakan Tier berdasarkan level pemain atau acak
+        tier = max(1, min(5, player.get('level', 1) // 10 + 1))
+        puzzle = generate_puzzle(tier=tier)
+        
+        await state.set_state(GameState.in_event)
+        await state.update_data(event_data=puzzle)
+        
+        text = (
+            f"📜 **TANTANGAN KECERDASAN**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"\"{puzzle['question']}\"\n\n"
+            f"💬 *Ketik jawabanmu sekarang...*"
+        )
+        await callback.message.edit_text(text, parse_mode="Markdown")
+
+    # C. MESIN BAHAYA MAUT (Deadly Terrains)
     elif data.startswith("exec_deadly_"):
         event_id = "_".join(data.split("_")[2:])
         success, msg = process_deadly_interaction(player, event_id)
         
-        # FIX: Kembalikan state ke exploring
         await state.set_state(GameState.exploring)
         update_player(user_id, player)
         
@@ -105,16 +127,15 @@ async def handle_event_interaction(callback, state, player):
             pass
         await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # C. MESIN LOKASI
+    # D. MESIN LOKASI (Landmarks)
     elif data.startswith("exec_landmark_"):
         lm_id = "_".join(data.split("_")[2:])
         res, msg = process_landmark_interaction(player, lm_id)
         
         if res == "ambush":
-            # State jangan diubah ke exploring jika terjadi ambush, tetap biarkan sistem combat yang ambil alih
+            # Jangan reset state jika ambush, biarkan battle_handler mengambil alih
             await callback.message.edit_text(f"⚠️ {msg}")
         else:
-            # FIX: Kembalikan state ke exploring
             await state.set_state(GameState.exploring)
             update_player(user_id, player)
             try:
@@ -123,7 +144,7 @@ async def handle_event_interaction(callback, state, player):
                 pass
             await callback.message.answer(msg, reply_markup=get_main_reply_keyboard(player))
 
-    # D. ABAIKAN / LANJUT
+    # E. ABAIKAN / LANJUT (TRIGGER MOVE QUEST)
     elif data == "evt_ignore":
         player, quest_msgs = update_quest_progress(player, "move_steps")
         update_player(user_id, player)
