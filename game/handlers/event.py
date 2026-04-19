@@ -9,9 +9,15 @@ from database import get_player, update_player
 from game.logic.states import GameState
 from game.logic.stats import calculate_total_stats
 
-# Import fungsi UI & Sistem
+# === UI & CONSTANTS ===
+from game.ui_constants import Icon, Text
 from game.logic.menu_handler import get_main_reply_keyboard
-from game.systems.achievements import update_quest_progress
+
+# Sinkronisasi dengan sistem Quest Modular
+try:
+    from game.systems.achievements import update_quest_progress
+except ImportError:
+    from game.data.quests import update_quest_progress
 
 # Import sistem event spesifik
 from game.systems.events import process_event_outcome
@@ -60,7 +66,7 @@ async def event_puzzle_handler(message: Message, state: FSMContext):
     if not event_data:
         await state.set_state(GameState.exploring)
         return await message.answer(
-            "Teka-teki telah memudar menjadi debu...", 
+            f"{Icon.WARNING} Teka-teki telah memudar menjadi debu...", 
             reply_markup=get_main_reply_keyboard(p)
         )
     
@@ -71,8 +77,15 @@ async def event_puzzle_handler(message: Message, state: FSMContext):
     success, reward_msg, loot = process_event_outcome(p, event_data, player_answer)
     
     if success:
-        # [QUEST UPDATE] Tambah progres misi harian menjawab Kuis
-        quest_notif = update_quest_progress(p, "answer_quiz", 1)
+        # [QUEST UPDATE] Penanganan aman untuk progres misi menjawab Kuis
+        quest_result = update_quest_progress(p, "answer_quiz", 1)
+        quest_msgs = []
+        
+        # Kompatibilitas mundur jika fungsi mengembalikan tuple (p, msgs) atau string
+        if isinstance(quest_result, tuple):
+            p, quest_msgs = quest_result
+        else:
+            if quest_result: quest_msgs = [quest_result]
         
         # Tambahkan hadiah loot ke tas pemain (jika ada)
         if loot:
@@ -92,27 +105,33 @@ async def event_puzzle_handler(message: Message, state: FSMContext):
             "intelligence": new_intel,
             "scholar_level": p.get("scholar_level", 0) + 1,
             "gold": new_gold,
-            "daily_quests": p.get('daily_quests', [])
+            "active_quests": p.get('active_quests', [])
         })
         
+        # Susun pesan sukses menggunakan konstanta UI
         success_final = (
-            f"✅ **BERHASIL!**\n{reward_msg}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🧠 Intelligence +{intel_gain}\n"
-            f"💰 Gold +{gold_gain}\n"
-            f"{quest_notif}"
+            f"{Icon.SUCCESS} **BERHASIL!**\n"
+            f"{reward_msg}\n"
+            f"{Text.LINE}\n"
+            f"🧠 Intelligence: `+{intel_gain}`\n"
+            f"{Icon.GOLD} Gold: `+{gold_gain}`\n"
         )
-        await message.answer(success_final, reply_markup=get_main_reply_keyboard(p), parse_mode="Markdown")
+        
+        # Selipkan notifikasi misi jika ada
+        if quest_msgs:
+            success_final += f"\n{Icon.QUEST} **Progres Misi:**\n" + "\n".join(quest_msgs)
+            
+        await message.answer(success_final, reply_markup=get_main_reply_keyboard(p))
         
     else:
         # Jika salah jawab, berikan pesan gagal tanpa reward tambahan
         await message.answer(
             f"❌ **GAGAL!**\n{reward_msg}", 
-            reply_markup=get_main_reply_keyboard(p), 
-            parse_mode="Markdown"
+            reply_markup=get_main_reply_keyboard(p)
         )
     
-    # Setelah menjawab (baik benar maupun salah), bebaskan pemain ke mode eksplorasi
+    # Setelah menjawab (baik benar maupun salah), kembalikan pemain ke mode eksplorasi
     await state.set_state(GameState.exploring)
+    
     # Bersihkan sisa data event yang sudah selesai
     await state.update_data(event_data=None)
